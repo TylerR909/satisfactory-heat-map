@@ -58,25 +58,25 @@ jobs:
             exit 0
           fi
 
-          # Latest v* tag by version sort; else package.json baseline
+          # Latest v* tag by version sort; else package.json baseline.
+          # Patch-only auto-bump (no conventional-commit major/minor — zero manual versioning).
           LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)
           if [ -z "${LATEST}" ]; then
             VER=$(node -p "require('./package.json').version")
             echo "No tags yet; using package.json version ${VER}"
           else
-            BASE=${LATEST#v}
-            IFS=. read -r MAJOR MINOR PATCH <<EOF
-          ${BASE}
-          EOF
-            # Non-semver tag fallback
-            if [ -z "${MAJOR}" ] || [ -z "${MINOR}" ] || [ -z "${PATCH}" ]; then
-              VER=$(node -p "require('./package.json').version")
-              echo "Unparseable tag ${LATEST}; using package.json ${VER}"
-            else
-              PATCH=$((PATCH + 1))
-              VER="${MAJOR}.${MINOR}.${PATCH}"
-              echo "Bumping ${LATEST} → v${VER}"
-            fi
+            VER=$(
+              LATEST="${LATEST}" node -e '
+                const t = process.env.LATEST.replace(/^v/, "");
+                const m = /^(\d+)\.(\d+)\.(\d+)/.exec(t);
+                if (!m) {
+                  console.log(require("./package.json").version);
+                  process.exit(0);
+                }
+                console.log(`${m[1]}.${m[2]}.${Number(m[3]) + 1}`);
+              '
+            )
+            echo "Bumping ${LATEST} → v${VER}"
           fi
 
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
