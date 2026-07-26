@@ -49,7 +49,7 @@
 - [ ] `scripts/extract-world-nodes` (or CI pull) from rockfactory MIT / FModel
 - [ ] Self-hosted basemap tiles under `public/map/` (replace temporary CDN) — **required before leaning on their bandwidth long-term**
 - [ ] Drop temporary CDN notes from `meta.json` / scraped README when done
-- [x] Cloudflare Pages deploy docs + `public/_headers` ([docs/DEPLOY.md](DEPLOY.md)); Git connect + domain is operator one-time
+- [x] Cloudflare Workers static-asset deploy docs + `wrangler.jsonc` + `public/_headers` ([docs/DEPLOY.md](DEPLOY.md)); Git connect + domain is operator one-time
 - [x] Docker image + `.dockerignore` + GHCR on merge-to-main + auto Releases + `docker-compose.example.yml` (:18547)
 - [x] CI on PR/`main`: lint · test · build · Docker smoke build (`.github/workflows/ci.yml`)
 - [ ] First intentional PR → `main` + CF project linked + satisfactory-heatmap.com Active + GHCR Public

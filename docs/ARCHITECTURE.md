@@ -18,7 +18,7 @@
 └────────────────────────────────────────────────────────────────────┘
          │                              │
          ▼                              ▼
-  CF / GitHub Pages              Docker: build → nginx:dist
+  CF Workers (static assets)     Docker: build → nginx:dist
   (npm run build)                (not vite preview in container)
 ```
 
@@ -187,6 +187,6 @@ UI never imports WASM directly; worker uses the façade.
 
 | Target | Mechanism |
 |--------|-----------|
-| **Website** (Cloudflare Pages) | Git integration on `main`: CF runs `npm run build` → publishes `dist/` (+ `public/_headers`). See [DEPLOY.md](DEPLOY.md). |
+| **Website** (Cloudflare Workers static assets) | Git integration on `main`: `npm run build` → `npx wrangler deploy` (`wrangler.jsonc` → `./dist`, + `_headers`). See [DEPLOY.md](DEPLOY.md). |
 | Home Docker | Multi-stage Dockerfile: Node 24 build → **nginx** serves `dist/` |
-| Local dist smoke | `npm run build && npm run preview` (`vite preview`) — optional; prod is Pages or nginx |
+| Local dist smoke | `npm run build && npm run preview` (`vite preview`) — optional; prod is Workers or nginx |

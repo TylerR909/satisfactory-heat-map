@@ -47,7 +47,7 @@ Config: `biome.json` with React domain recommended + those rules as error.
 | **`npm start`** | `scripts/dev-start.mjs`: optional WASM via Docker if `crates/` exists → **Vite HMR** |
 | **`npm run dev`** | Vite only (skip wasm step) |
 | **`npm run build`** | `tsc -b` + Vite production (tree-shake, minify, hashed assets) → `dist/` |
-| **`npm run preview`** | `vite preview` of `dist/` — optional local smoke only (not Pages / not Docker) |
+| **`npm run preview`** | `vite preview` of `dist/` — optional local smoke only (not CF Workers / not Docker) |
 | **`npm test`** | `vitest run` |
 | **`npm run test:watch`** | Vitest watch |
 | **`npm run lint`** | `biome check .` |
@@ -99,8 +99,8 @@ Vite wiring lives in `vite.config.ts` (`react()` + babel `reactCompilerPreset()`
 
 - Format + lint on save via Biome.
 - CI: `npm ci && npm run lint && npm test && npm run build`
-- Pages deploy: Cloudflare Git integration builds `dist/` on `main` — see [DEPLOY.md](DEPLOY.md)
-- Pages headers: `public/_headers` (Vite copies into `dist/`)
+- Website deploy: Cloudflare Workers static assets via Git (`npm run build` → `npx wrangler deploy`) — see [DEPLOY.md](DEPLOY.md)
+- Static headers: `public/_headers` (Vite copies into `dist/`; honored by Workers assets)
 
 ## Docs map
 

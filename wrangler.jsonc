@@ -1,5 +1,6 @@
 {
-  // Cloudflare Workers static-asset deploy (Git integration: npm run build → npx wrangler deploy).
+  // Cloudflare Workers Static Assets — NOT classic Pages.
+  // Git integration: npm run build → npx wrangler deploy (see docs/DEPLOY.md).
   // Dashboard project name should match "name" below (or be renamed to match).
   "name": "satisfactory-heat-map",
   "compatibility_date": "2026-07-26",

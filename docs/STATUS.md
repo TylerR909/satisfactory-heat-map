@@ -1,6 +1,6 @@
 # Implementation status (handoff)
 
-**Last true-up:** 2026-07-26 — dual-mode live heatmap SPA, multi-plan hash shelf, Docker/GHCR, CI, Cloudflare Pages deploy path documented (`docs/DEPLOY.md`). Lint/test/build green.
+**Last true-up:** 2026-07-26 — dual-mode live heatmap SPA, multi-plan hash shelf, Docker/GHCR, CI, Cloudflare Workers static-asset deploy path (`docs/DEPLOY.md`). Lint/test/build green.
 
 ## Repo layout
 
@@ -11,7 +11,7 @@ adelaide/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── scripts/              dev-start, clean, wasm-build
-├── public/_headers       Cloudflare Pages cache/security
+├── public/_headers       Cloudflare static-asset cache/security
 ├── public/data/          nodes, recipes, meta
 ├── public/scraped/       basemap CDN provenance (no committed binaries)
 ├── src/

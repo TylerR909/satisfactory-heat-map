@@ -62,7 +62,7 @@ docker compose up -d
 |-----|----------|
 | [docs/PRODUCT.md](docs/PRODUCT.md) | Goals, principles, modes, non-goals |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Scoring, map stack, workers, deploy |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Cloudflare Pages handshake + merge-to-main ship path |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Cloudflare Workers (static assets) handshake + merge-to-main ship path |
 | [docs/TOOLING.md](docs/TOOLING.md) | Stack, scripts, Biome, React Compiler, Docker, WASM policy |
 | [docs/DATA.md](docs/DATA.md) | Provenance, basemap, FModel/Docs regeneration |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phases and backlog |

@@ -15,7 +15,7 @@
 1. **Heatmap is the product.** Planner UI and map exist to feed and display scores.
 2. **Capacity matters as much as distance.** 600 copper/min next to one impure node is a bad site.
 3. **Honest data.** Bootstrap labeled; regenerate path in `docs/DATA.md`. Never treat satisfactory-calculator.com assets as ours.
-4. **Static-first + Docker.** Same `vite build` → Cloudflare/GitHub Pages *and* home-lab Compose (nginx).
+4. **Static-first + Docker.** Same `vite build` → Cloudflare Workers static assets *and* home-lab Compose (nginx).
 5. **Offline-capable PWA.** No accounts; localStorage / export plan JSON / **shareable URL hash** (full plan + knobs).
 6. **Host tools = Node/npm only.** Optional Rust/WASM only inside Docker — never install Rust on the laptop.
 7. **React Compiler by default.** Minimal hand `useMemo` / `useCallback`.

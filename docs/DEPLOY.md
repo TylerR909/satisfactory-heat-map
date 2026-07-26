@@ -45,7 +45,8 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 
 ### 1. Create project (Connect to Git)
 
-1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → connect **Git**.
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → connect **Git**  
+   (create a **Worker** / Workers Builds project — **not** a classic **Pages** project. This repo uses `npx wrangler deploy` + `wrangler.jsonc` `assets`, which Pages ignores.)
 2. Authorize the Cloudflare GitHub App on **TylerR909**.
 3. Grant access to **`TylerR909/satisfactory-heat-map`**.
 4. Select that repository.
