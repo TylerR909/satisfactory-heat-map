@@ -60,6 +60,49 @@ function nearbySupplySummary(maxUtilization: number | undefined): string | null 
   return `uses ${pct}% of nearby supply`;
 }
 
+/** Cap for rate fields (matches plan-hash u16). */
+const RATE_INPUT_MAX = 65_535;
+
+/**
+ * Integer items/min field: empty while 0 (so clear + retype works),
+ * digits only, leading zeros stripped via parseInt ("030" → 30).
+ */
+function RateInput({
+  value,
+  onChange,
+  "aria-label": ariaLabel,
+  className,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  "aria-label": string;
+  className?: string;
+}) {
+  const display = value === 0 ? "" : String(value);
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      spellCheck={false}
+      aria-label={ariaLabel}
+      className={className}
+      value={display}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, "");
+        if (digits === "") {
+          onChange(0);
+          return;
+        }
+        const n = Number.parseInt(digits, 10);
+        if (!Number.isFinite(n)) return;
+        onChange(Math.min(RATE_INPUT_MAX, n));
+      }}
+    />
+  );
+}
+
 export function PlannerPanel() {
   useAutoHeatmap(160);
 
@@ -205,15 +248,11 @@ export function PlannerPanel() {
                   ))}
                 </select>
                 <div className="relative shrink-0">
-                  <input
-                    type="number"
-                    min={0}
+                  <RateInput
                     aria-label={`${resourceLabel(line.resource)} items per minute`}
                     className="w-[6.5rem] rounded border border-slate-700 bg-slate-900 py-1.5 pr-9 pl-2 text-sm"
                     value={line.itemsPerMinute}
-                    onChange={(e) =>
-                      updateRawLine(line.id, { itemsPerMinute: Number(e.target.value) || 0 })
-                    }
+                    onChange={(n) => updateRawLine(line.id, { itemsPerMinute: n })}
                   />
                   <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] text-slate-500">
                     /min
@@ -269,17 +308,11 @@ export function PlannerPanel() {
                 ))}
               </select>
               <div className="relative shrink-0">
-                <input
-                  type="number"
-                  min={0}
+                <RateInput
                   aria-label="Product items per minute"
                   className="w-[6.5rem] rounded border border-slate-700 bg-slate-900 py-1.5 pr-9 pl-2 text-sm"
                   value={line.itemsPerMinute}
-                  onChange={(e) =>
-                    updateProductLine(line.id, {
-                      itemsPerMinute: Number(e.target.value) || 0,
-                    })
-                  }
+                  onChange={(n) => updateProductLine(line.id, { itemsPerMinute: n })}
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] text-slate-500">
                   /min

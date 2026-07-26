@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers static-asset deploy (Git integration: npm run build → npx wrangler deploy).
+  // Dashboard project name should match "name" below (or be renamed to match).
+  "name": "satisfactory-heat-map",
+  "compatibility_date": "2026-07-26",
+  // No Worker script — pure static SPA from Vite's dist/
+  "assets": {
+    "directory": "./dist",
+    // Hash-based plan state; SPA fallback still fine for unknown paths
+    "not_found_handling": "single-page-application"
+  },
+  "preview_urls": true
+}

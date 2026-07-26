@@ -91,15 +91,17 @@ Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 |------|------|------|
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs + pushes to `main` | `lint`, `test`, `build`, Docker image **build** (no push) |
 | [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) | `v*` tags or **workflow_dispatch** | Build + push `ghcr.io/tylerr909/satisfactory-heat-map` |
-| **Cloudflare Pages** (Git integration) | Every push to `main` (and optional PR previews) | CF runs `npm run build`, publishes `dist/` to [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
+| **Cloudflare** (Git integration) | Every push to `main` (and optional PR previews) | CF runs `npm run build` then `npx wrangler deploy` → [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
 
 **Website deploy is not a GitHub Actions job.** Cloudflare builds from the connected GitHub repo. Full handshake + settings: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
-| CF Pages setting | Value |
-|------------------|--------|
+| CF setting | Value |
+|------------|--------|
 | Production branch | `main` |
 | Build command | `npm run build` |
-| Build output directory | `dist` |
+| Deploy command | `npx wrangler deploy` |
+| Assets | `wrangler.jsonc` → `./dist` |
+| Non-production branch builds | On (PR previews) |
 | Node | `.nvmrc` → `24` |
 
 ## Publishing the container (GHCR)
