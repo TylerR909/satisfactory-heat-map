@@ -1,0 +1,29 @@
+# Satisfactory Factory Heatmap — drop-in compose for your infra.
+#
+# Prerequisites: Docker + Compose v2, ability to pull from ghcr.io
+# (public images: no login; private: docker login ghcr.io)
+#
+# Usage:
+#   cp docker-compose.example.yml docker-compose.yml   # or paste into your stack
+#   docker compose up -d
+#
+# App: http://localhost:18547
+#
+# Image is published by CI to GitHub Container Registry (see .github/workflows).
+# Pin a version for prod, e.g. image: ghcr.io/tylerr909/satisfactory-heat-map:0.1.0
+
+services:
+  satisfactory-heatmap:
+    image: ghcr.io/tylerr909/satisfactory-heat-map:latest
+    container_name: satisfactory-heatmap
+    ports:
+      # Host:container — 18547 is uncommon (avoids clashing with 8080/3000/80)
+      - "18547:80"
+    restart: unless-stopped
+    # Optional — nginx:alpine has busybox wget
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

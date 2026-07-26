@@ -1,0 +1,37 @@
+# Cloudflare Workers static-asset headers (Vite copies into dist/).
+# Same _headers format as Pages; honored by Workers Static Assets.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+
+# Hashed Vite chunks — long cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Static data payloads
+/data/*
+  Cache-Control: public, max-age=86400
+
+# Map tiles (self-hosted later)
+/map/*
+  Cache-Control: public, max-age=86400
+
+# HTML shell + service worker — always revalidate
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/registerSW.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Baseline security (static SPA)
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY

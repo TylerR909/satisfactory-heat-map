@@ -1,0 +1,40 @@
+# Dependencies / build outputs (image runs its own npm ci)
+node_modules
+dist
+dist-ssr
+coverage
+dev-dist
+
+# Git / IDE / local
+.git
+.github
+.vscode
+.idea
+*.local
+.DS_Store
+
+# Large / private source dumps (never bake into the image)
+data/Docs
+data/Persistent_Level.json
+
+# Docs & dev-only (not needed for static serve)
+docs
+*.md
+!README.md
+
+# Tests / tooling noise
+**/*.test.ts
+**/*.test.tsx
+vitest.config.*
+biome.json
+tsconfig*.json
+# keep tsconfigs needed for build:
+!tsconfig.json
+!tsconfig.app.json
+!tsconfig.node.json
+
+# Env / logs
+logs
+*.log
+.env
+.env.*

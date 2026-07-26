@@ -1,0 +1,30 @@
+{
+  "gameVersion": "1.0+",
+  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). See docs/DATA.md.",
+  "worldBounds": {
+    "minX": -324700,
+    "maxX": 425300,
+    "minY": -375000,
+    "maxY": 375000
+  },
+  "leaflet": {
+    "comment": "CRS.Simple 0…256 space; rockfactory-compatible game→latlng. Standard XYZ tiles (no row flip).",
+    "latIsY": true,
+    "flipY": false
+  },
+  "basemap": {
+    "kind": "tiles",
+    "tilesUrl": "https://satisfactory-logistics-maps.fra1.cdn.digitaloceanspaces.com/map/v2/{z}/{x}/{y}.webp",
+    "attribution": "Basemap tiles (temporary) via satisfactory-logistics CDN · map art © Coffee Stain Studios",
+    "source": "temporary-cdn",
+    "notes": "Replace with self-hosted FModel/in-game extract when ready. See public/scraped/README.md and docs/DATA.md."
+  },
+  "heatmapDefaults": {
+    "coarseCols": 64,
+    "coarseRows": 64,
+    "refineTopK": 10,
+    "refineSubdiv": 8,
+    "topN": 5,
+    "caveDeltaZCm": 4000
+  }
+}

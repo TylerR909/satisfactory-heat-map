@@ -1,0 +1,10 @@
+# Local development / build-from-source compose.
+# For pull-only deploy, use docker-compose.example.yml (GHCR image).
+
+services:
+  heatmap:
+    build: .
+    image: satisfactory-heat-map:local
+    ports:
+      - "18547:80"
+    restart: unless-stopped
