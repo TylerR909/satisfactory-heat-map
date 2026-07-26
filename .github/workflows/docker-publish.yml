@@ -1,11 +1,15 @@
 # On every push to main (and manual dispatch):
 #   1. Auto-bump patch semver from existing v* tags (first run uses package.json)
-#   2. Build + push GHCR image as :latest, :vX.Y.Z, and :sha-<short>
-#   3. Create a GitHub Release with auto-generated notes from commits since last tag
+#   2. Create/push the git tag first (reserves the version before GHCR sees it)
+#   3. Build + push GHCR image as :latest, :vX.Y.Z, and :sha-<short>
+#   4. Create a GitHub Release if missing (re-runs can finish a half-done ship)
 #
 # Same commit CF deploys is the same commit this image is built from.
 # GHCR: GITHUB_TOKEN + packages:write — no extra secrets.
 # After the first successful push: package → Public so anonymous docker pull works.
+#
+# Concurrency: one release at a time (cancel-in-progress: false) so two quick merges
+# cannot claim the same next version. Tag-before-image keeps :vX.Y.Z immutable.
 
 name: Release · GHCR
 
@@ -14,6 +18,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+
+# Serialize releases. Do not cancel — a mid-flight tag/image must finish.
+concurrency:
+  group: release-ghcr
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -48,7 +57,7 @@ jobs:
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
-          # Already released this exact commit? (e.g. re-run)
+          # Already tagged this exact commit? (re-run after tag reserved / partial failure)
           if exact=$(git describe --exact-match --tags --match 'v*' HEAD 2>/dev/null); then
             echo "Commit already tagged ${exact}"
             VER=${exact#v}
@@ -82,6 +91,24 @@ jobs:
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
           echo "skip_tag=false" >> "$GITHUB_OUTPUT"
+
+      # Reserve the version before any registry write so :vX.Y.Z cannot be
+      # published for commit A and later reused for commit B if tag/release fails.
+      - name: Reserve git tag
+        if: steps.version.outputs.skip_tag != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Fail loudly if another run already took this version (should be rare with concurrency).
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} already exists on remote; refusing to reuse version"
+            exit 1
+          fi
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "refs/tags/${TAG}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -117,19 +144,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create tag and GitHub Release
-        if: steps.version.outputs.skip_tag != 'true'
+      # Always ensure a Release exists (covers: first run; re-run after tag-only partial).
+      - name: Ensure GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
           SHORT_SHA: ${{ steps.version.outputs.short_sha }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "refs/tags/${TAG}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists"
+            exit 0
+          fi
 
           NOTES_FILE=$(mktemp)
           {
@@ -149,4 +175,5 @@ jobs:
           gh release create "${TAG}" \
             --title "${TAG}" \
             --notes-file "${NOTES_FILE}" \
-            --generate-notes
+            --generate-notes \
+            --target "${GITHUB_SHA}"
