@@ -1,21 +1,22 @@
-# Build and push the production nginx image to GitHub Container Registry.
+# On every push to main (and manual dispatch):
+#   1. Auto-bump patch semver from existing v* tags (first run uses package.json)
+#   2. Build + push GHCR image as :latest, :vX.Y.Z, and :sha-<short>
+#   3. Create a GitHub Release with auto-generated notes from commits since last tag
 #
-# Triggers: version tags (v*) or manual run.
-# GHCR: GITHUB_TOKEN + packages:write is enough — no extra secrets.
-# After the first successful push, set the package visibility to Public
-# (Packages → package → Package settings → Change visibility) so anonymous
-# `docker pull` / compose works without login.
+# Same commit CF deploys is the same commit this image is built from.
+# GHCR: GITHUB_TOKEN + packages:write — no extra secrets.
+# After the first successful push: package → Public so anonymous docker pull works.
 
-name: Docker publish
+name: Release · GHCR
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -24,13 +25,63 @@ env:
   IMAGE_NAME: tylerr909/satisfactory-heat-map
 
 jobs:
-  build-and-push:
+  release:
+    name: Version · image · GitHub Release
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve next version
+        id: version
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          # Already released this exact commit? (e.g. re-run)
+          if exact=$(git describe --exact-match --tags --match 'v*' HEAD 2>/dev/null); then
+            echo "Commit already tagged ${exact}"
+            VER=${exact#v}
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=${exact}" >> "$GITHUB_OUTPUT"
+            echo "skip_tag=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Latest v* tag by version sort; else package.json baseline
+          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)
+          if [ -z "${LATEST}" ]; then
+            VER=$(node -p "require('./package.json').version")
+            echo "No tags yet; using package.json version ${VER}"
+          else
+            BASE=${LATEST#v}
+            IFS=. read -r MAJOR MINOR PATCH <<EOF
+          ${BASE}
+          EOF
+            # Non-semver tag fallback
+            if [ -z "${MAJOR}" ] || [ -z "${MINOR}" ] || [ -z "${PATCH}" ]; then
+              VER=$(node -p "require('./package.json').version")
+              echo "Unparseable tag ${LATEST}; using package.json ${VER}"
+            else
+              PATCH=$((PATCH + 1))
+              VER="${MAJOR}.${MINOR}.${PATCH}"
+              echo "Bumping ${LATEST} → v${VER}"
+            fi
+          fi
+
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          echo "skip_tag=false" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,9 +99,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.tag }}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=sha-${{ steps.version.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -61,3 +116,37 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create tag and GitHub Release
+        if: steps.version.outputs.skip_tag != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "refs/tags/${TAG}"
+
+          NOTES_FILE=$(mktemp)
+          {
+            echo "Automated release for \`${GITHUB_SHA}\` (short \`${SHORT_SHA}\`)."
+            echo ""
+            echo "### Images"
+            echo ""
+            echo "\`\`\`"
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:latest"
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:${TAG}"
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:sha-${SHORT_SHA}"
+            echo "\`\`\`"
+            echo ""
+            echo "Same commit Cloudflare deploys to production from \`main\`."
+          } > "${NOTES_FILE}"
+
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes-file "${NOTES_FILE}" \
+            --generate-notes

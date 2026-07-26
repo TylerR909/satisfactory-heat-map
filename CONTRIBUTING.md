@@ -89,11 +89,11 @@ Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 
 | Path | When | What |
 |------|------|------|
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs + pushes to `main` | `lint`, `test`, `build`, Docker image **build** (no push) |
-| [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) | `v*` tags or **workflow_dispatch** | Build + push `ghcr.io/tylerr909/satisfactory-heat-map` |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs + pushes to `main` | `lint`, `test`, `build`, Docker image **smoke** (no push) |
+| [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) | Every push to `main` (+ manual) | Auto-bump `v*`, GHCR push, GitHub Release |
 | **Cloudflare** (Git integration) | Every push to `main` (and optional PR previews) | CF runs `npm run build` then `npx wrangler deploy` → [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
 
-**Website deploy is not a GitHub Actions job.** Cloudflare builds from the connected GitHub repo. Full handshake + settings: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+**Merge to `main` ships both surfaces:** Cloudflare (site) and GHCR (same commit as a container). Full handshake: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 | CF setting | Value |
 |------------|--------|
@@ -104,18 +104,22 @@ Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 | Non-production branch builds | On (PR previews) |
 | Node | `.nvmrc` → `24` |
 
-## Publishing the container (GHCR)
+## Releases & GHCR (automatic)
 
-CI can push with the default `GITHUB_TOKEN` (`packages: write`). **No extra secrets.**
+You do **not** hand-version. On each push to `main`, **Release · GHCR** will:
 
-1. Merge to `main`, then either:
-   - **Actions → Docker publish → Run workflow**, or  
-   - `git tag v0.1.0 && git push origin v0.1.0`
-2. First successful push **creates** the package under your user/org.
-3. **One manual step after the first push:** open the package on GitHub → **Package settings** → **Change visibility** → **Public** (so compose / anonymous pull works). Private packages need `docker login ghcr.io`.
-4. Confirm image: `docker pull ghcr.io/tylerr909/satisfactory-heat-map:latest`
+1. Pick the next **patch** semver (`v0.1.0` from `package.json` on first run, then `v0.1.1`, … from existing tags).
+2. Build and push `ghcr.io/tylerr909/satisfactory-heat-map` as:
+   - `:latest`
+   - `:vX.Y.Z` and `:X.Y.Z`
+   - `:sha-<7-char>` (matches the commit CF deployed)
+3. Create a **GitHub Release** with auto-generated notes (commits since previous tag) plus pull commands.
 
-Org repos may need **Settings → Actions → General → Workflow permissions** to allow read/write for GITHUB_TOKEN (and package creation allowed for Actions).
+**No extra secrets** — `GITHUB_TOKEN` with `contents: write` + `packages: write`.
+
+**One manual step after the first successful image push:** package → **Package settings** → **Change visibility** → **Public** (anonymous `docker pull` / compose). Until then the package may be private.
+
+**Settings → Actions → General → Workflow permissions** → **Read and write** (required for tags, Releases, and GHCR).
 
 ## License
 

@@ -1,13 +1,13 @@
 # Deploy
 
-Two ship paths, intentionally separate:
+Both ship paths fire on **merge to `main`** (same git commit):
 
 | Surface | What users get | How it ships |
 |---------|----------------|--------------|
-| **Website** | [satisfactory-heatmap.com](https://satisfactory-heatmap.com) | Cloudflare Git build on every push to `main` |
-| **Docker image** | `ghcr.io/tylerr909/satisfactory-heat-map` | GitHub Actions on `v*` tags or manual **workflow_dispatch** |
+| **Website** | [satisfactory-heatmap.com](https://satisfactory-heatmap.com) | Cloudflare Git: `npm run build` → `npx wrangler deploy` |
+| **Docker + Releases** | `ghcr.io/tylerr909/satisfactory-heat-map` + GitHub **Releases** | Actions **Release · GHCR**: auto patch tag, image push, release notes |
 
-This doc is the **website** path. Container details: [CONTRIBUTING.md](../CONTRIBUTING.md#publishing-the-container-ghcr).
+Container / version details: [CONTRIBUTING.md](../CONTRIBUTING.md#releases--ghcr-automatic).
 
 ---
 
@@ -16,21 +16,22 @@ This doc is the **website** path. Container details: [CONTRIBUTING.md](../CONTRI
 ```
 PR → GitHub Actions CI (lint · test · build · Docker smoke)
   ↓ merge to main
-  ├─ GitHub Actions CI again (same checks on main)
-  └─ Cloudflare Workers Builds (Git integration)
-        npm install (from package-lock)
-        Build:  npm run build          → dist/
-        Deploy: npx wrangler deploy    → assets from dist/ (wrangler.jsonc)
-        → *.workers.dev / custom domain
+  ├─ GitHub Actions CI again (validate only)
+  ├─ GitHub Actions Release · GHCR
+  │     auto-bump vX.Y.Z (patch)
+  │     docker build → push :latest :vX.Y.Z :sha-…
+  │     gh release create --generate-notes
+  └─ Cloudflare (Git integration)
+        npm run build → dist/
+        npx wrangler deploy (wrangler.jsonc → ./dist)
+        → production URL / custom domain
 ```
 
-GitHub CI **validates** only. Cloudflare **builds and deploys**. Config for deploy lives in [`wrangler.jsonc`](../wrangler.jsonc) (`assets.directory` = `./dist`).
-
-| Trigger | Website | GHCR image |
-|---------|---------|------------|
-| Open / update PR (non-`main` builds on) | preview URL | no |
-| Merge / push to `main` | **production** deploy | no |
-| Tag `v*` / manual Docker workflow | no | yes |
+| Trigger | Website | GHCR + GitHub Release |
+|---------|---------|------------------------|
+| Open / update PR | preview if non-prod builds on | no |
+| Merge / push to `main` | **production** | **yes** (auto version) |
+| Manual **workflow_dispatch** on Release · GHCR | no | re-run publish for current `main` |
 
 ---
 
@@ -131,8 +132,11 @@ If CF deploy fails:
 
 ## First-ship sequence
 
-1. **CF:** connect Git, settings above, domain (optional until first real deploy).
-2. **Do not** require a green deploy of empty `main`.
-3. **Merge** the app PR to `main` (includes `wrangler.jsonc`).
-4. CF auto-builds that commit → production URL + custom domain when DNS is Active.
-5. Smoke the live site; optional **Docker publish** for GHCR.
+1. **GitHub:** Actions workflow permissions **Read and write** (tags + GHCR + Releases).
+2. **CF:** connect Git, settings above, domain (optional until first real deploy).
+3. **Do not** require a green deploy of empty `main`.
+4. **Merge** the app PR to `main` (includes `wrangler.jsonc` + release workflow).
+5. CF auto-builds that commit → production URL when DNS is Active.
+6. Actions **Release · GHCR** → first image + `v0.1.0` (from `package.json`) Release.
+7. GHCR package → **Public** (once).
+8. Smoke site + `docker pull ghcr.io/tylerr909/satisfactory-heat-map:latest`.
