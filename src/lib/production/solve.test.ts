@@ -290,7 +290,9 @@ describe("primary product + alt fallback + no fake map raws", () => {
     const quartz = demand.find((d) => d.resource === "Desc_RawQuartz_C");
     expect(baux?.itemsPerMinute).toBeCloseTo(150, 5);
     expect(quartz?.itemsPerMinute).toBeCloseTo(112.5, 5); // 187.5 silica / 5 * 3 quartz
-    expect(baux!.itemsPerMinute).toBeLessThan(400);
+    expect(baux).toBeDefined();
+    if (!baux) return;
+    expect(baux.itemsPerMinute).toBeLessThan(400);
   });
 
   it("uses alternate turbofuel instead of dumping LiquidTurboFuel as map raw", () => {
@@ -350,7 +352,9 @@ describe("live Docs recipes (packaged rocket fuel)", () => {
     expect(demand.find((d) => d.resource === "Desc_LiquidTurboFuel_C")).toBeUndefined();
     const baux = demand.find((d) => d.resource === "Desc_OreBauxite_C");
     expect(baux?.itemsPerMinute).toBeCloseTo(150, 0);
-    expect(baux!.itemsPerMinute).toBeLessThan(300);
+    expect(baux).toBeDefined();
+    if (!baux) return;
+    expect(baux.itemsPerMinute).toBeLessThan(300);
     // All demand lines are true map raws
     for (const d of demand) {
       expect(items[d.resource]?.raw === true).toBe(true);
@@ -459,8 +463,11 @@ describe("fluid unit normalization (Docs milliliters → m³)", () => {
     const water = demand.find((d) => d.resource === "Desc_Water_C");
     expect(oil?.itemsPerMinute).toBeCloseTo(112.5, 5);
     expect(water?.itemsPerMinute).toBeCloseTo(112.5, 5);
-    expect(oil!.itemsPerMinute).toBeLessThan(1000);
-    expect(water!.itemsPerMinute).toBeLessThan(1000);
+    expect(oil).toBeDefined();
+    expect(water).toBeDefined();
+    if (!oil || !water) return;
+    expect(oil.itemsPerMinute).toBeLessThan(1000);
+    expect(water.itemsPerMinute).toBeLessThan(1000);
   });
 
   it("prefers leaves biomass over alien-protein biomass as default", () => {

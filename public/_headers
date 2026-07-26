@@ -1,5 +1,6 @@
-# Cloudflare Pages headers (copied into dist/ by Vite).
-# https://developers.cloudflare.com/pages/configuration/headers/
+# Cloudflare Workers static-asset headers (Vite copies into dist/).
+# Same _headers format as Pages; honored by Workers Static Assets.
+# https://developers.cloudflare.com/workers/static-assets/headers/
 
 # Hashed Vite chunks — long cache
 /assets/*

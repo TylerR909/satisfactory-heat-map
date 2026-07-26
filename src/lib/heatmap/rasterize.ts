@@ -43,14 +43,18 @@ export function heatColorRgb(
   ];
 
   for (let i = 1; i < stops.length; i++) {
-    if (stops[i]!.t <= stops[i - 1]!.t) {
-      stops[i]!.t = Math.min(0.99, stops[i - 1]!.t + 0.04);
+    const cur = stops[i];
+    const prev = stops[i - 1];
+    if (!cur || !prev) continue;
+    if (cur.t <= prev.t) {
+      cur.t = Math.min(0.99, prev.t + 0.04);
     }
   }
 
   for (let i = 0; i < stops.length - 1; i++) {
-    const a = stops[i]!;
-    const b = stops[i + 1]!;
+    const a = stops[i];
+    const b = stops[i + 1];
+    if (!a || !b) continue;
     if (x <= b.t) {
       const u = (x - a.t) / (b.t - a.t || 1);
       // smoothstep for less banded color rings
@@ -62,7 +66,7 @@ export function heatColorRgb(
       ];
     }
   }
-  return stops[stops.length - 1]!.c;
+  return stops[stops.length - 1]?.c ?? [234, 88, 12];
 }
 
 export function scoreToRgba(

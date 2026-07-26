@@ -97,7 +97,10 @@ describe("pickDiverseSites", () => {
     expect(picked.length).toBeGreaterThanOrEqual(2);
     for (let i = 0; i < picked.length; i++) {
       for (let j = i + 1; j < picked.length; j++) {
-        const d = Math.hypot(picked[i]!.x - picked[j]!.x, picked[i]!.y - picked[j]!.y);
+        const a = picked[i];
+        const b = picked[j];
+        if (!a || !b) continue;
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
         // Strict: full requested sep (no relax-to-fill)
         expect(d).toBeGreaterThanOrEqual(25 - 1e-6);
       }

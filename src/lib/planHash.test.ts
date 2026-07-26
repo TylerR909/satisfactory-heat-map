@@ -48,16 +48,17 @@ describe("planHash compact v1 (computation only)", () => {
     });
     const decoded = decodePlanHash(`#${encodePlanHash(src)}`);
     expect(decoded).not.toBeNull();
-    expect(decoded!.mode).toBe("product");
-    expect(decoded!.scoringMode).toBe("weighted");
-    expect(decoded!.miner).toEqual({ minerMk: 3, clockPercent: 150 });
-    expect(decoded!.scoringOptions.topN).toBe(7);
-    expect(decoded!.scoringOptions.centerPower).toBeCloseTo(1.8, 1);
-    expect(decoded!.scoringOptions.siteSepFraction).toBeCloseTo(0.12, 2);
+    if (!decoded) return;
+    expect(decoded.mode).toBe("product");
+    expect(decoded.scoringMode).toBe("weighted");
+    expect(decoded.miner).toEqual({ minerMk: 3, clockPercent: 150 });
+    expect(decoded.scoringOptions.topN).toBe(7);
+    expect(decoded.scoringOptions.centerPower).toBeCloseTo(1.8, 1);
+    expect(decoded.scoringOptions.siteSepFraction).toBeCloseTo(0.12, 2);
     // heatContrast is not hashed — decode fills default scoring options for unused fields
-    expect(decoded!.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
-    expect(decoded!.productTargets[0]?.itemsPerMinute).toBe(10);
-    expect(decoded!.rawDemand).toHaveLength(0);
+    expect(decoded.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
+    expect(decoded.productTargets[0]?.itemsPerMinute).toBe(10);
+    expect(decoded.rawDemand).toHaveLength(0);
   });
 
   it("does not change hash when only heatContrast differs", () => {
@@ -86,8 +87,10 @@ describe("planHash compact v1 (computation only)", () => {
     const h = encodePlanHash(src);
     expect(h.length).toBeLessThanOrEqual(48);
     const decoded = decodePlanHash(h);
-    expect(decoded!.mode).toBe("raw");
-    expect(decoded!.rawDemand.map((r) => [r.resource, r.itemsPerMinute])).toEqual([
+    expect(decoded).not.toBeNull();
+    if (!decoded) return;
+    expect(decoded.mode).toBe("raw");
+    expect(decoded.rawDemand.map((r) => [r.resource, r.itemsPerMinute])).toEqual([
       ["Desc_LiquidOil_C", 600],
       ["Desc_Coal_C", 300],
       ["Desc_Sulfur_C", 200],
