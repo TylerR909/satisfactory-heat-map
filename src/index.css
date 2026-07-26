@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  background: #020617;
+  color: #e2e8f0;
+}
+
+/* Leaflet overrides for dark game map */
+.leaflet-container {
+  font: inherit;
+  background: #020617;
+}
+
+.leaflet-container .leaflet-control-zoom a {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+.leaflet-tooltip {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  box-shadow: none;
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: #334155;
+}
+
+/* Nearest-neighbor scaling so coarse heat cells stay blocky, not blurry.
+ * Normal blend + lower alpha (not soft-light) — soft-light washed the whole map. */
+.sf-heatmap-overlay {
+  image-rendering: pixelated;
+  mix-blend-mode: normal;
+}
+
+/* Rank number sits *on* the hotspot pin — no opaque box covering the color */
+.leaflet-tooltip.sf-hotspot-rank {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.leaflet-tooltip.sf-hotspot-rank::before {
+  display: none;
+}

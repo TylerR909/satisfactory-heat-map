@@ -1,0 +1,11 @@
+{
+  "source": "Coffee Stain CommunityResources/Docs/en-US.json",
+  "note": "Derived compact extract only — full Docs not shipped. Re-run: npm run parse-docs",
+  "filter": "Factory-building recipes only (not Equipment Workshop-only). Products list uses automatable=default factory product.",
+  "generatedAt": "2026-07-26T07:06:45.623Z",
+  "itemCount": 168,
+  "automatableProductCount": 139,
+  "recipeCount": 290,
+  "defaultRecipes": 179,
+  "alternateRecipes": 111
+}

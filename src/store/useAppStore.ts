@@ -1,0 +1,455 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import {
+  clampHeatRender,
+  DEFAULT_HEAT_RENDER,
+  type HeatRenderOptions,
+} from "@/lib/heatmap/heatRender";
+import type { PlanSnapshot } from "@/lib/planHash";
+import { canonicalizeProductId } from "@/lib/productIdAliases";
+import { solveProductsToRaw } from "@/lib/production/solve";
+import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
+import type {
+  HeatmapResult,
+  InputMode,
+  ItemDef,
+  MapMeta,
+  MinerSettings,
+  ProductTargetLine,
+  RawDemand,
+  RawDemandLine,
+  Recipe,
+  ResourceNode,
+  ScoringMode,
+  ScoringOptions,
+  SiteScore,
+} from "@/types";
+import { DEFAULT_HEAT_OPACITY, DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
+
+let lineId = 0;
+export function newLineId(): string {
+  lineId += 1;
+  return `line-${lineId}-${Date.now()}`;
+}
+
+export type AppState = {
+  mode: InputMode;
+  rawDemand: RawDemandLine[];
+  /** Mode B: one or more co-located product targets (rates stack). */
+  productTargets: ProductTargetLine[];
+  miner: MinerSettings;
+  scoringMode: ScoringMode;
+  scoringOptions: ScoringOptions;
+  /** Display-only heat paint (not in URL hash). */
+  heatRender: HeatRenderOptions;
+  heatPaintOpen: boolean;
+  extractorsOpen: boolean;
+  advancedOpen: boolean;
+  heatOpacity: number;
+  showNodes: boolean;
+  /**
+   * When true, water is dropped from heatmap scoring (open extractors have no
+   * map nodes). Preference only — not in URL hash.
+   */
+  omitWaterFromScoring: boolean;
+  selectedSiteIndex: number | null;
+  activeDemand: RawDemand[];
+  heatmap: HeatmapResult | null;
+  computing: boolean;
+  error: string | null;
+  nodes: ResourceNode[];
+  items: Record<string, ItemDef>;
+  recipes: Recipe[];
+  meta: MapMeta | null;
+  dataReady: boolean;
+
+  setMode: (mode: InputMode) => void;
+  setRawDemand: (d: RawDemandLine[]) => void;
+  updateRawLine: (id: string, patch: Partial<RawDemand>) => void;
+  addRawLine: () => void;
+  removeRawLine: (id: string) => void;
+  updateProductLine: (id: string, patch: Partial<Omit<ProductTargetLine, "id">>) => void;
+  addProductLine: () => void;
+  removeProductLine: (id: string) => void;
+  setMiner: (m: Partial<MinerSettings>) => void;
+  setScoringMode: (mode: ScoringMode) => void;
+  setScoringOptions: (patch: Partial<ScoringOptions>) => void;
+  setHeatRender: (patch: Partial<HeatRenderOptions>) => void;
+  setHeatPaintOpen: (v: boolean) => void;
+  setExtractorsOpen: (v: boolean) => void;
+  setAdvancedOpen: (v: boolean) => void;
+  setHeatOpacity: (n: number) => void;
+  setShowNodes: (v: boolean) => void;
+  setOmitWaterFromScoring: (v: boolean) => void;
+  setSelectedSiteIndex: (i: number | null) => void;
+  setHeatmap: (h: HeatmapResult | null) => void;
+  setComputing: (v: boolean) => void;
+  setError: (e: string | null) => void;
+  /** Reset heat/site knobs (+ opacity) to factory defaults. */
+  resetKnobs: () => void;
+  /**
+   * Reset extractors, scoring modes, and knobs — keeps mode, raw demand, and
+   * product targets as the user left them.
+   */
+  resetAllDefaults: () => void;
+  /** Expand current product targets into raw demand lines and switch to raw mode. */
+  sendProductsToRaw: () => void;
+  /**
+   * Replace shareable plan fields from a decoded URL hash / saved plan.
+   * Does not touch game data (nodes, recipes, meta).
+   */
+  applyPlanSnapshot: (snap: PlanSnapshot) => void;
+  loadGameData: () => Promise<void>;
+  recomputeActiveDemand: () => void;
+  selectSite: (site: SiteScore | null, index: number | null) => void;
+};
+
+function recompute(
+  state: Pick<AppState, "mode" | "rawDemand" | "productTargets" | "items" | "recipes">,
+): RawDemand[] {
+  if (state.mode === "raw") {
+    return state.rawDemand
+      .filter((d) => d.itemsPerMinute > 0 && d.resource)
+      .map(({ resource, itemsPerMinute }) => ({ resource, itemsPerMinute }));
+  }
+  const targets = state.productTargets
+    .filter((t) => t.productId && t.itemsPerMinute > 0)
+    .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
+  if (targets.length === 0) return [];
+  const { demand } = solveProductsToRaw(targets, state.recipes, state.items);
+  return demand;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // First-time defaults: showcase Mode B with a multi-raw HMF plan
+      mode: "product",
+      rawDemand: [
+        { id: "seed-oil", resource: "Desc_LiquidOil_C", itemsPerMinute: 600 },
+        { id: "seed-coal", resource: "Desc_Coal_C", itemsPerMinute: 300 },
+        { id: "seed-sulfur", resource: "Desc_Sulfur_C", itemsPerMinute: 200 },
+      ],
+      productTargets: [
+        {
+          id: "seed-hmf",
+          productId: "Desc_ModularFrameHeavy_C",
+          itemsPerMinute: 10,
+        },
+      ],
+      miner: { ...DEFAULT_MINER_SETTINGS },
+      scoringMode: "centered",
+      scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
+      heatRender: { ...DEFAULT_HEAT_RENDER },
+      heatPaintOpen: false,
+      extractorsOpen: false,
+      // Clustering holds site balance (Centered/Weighted) — open by default
+      advancedOpen: true,
+      heatOpacity: DEFAULT_HEAT_OPACITY,
+      showNodes: true,
+      omitWaterFromScoring: false,
+      selectedSiteIndex: null,
+      activeDemand: [],
+      heatmap: null,
+      computing: false,
+      error: null,
+      nodes: [],
+      items: {},
+      recipes: [],
+      meta: null,
+      dataReady: false,
+
+      setMode: (mode) => {
+        set({ mode });
+        get().recomputeActiveDemand();
+      },
+      setRawDemand: (rawDemand) => {
+        set({ rawDemand });
+        get().recomputeActiveDemand();
+      },
+      updateRawLine: (id, patch) => {
+        const rawDemand = get().rawDemand.map((line) =>
+          line.id === id ? { ...line, ...patch } : line,
+        );
+        set({ rawDemand });
+        get().recomputeActiveDemand();
+      },
+      addRawLine: () => {
+        const used = new Set(get().rawDemand.map((l) => l.resource));
+        const nextResource = RAW_RESOURCE_OPTIONS.find((id) => !used.has(id));
+        if (!nextResource) return;
+        set({
+          rawDemand: [
+            ...get().rawDemand,
+            { id: newLineId(), resource: nextResource, itemsPerMinute: 60 },
+          ],
+        });
+        get().recomputeActiveDemand();
+      },
+      removeRawLine: (id) => {
+        set({ rawDemand: get().rawDemand.filter((line) => line.id !== id) });
+        get().recomputeActiveDemand();
+      },
+      updateProductLine: (id, patch) => {
+        const productTargets = get().productTargets.map((line) =>
+          line.id === id ? { ...line, ...patch } : line,
+        );
+        set({ productTargets });
+        get().recomputeActiveDemand();
+      },
+      addProductLine: () => {
+        const craftable = Object.values(get().items)
+          .filter((i) => !i.raw && i.automatable)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const used = new Set(get().productTargets.map((t) => t.productId));
+        const next = craftable.find((i) => !used.has(i.id)) ??
+          craftable[0] ?? { id: "Desc_IronPlate_C" };
+        set({
+          productTargets: [
+            ...get().productTargets,
+            { id: newLineId(), productId: next.id, itemsPerMinute: 60 },
+          ],
+        });
+        get().recomputeActiveDemand();
+      },
+      removeProductLine: (id) => {
+        set({ productTargets: get().productTargets.filter((line) => line.id !== id) });
+        get().recomputeActiveDemand();
+      },
+      setMiner: (m) => {
+        const next = { ...get().miner, ...m };
+        // In-game overclock max is 250%
+        if (typeof next.clockPercent === "number" && Number.isFinite(next.clockPercent)) {
+          next.clockPercent = Math.min(250, Math.max(1, Math.round(next.clockPercent)));
+        } else {
+          next.clockPercent = DEFAULT_MINER_SETTINGS.clockPercent;
+        }
+        set({ miner: next });
+      },
+      setScoringMode: (scoringMode) => set({ scoringMode }),
+      setScoringOptions: (patch) => set({ scoringOptions: { ...get().scoringOptions, ...patch } }),
+      setHeatRender: (patch) =>
+        set({ heatRender: clampHeatRender({ ...get().heatRender, ...patch }) }),
+      setHeatPaintOpen: (heatPaintOpen) => set({ heatPaintOpen }),
+      setExtractorsOpen: (extractorsOpen) => set({ extractorsOpen }),
+      setAdvancedOpen: (advancedOpen) => set({ advancedOpen }),
+      setHeatOpacity: (heatOpacity) => set({ heatOpacity }),
+      setShowNodes: (showNodes) => set({ showNodes }),
+      setOmitWaterFromScoring: (omitWaterFromScoring) => set({ omitWaterFromScoring }),
+      setSelectedSiteIndex: (selectedSiteIndex) => set({ selectedSiteIndex }),
+      setHeatmap: (heatmap) =>
+        set({ heatmap, selectedSiteIndex: heatmap?.topSites.length ? 0 : null }),
+      setComputing: (computing) => set({ computing }),
+      setError: (error) => set({ error }),
+      resetKnobs: () =>
+        set({
+          scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
+          heatRender: { ...DEFAULT_HEAT_RENDER },
+          heatOpacity: DEFAULT_HEAT_OPACITY,
+          showNodes: true,
+        }),
+      resetAllDefaults: () => {
+        set({
+          miner: { ...DEFAULT_MINER_SETTINGS },
+          scoringMode: "centered",
+          scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
+          heatRender: { ...DEFAULT_HEAT_RENDER },
+          extractorsOpen: false,
+          advancedOpen: false,
+          heatPaintOpen: false,
+          heatOpacity: DEFAULT_HEAT_OPACITY,
+          showNodes: true,
+          omitWaterFromScoring: false,
+          selectedSiteIndex: null,
+          heatmap: null,
+          error: null,
+        });
+        get().recomputeActiveDemand();
+      },
+      sendProductsToRaw: () => {
+        const state = get();
+        const targets = state.productTargets
+          .filter((t) => t.productId && t.itemsPerMinute > 0)
+          .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
+        if (targets.length === 0) {
+          set({ error: "No product rates to send — add products first." });
+          return;
+        }
+        const { demand } = solveProductsToRaw(targets, state.recipes, state.items);
+        if (demand.length === 0) {
+          set({ error: "Could not expand products to raw demand." });
+          return;
+        }
+        const rawDemand: RawDemandLine[] = demand.map((d) => ({
+          id: newLineId(),
+          resource: d.resource,
+          itemsPerMinute: d.itemsPerMinute,
+        }));
+        set({
+          mode: "raw",
+          rawDemand,
+          activeDemand: demand,
+          error: null,
+        });
+      },
+      applyPlanSnapshot: (snap) => {
+        // Compact hash only carries the *active* mode's demand lines. Keep the
+        // other tab's existing rows so switching modes after a shared link still works.
+        const prev = get();
+        const rawDemand: RawDemandLine[] =
+          snap.mode === "raw" && snap.rawDemand.length > 0
+            ? snap.rawDemand.map((d) => ({
+                id: newLineId(),
+                resource: d.resource,
+                itemsPerMinute: d.itemsPerMinute,
+              }))
+            : prev.rawDemand;
+        const productTargets: ProductTargetLine[] =
+          snap.mode === "product" && snap.productTargets.length > 0
+            ? snap.productTargets.map((d) => ({
+                id: newLineId(),
+                productId: canonicalizeProductId(d.productId),
+                itemsPerMinute: d.itemsPerMinute,
+              }))
+            : prev.productTargets;
+        set({
+          mode: snap.mode,
+          rawDemand,
+          productTargets,
+          miner: { ...snap.miner },
+          scoringMode: snap.scoringMode,
+          // Hash is computation-only — keep local display knobs (opacity, paint, peak emphasis)
+          scoringOptions: {
+            ...prev.scoringOptions,
+            centerPower: snap.scoringOptions.centerPower,
+            topN: snap.scoringOptions.topN,
+            siteSepFraction: snap.scoringOptions.siteSepFraction,
+          },
+          selectedSiteIndex: null,
+          heatmap: null,
+          error: null,
+        });
+        get().recomputeActiveDemand();
+      },
+      selectSite: (_site, index) => set({ selectedSiteIndex: index }),
+      recomputeActiveDemand: () => {
+        set({ activeDemand: recompute(get()) });
+      },
+      loadGameData: async () => {
+        try {
+          const [nodesRes, itemsRes, recipesRes, metaRes] = await Promise.all([
+            fetch("/data/nodes/default-nodes.json"),
+            fetch("/data/recipes/items.json"),
+            fetch("/data/recipes/recipes.json"),
+            fetch("/data/meta.json"),
+          ]);
+          if (!nodesRes.ok || !itemsRes.ok || !recipesRes.ok || !metaRes.ok) {
+            throw new Error("Failed to load game data JSON");
+          }
+          const nodes = (await nodesRes.json()) as ResourceNode[];
+          const items = (await itemsRes.json()) as Record<string, ItemDef>;
+          const recipes = (await recipesRes.json()) as Recipe[];
+          const meta = (await metaRes.json()) as MapMeta;
+          set({ nodes, items, recipes, meta, dataReady: true, error: null });
+          get().recomputeActiveDemand();
+        } catch (e) {
+          set({
+            error: e instanceof Error ? e.message : String(e),
+            dataReady: false,
+          });
+        }
+      },
+    }),
+    {
+      // v7: new heat normalize + paint defaults (drop washed v6 heat prefs)
+      name: "sf-heatmap-v7",
+      partialize: (s) => ({
+        mode: s.mode,
+        rawDemand: s.rawDemand,
+        productTargets: s.productTargets,
+        miner: s.miner,
+        scoringMode: s.scoringMode,
+        scoringOptions: s.scoringOptions,
+        heatRender: s.heatRender,
+        heatPaintOpen: s.heatPaintOpen,
+        extractorsOpen: s.extractorsOpen,
+        advancedOpen: s.advancedOpen,
+        heatOpacity: s.heatOpacity,
+        showNodes: s.showNodes,
+        omitWaterFromScoring: s.omitWaterFromScoring,
+      }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState> & {
+          scoringMode?: string;
+          productId?: string;
+          productRate?: number;
+          heatRender?: Partial<HeatRenderOptions>;
+        };
+        const rawDemand = (p.rawDemand ?? current.rawDemand).map((line, i) => ({
+          id: "id" in line && typeof line.id === "string" ? line.id : `migrated-${i}`,
+          resource: line.resource,
+          itemsPerMinute: line.itemsPerMinute,
+        }));
+        let productTargets = p.productTargets ?? current.productTargets;
+        if ((!productTargets || productTargets.length === 0) && p.productId) {
+          productTargets = [
+            {
+              id: "migrated-product",
+              productId: p.productId,
+              itemsPerMinute: p.productRate ?? 10,
+            },
+          ];
+        }
+        productTargets = productTargets.map((line, i) => ({
+          id: line.id ?? `prod-${i}`,
+          productId: canonicalizeProductId(line.productId),
+          itemsPerMinute: line.itemsPerMinute,
+        }));
+        const rawMode = String(p.scoringMode ?? current.scoringMode);
+        const scoringMode: ScoringMode =
+          rawMode === "weighted" || rawMode === "volume" ? "weighted" : "centered";
+        const rawOpts = {
+          ...DEFAULT_SCORING_OPTIONS,
+          ...current.scoringOptions,
+          ...p.scoringOptions,
+        };
+        const scoringOptions: ScoringOptions = {
+          centerPower: rawOpts.centerPower,
+          heatContrast: rawOpts.heatContrast,
+          topN: rawOpts.topN,
+          siteSepFraction: rawOpts.siteSepFraction,
+        };
+        const heatRender = clampHeatRender({
+          ...DEFAULT_HEAT_RENDER,
+          ...current.heatRender,
+          ...p.heatRender,
+        });
+        const minerIn = p.miner ?? current.miner;
+        const miner = {
+          ...minerIn,
+          clockPercent: Math.min(
+            250,
+            Math.max(
+              1,
+              Math.round(
+                typeof minerIn.clockPercent === "number" && Number.isFinite(minerIn.clockPercent)
+                  ? minerIn.clockPercent
+                  : DEFAULT_MINER_SETTINGS.clockPercent,
+              ),
+            ),
+          ),
+        };
+        return {
+          ...current,
+          ...p,
+          rawDemand,
+          productTargets,
+          miner,
+          scoringMode,
+          scoringOptions,
+          heatRender,
+        };
+      },
+    },
+  ),
+);

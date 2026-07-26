@@ -1,0 +1,120 @@
+# Contributing
+
+Dev setup, data refresh, and project docs for people working on the codebase. End users: see [README.md](README.md) and [satisfactory-heatmap.com](https://satisfactory-heatmap.com).
+
+## Quick start (Node)
+
+```bash
+# Node 24+
+npm ci
+npm start          # Vite HMR
+```
+
+```bash
+npm test
+npm run lint
+npm run build
+npm run preview    # optional: serve dist/ locally (not how we ship prod)
+```
+
+## Docker commands (local)
+
+`docker-compose.yml` **builds from source** (multi-stage Node → nginx). You need Docker Desktop (or Engine) running and network access to pull base images + npm packages.
+
+```bash
+# Build the image (runs npm ci + npm run build inside Linux)
+docker compose build
+
+# Build and start (foreground logs)
+docker compose up --build
+
+# Detached
+docker compose up --build -d
+
+# Open: http://localhost:18547
+
+# Stop / remove container
+docker compose down
+
+# Force clean rebuild (no cache)
+docker compose build --no-cache
+```
+
+**If `npm ci` fails in the image:** host `package.json` and `package-lock.json` are out of sync. Fix on the host, then rebuild:
+
+```bash
+npm install          # regenerates package-lock.json to match package.json
+npm ci               # should succeed on host
+docker compose build --no-cache
+```
+
+**Pull-only** (no local build — after GHCR has an image):
+
+```bash
+cp docker-compose.example.yml docker-compose.yml
+docker compose up -d
+# http://localhost:18547
+```
+
+## Project docs
+
+| Doc | Contents |
+|-----|----------|
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Goals, principles, modes, non-goals |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Scoring, map stack, workers, deploy |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Cloudflare Pages handshake + merge-to-main ship path |
+| [docs/TOOLING.md](docs/TOOLING.md) | Stack, scripts, Biome, React Compiler, Docker, WASM policy |
+| [docs/DATA.md](docs/DATA.md) | Provenance, basemap, FModel/Docs regeneration |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Phases and backlog |
+| [docs/STATUS.md](docs/STATUS.md) | Handoff status for agents/humans |
+
+## Data & attributions
+
+| Asset | Source |
+|-------|--------|
+| Resource nodes | [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT `WorldResourceNodes.json` |
+| Recipes & items | Compact extract from Coffee Stain `CommunityResources/Docs/en-US.json` via `npm run parse-docs` (full Docs **not** shipped) |
+| Basemap tiles | Temporary public CDN from satisfactory-logistics — map art © Coffee Stain; plan to self-host |
+| Extractor rates | Project tables in `src/lib/mining.ts` |
+
+Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
+
+### Refresh recipes after a game patch
+
+1. Copy `…/Satisfactory/CommunityResources/Docs/en-US.json` → `data/Docs/en-US.json` (gitignored).
+2. `npm run parse-docs`
+3. Commit updated `public/data/recipes/*` + bump `meta.json` `gameVersion` if needed.
+
+## CI & deploy
+
+| Path | When | What |
+|------|------|------|
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs + pushes to `main` | `lint`, `test`, `build`, Docker image **build** (no push) |
+| [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) | `v*` tags or **workflow_dispatch** | Build + push `ghcr.io/tylerr909/satisfactory-heat-map` |
+| **Cloudflare Pages** (Git integration) | Every push to `main` (and optional PR previews) | CF runs `npm run build`, publishes `dist/` to [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
+
+**Website deploy is not a GitHub Actions job.** Cloudflare builds from the connected GitHub repo. Full handshake + settings: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+| CF Pages setting | Value |
+|------------------|--------|
+| Production branch | `main` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Node | `.nvmrc` → `24` |
+
+## Publishing the container (GHCR)
+
+CI can push with the default `GITHUB_TOKEN` (`packages: write`). **No extra secrets.**
+
+1. Merge to `main`, then either:
+   - **Actions → Docker publish → Run workflow**, or  
+   - `git tag v0.1.0 && git push origin v0.1.0`
+2. First successful push **creates** the package under your user/org.
+3. **One manual step after the first push:** open the package on GitHub → **Package settings** → **Change visibility** → **Public** (so compose / anonymous pull works). Private packages need `docker login ghcr.io`.
+4. Confirm image: `docker pull ghcr.io/tylerr909/satisfactory-heat-map:latest`
+
+Org repos may need **Settings → Actions → General → Workflow permissions** to allow read/write for GITHUB_TOKEN (and package creation allowed for Actions).
+
+## License
+
+[MIT](LICENSE).

@@ -1,0 +1,85 @@
+name: Bug report
+description: Something broken or clearly wrong in the heatmap app
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Fill in what you can — a share URL is especially helpful.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong in one or two sentences?
+      placeholder: e.g. Heat paint stays solid orange over half the map after reset…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps from a fresh load if possible.
+      placeholder: |
+        1. Open the app
+        2. Set Products to …
+        3. Toggle …
+        4. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+
+  - type: input
+    id: share-url
+    attributes:
+      label: Share URL (if any)
+      description: Copy the address bar hash (`#v1.…`) so we can recreate demand / scoring. Paint knobs are not in the hash.
+      placeholder: "https://…/#v1.…"
+
+  - type: dropdown
+    id: input-mode
+    attributes:
+      label: Input mode
+      options:
+        - Raw resources
+        - Products
+        - Both / not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, and how you run the app (local Vite, Docker, hosted).
+      placeholder: |
+        - Browser: Chrome 131 / Safari / Firefox
+        - OS: macOS / Windows / Linux
+        - Run: npm start / docker compose / production URL
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / extra notes
+      description: Drag images here or add anything else (console errors, knobs that matter).
+    validations:
+      required: false
