@@ -942,6 +942,17 @@ export function PlannerPanel() {
         >
           Report an issue
         </a>
+        <span className="text-slate-700" aria-hidden>
+          ·
+        </span>
+        <a
+          href="https://buymeacoffee.com/tylerr909"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-500 underline decoration-slate-700 underline-offset-2 hover:text-slate-300"
+        >
+          Buy me a coffee
+        </a>
       </section>
     </aside>
   );
