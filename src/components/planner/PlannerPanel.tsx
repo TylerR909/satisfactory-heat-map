@@ -924,6 +924,17 @@ export function PlannerPanel() {
           ·
         </span>
         <a
+          href="https://github.com/TylerR909/satisfactory-heat-map"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-500 underline decoration-slate-700 underline-offset-2 hover:text-slate-300"
+        >
+          GitHub
+        </a>
+        <span className="text-slate-700" aria-hidden>
+          ·
+        </span>
+        <a
           href="https://github.com/TylerR909/satisfactory-heat-map/issues/new?template=bug_report.yml"
           target="_blank"
           rel="noopener noreferrer"
