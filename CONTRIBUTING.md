@@ -6,7 +6,7 @@ Dev setup, data refresh, and project docs for people working on the codebase. En
 
 ```bash
 # Node 24+
-npm ci
+npm ci             # also runs prepare → lefthook install (git hooks)
 npm start          # Vite HMR
 ```
 
@@ -15,6 +15,20 @@ npm test
 npm run lint
 npm run build
 npm run preview    # optional: serve dist/ locally (not how we ship prod)
+```
+
+### Git hooks (lefthook)
+
+[`lefthook.yml`](lefthook.yml) installs a **pre-commit** hook via `npm run prepare` / `npm ci`:
+
+| Step | What |
+|------|------|
+| **biome** | `biome check --write` on **staged** source files only; auto-fixes are re-staged (`stage_fixed`) |
+| **typecheck** | full `tsc --noEmit` (`npm run typecheck`) |
+
+```bash
+npx lefthook run pre-commit   # run hooks without committing
+LEFTHOOK=0 git commit …       # skip hooks once (emergency only)
 ```
 
 ## Docker commands (local)
