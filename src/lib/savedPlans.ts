@@ -1,4 +1,4 @@
-import { encodePlanHash, type PlanHashSource } from "@/lib/planHash";
+import { encodePlanHash, type PlanHashSource, type PlanSnapshot, toSnapshot } from "@/lib/planHash";
 import { solveProductsToRaw } from "@/lib/production/solve";
 import { resourceLabel } from "@/lib/resources";
 import type {
@@ -18,8 +18,13 @@ export type SavedPlan = {
   abbrev: string;
   /** Human title for tooltip */
   title: string;
-  /** Plan hash body without leading `#` */
+  /** Plan hash body without leading `#` (share / URL; may be lossy for rare products) */
   hash: string;
+  /**
+   * Full computation snapshot for reliable local chip restore.
+   * Prefer this over decoding `hash` when switching heatmaps.
+   */
+  snapshot: PlanSnapshot;
   mode: InputMode;
   /** Input lines (products or raw as entered) */
   lines: Array<{ label: string; rate: number }>;
@@ -109,6 +114,8 @@ export function buildSavedPlan(
 ): SavedPlan {
   const { abbrev, title } = primaryPlanLabel(labelSrc);
   const hash = encodePlanHash(hashSource);
+  // Full snapshot (not lossy) so chip switch always restores the real plan
+  const snapshot = toSnapshot(hashSource);
   const lines =
     labelSrc.mode === "product"
       ? labelSrc.productTargets
@@ -133,11 +140,23 @@ export function buildSavedPlan(
     abbrev,
     title,
     hash,
+    snapshot,
     mode: labelSrc.mode,
     lines,
     demand,
     updatedAt: Date.now(),
   };
+}
+
+/** Prefer full local snapshot; fall back to hash decode for older shelves / imports. */
+export function planSnapshotFromSaved(
+  plan: SavedPlan,
+  decodeHash: (hash: string) => PlanSnapshot | null,
+): PlanSnapshot | null {
+  if (plan.snapshot && typeof plan.snapshot === "object" && plan.snapshot.mode) {
+    return plan.snapshot;
+  }
+  return decodeHash(plan.hash);
 }
 
 export function loadSavedPlansState(): SavedPlansState {

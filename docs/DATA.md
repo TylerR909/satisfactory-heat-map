@@ -40,6 +40,8 @@
 - Coordinates: Unreal **cm**.
 - `nodeType`: `node` | `deposit` | `frackingCore` | `frackingSatellite` | `geyser`.
 - Slot **positions** are fixed even under 1.2 randomization; seed only reassigns resource/purity (and well distributions).
+- **Deposits** (`BP_ResourceDeposit_*`) are **not** in the shuffle pool (Konsl extracts only `BP_ResourceNode_C`); they stay vanilla under all seeds.
+- **Seed algorithm:** TypeScript port of [Konsl/satisfactory-world-generator](https://github.com/Konsl/satisfactory-world-generator) MIT core (`src/lib/seed/`). Product policy: Default = `seed: null` (identity); any numeric seed uses in-game **Random** mode + **unchanged** purity. Full MIT notice: `third_party/konsl-satisfactory-world-generator.md`.
 
 ## Honest regeneration: resource nodes (FModel)
 

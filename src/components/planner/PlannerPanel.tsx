@@ -161,6 +161,8 @@ export function PlannerPanel() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const seed = useAppStore((s) => s.seed);
+
   async function copyPlanHash() {
     const hash = encodePlanHash({
       mode,
@@ -169,6 +171,7 @@ export function PlannerPanel() {
       miner,
       scoringMode,
       scoringOptions,
+      seed,
     });
     try {
       await navigator.clipboard.writeText(hash);

@@ -9,6 +9,7 @@ import type { PlanSnapshot } from "@/lib/planHash";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
 import { solveProductsToRaw } from "@/lib/production/solve";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
+import { clearNodeSeedCache, getNodesForSeed, type MapSeed } from "@/lib/seed";
 import type {
   HeatmapResult,
   InputMode,
@@ -57,6 +58,11 @@ export type AppState = {
   heatmap: HeatmapResult | null;
   computing: boolean;
   error: string | null;
+  /** Vanilla slot template (positions + default types/purities). */
+  baseSlots: ResourceNode[];
+  /** null = Default/vanilla; number (incl. 0) = randomized map seed. */
+  seed: MapSeed;
+  /** Effective nodes for map + heatmap (cached from baseSlots + seed). */
   nodes: ResourceNode[];
   items: Record<string, ItemDef>;
   recipes: Recipe[];
@@ -96,9 +102,12 @@ export type AppState = {
   sendProductsToRaw: () => void;
   /**
    * Replace shareable plan fields from a decoded URL hash / saved plan.
-   * Does not touch game data (nodes, recipes, meta).
+   * Does not touch baseSlots / recipes / meta.
+   * @param options.applySeed when false, keep current seed (chip select within a saved seed).
    */
-  applyPlanSnapshot: (snap: PlanSnapshot) => void;
+  applyPlanSnapshot: (snap: PlanSnapshot, options?: { applySeed?: boolean }) => void;
+  /** Set map seed and recompute effective nodes from cache. */
+  setSeed: (seed: MapSeed) => void;
   loadGameData: () => Promise<void>;
   recomputeActiveDemand: () => void;
   selectSite: (site: SiteScore | null, index: number | null) => void;
@@ -153,6 +162,8 @@ export const useAppStore = create<AppState>()(
       heatmap: null,
       computing: false,
       error: null,
+      baseSlots: [],
+      seed: null,
       nodes: [],
       items: {},
       recipes: [],
@@ -292,26 +303,40 @@ export const useAppStore = create<AppState>()(
           error: null,
         });
       },
-      applyPlanSnapshot: (snap) => {
+      applyPlanSnapshot: (snap, options) => {
         // Compact hash only carries the *active* mode's demand lines. Keep the
-        // other tab's existing rows so switching modes after a shared link still works.
+        // other tab's existing rows only when the snapshot has no lines for that mode
+        // AND we're not applying a product/raw mode switch with empty active lines.
+        // Empty productTargets in product mode must not keep the previous plan (chip switch).
         const prev = get();
+        const applySeed = options?.applySeed !== false;
         const rawDemand: RawDemandLine[] =
-          snap.mode === "raw" && snap.rawDemand.length > 0
-            ? snap.rawDemand.map((d) => ({
-                id: newLineId(),
-                resource: d.resource,
-                itemsPerMinute: d.itemsPerMinute,
-              }))
+          snap.mode === "raw"
+            ? snap.rawDemand.length > 0
+              ? snap.rawDemand.map((d) => ({
+                  id: newLineId(),
+                  resource: d.resource,
+                  itemsPerMinute: d.itemsPerMinute,
+                }))
+              : [{ id: newLineId(), resource: "Desc_OreIron_C", itemsPerMinute: 0 }]
             : prev.rawDemand;
         const productTargets: ProductTargetLine[] =
-          snap.mode === "product" && snap.productTargets.length > 0
-            ? snap.productTargets.map((d) => ({
-                id: newLineId(),
-                productId: canonicalizeProductId(d.productId),
-                itemsPerMinute: d.itemsPerMinute,
-              }))
+          snap.mode === "product"
+            ? snap.productTargets.length > 0
+              ? snap.productTargets.map((d) => ({
+                  id: newLineId(),
+                  productId: canonicalizeProductId(d.productId),
+                  itemsPerMinute: d.itemsPerMinute,
+                }))
+              : [{ id: newLineId(), productId: "Desc_IronPlate_C", itemsPerMinute: 0 }]
             : prev.productTargets;
+
+        const nextSeed = applySeed ? (snap.seed ?? null) : prev.seed;
+        const nodes =
+          applySeed && prev.baseSlots.length > 0
+            ? getNodesForSeed(prev.baseSlots, nextSeed)
+            : prev.nodes;
+
         set({
           mode: snap.mode,
           rawDemand,
@@ -325,11 +350,26 @@ export const useAppStore = create<AppState>()(
             topN: snap.scoringOptions.topN,
             siteSepFraction: snap.scoringOptions.siteSepFraction,
           },
+          seed: nextSeed,
+          nodes,
           selectedSiteIndex: null,
           heatmap: null,
           error: null,
         });
         get().recomputeActiveDemand();
+      },
+      setSeed: (seed) => {
+        const prev = get();
+        const next = seed === null ? null : seed | 0;
+        if (prev.seed === next && prev.nodes.length > 0) return;
+        const nodes =
+          prev.baseSlots.length > 0 ? getNodesForSeed(prev.baseSlots, next) : prev.nodes;
+        set({
+          seed: next,
+          nodes,
+          selectedSiteIndex: null,
+          heatmap: null,
+        });
       },
       selectSite: (_site, index) => set({ selectedSiteIndex: index }),
       recomputeActiveDemand: () => {
@@ -346,11 +386,14 @@ export const useAppStore = create<AppState>()(
           if (!nodesRes.ok || !itemsRes.ok || !recipesRes.ok || !metaRes.ok) {
             throw new Error("Failed to load game data JSON");
           }
-          const nodes = (await nodesRes.json()) as ResourceNode[];
+          const baseSlots = (await nodesRes.json()) as ResourceNode[];
           const items = (await itemsRes.json()) as Record<string, ItemDef>;
           const recipes = (await recipesRes.json()) as Recipe[];
           const meta = (await metaRes.json()) as MapMeta;
-          set({ nodes, items, recipes, meta, dataReady: true, error: null });
+          clearNodeSeedCache();
+          const seed = get().seed;
+          const nodes = getNodesForSeed(baseSlots, seed);
+          set({ baseSlots, nodes, items, recipes, meta, dataReady: true, error: null });
           get().recomputeActiveDemand();
         } catch (e) {
           set({
@@ -361,8 +404,8 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      // v7: new heat normalize + paint defaults (drop washed v6 heat prefs)
-      name: "sf-heatmap-v7",
+      // v8: map seed (null = Default); nodes derived from baseSlots
+      name: "sf-heatmap-v8",
       partialize: (s) => ({
         mode: s.mode,
         rawDemand: s.rawDemand,
@@ -377,6 +420,7 @@ export const useAppStore = create<AppState>()(
         heatOpacity: s.heatOpacity,
         showNodes: s.showNodes,
         omitWaterFromScoring: s.omitWaterFromScoring,
+        seed: s.seed,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppState> & {
@@ -439,6 +483,13 @@ export const useAppStore = create<AppState>()(
             ),
           ),
         };
+        const rawSeed = (p as { seed?: MapSeed }).seed;
+        const seed: MapSeed =
+          rawSeed === null || rawSeed === undefined
+            ? null
+            : typeof rawSeed === "number" && Number.isFinite(rawSeed)
+              ? rawSeed | 0
+              : null;
         return {
           ...current,
           ...p,
@@ -448,6 +499,7 @@ export const useAppStore = create<AppState>()(
           scoringMode,
           scoringOptions,
           heatRender,
+          seed,
         };
       },
     },

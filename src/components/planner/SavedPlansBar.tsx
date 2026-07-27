@@ -8,32 +8,45 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { autoSaveSeed, commitSaveSeed, SeedPopover } from "@/components/planner/SeedPopover";
 import { formatRate } from "@/lib/mining";
-import { decodePlanHash, type PlanHashSource } from "@/lib/planHash";
+import { decodePlanHash, encodePlanHash, mapSeedsEqual, type PlanHashSource } from "@/lib/planHash";
 import {
   buildSavedPlan,
-  loadSavedPlansState,
-  persistSavedPlansState,
+  planSnapshotFromSaved,
   removePlan,
   type SavedPlan,
-  type SavedPlansState,
   upsertPlan,
 } from "@/lib/savedPlans";
+import {
+  defaultNameForSeed,
+  gcEmptyAutoNamed,
+  getActiveSavedSeed,
+  loadSeedLibrary,
+  persistSeedLibrary,
+  type SavedSeed,
+  type SeedLibrary,
+  upsertSavedSeed,
+} from "@/lib/savedSeeds";
+import { randomMapSeed } from "@/lib/seed";
 import { newLineId, useAppStore } from "@/store/useAppStore";
 import { DEFAULT_SCORING_OPTIONS } from "@/types";
+
+/** Local chips prefer full snapshot; hash is fallback (imports / legacy). */
+function snapFromPlan(plan: SavedPlan) {
+  return planSnapshotFromSaved(plan, decodePlanHash);
+}
 
 const TIP_W = 224;
 const TIP_PAD = 8;
 
-/** Showcase HMF plan hash (default product seed). */
-const HASH_PLACEHOLDER = "v1.CfpHBhAfHgA";
+/** Showcase HMF plan (Default world) under current string-product hash encoding. */
+const HASH_PLACEHOLDER = "v1.CfpHAxARTW9kdWxhckZyYW1lSGVhdnkKAA";
 
 type TipPos = { left: number; top: number };
 
-/** Clamp a fixed tooltip box to the viewport (left/top = box origin, no centering transform). */
 function clampTipBox(anchor: DOMRect, boxW: number, boxH: number, vw: number, vh: number): TipPos {
   const width = Math.min(boxW, vw - TIP_PAD * 2);
-  // Prefer centered on anchor, then clamp so the full box stays on-screen
   let left = anchor.left + anchor.width / 2 - width / 2;
   left = Math.min(vw - TIP_PAD - width, Math.max(TIP_PAD, left));
 
@@ -55,6 +68,7 @@ function planSourceFromStore(): PlanHashSource {
     miner: s.miner,
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
+    seed: s.seed,
   };
 }
 
@@ -79,14 +93,28 @@ function writeUrlHash(hashBody: string) {
   );
 }
 
-function snapshotLivePlan(state: SavedPlansState): SavedPlansState {
+/**
+ * Write the live store plan into the active saved seed's shelf (while seed is still current).
+ * Creates a new chip when the shelf is empty or has no active plan id.
+ */
+function snapshotActiveIntoLibrary(lib: SeedLibrary): SeedLibrary {
+  const active = getActiveSavedSeed(lib);
+  if (!active) return lib;
   const id =
-    state.activeId && state.plans.some((p) => p.id === state.activeId) ? state.activeId : null;
+    active.activePlanId && active.plans.some((p) => p.id === active.activePlanId)
+      ? active.activePlanId
+      : null;
   const plan = buildSavedPlan(id, planSourceFromStore(), labelSourceFromStore());
-  return upsertPlan(state, plan);
+  const shelf = upsertPlan({ plans: active.plans, activeId: active.activePlanId }, plan);
+  const updated: SavedSeed = {
+    ...active,
+    plans: shelf.plans,
+    activePlanId: shelf.activeId,
+    updatedAt: Date.now(),
+  };
+  return upsertSavedSeed(lib, updated);
 }
 
-/** Fresh product build — not the app's HMF showcase default. */
 function startBlankBuild() {
   useAppStore.setState({
     mode: "product",
@@ -97,7 +125,6 @@ function startBlankBuild() {
         itemsPerMinute: 0,
       },
     ],
-    // keep rawDemand as secondary tab content
     scoringMode: useAppStore.getState().scoringMode,
     scoringOptions: {
       ...useAppStore.getState().scoringOptions,
@@ -113,36 +140,86 @@ function startBlankBuild() {
 }
 
 /**
- * Compact multi-plan switcher: chips + add/import.
- * Each plan stores the same computation hash as the URL.
+ * Compact multi-plan switcher scoped to the active saved seed + Seed control.
  */
 export function SavedPlansBar() {
-  const [state, setState] = useState<SavedPlansState>(() => loadSavedPlansState());
+  const [library, setLibrary] = useState<SeedLibrary>(() => loadSeedLibrary());
+  const [ephemeralPlans, setEphemeralPlans] = useState<SavedPlan[]>([]);
+  const [ephemeralActiveId, setEphemeralActiveId] = useState<string | null>(null);
   const skipPersistActive = useRef(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importValue, setImportValue] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const seedBtnRef = useRef<HTMLButtonElement>(null);
+  const [seedOpen, setSeedOpen] = useState(false);
   const applyPlanSnapshot = useAppStore((s) => s.applyPlanSnapshot);
+  const setSeed = useAppStore((s) => s.setSeed);
 
-  const persist = useCallback((next: SavedPlansState) => {
-    setState(next);
-    persistSavedPlansState(next);
+  const activePt = getActiveSavedSeed(library);
+  const ephemeral = library.activeId === null;
+  const plans = ephemeral ? ephemeralPlans : (activePt?.plans ?? []);
+  const activePlanId = ephemeral ? ephemeralActiveId : (activePt?.activePlanId ?? null);
+
+  const persistLib = useCallback((next: SeedLibrary) => {
+    setLibrary(next);
+    persistSeedLibrary(next);
   }, []);
 
-  // Keep the active chip’s hash in sync when the live plan changes
+  const snapshotActiveShelf = useCallback((): SeedLibrary => {
+    return snapshotActiveIntoLibrary(loadSeedLibrary());
+  }, []);
+
+  // Keep active chip hash in sync when live plan changes (library only when activeId set)
   useEffect(() => {
     const unsub = useAppStore.subscribe(() => {
       if (skipPersistActive.current) return;
-      const { activeId, plans } = loadSavedPlansState();
-      if (!activeId || plans.length === 0) return;
-      const updated = buildSavedPlan(activeId, planSourceFromStore(), labelSourceFromStore());
-      const prev = plans.find((p) => p.id === activeId);
+      const lib = loadSeedLibrary();
+      if (!lib.activeId) return;
+      const active = getActiveSavedSeed(lib);
+      if (!active?.activePlanId) return;
+      const updated = buildSavedPlan(
+        active.activePlanId,
+        planSourceFromStore(),
+        labelSourceFromStore(),
+      );
+      const prev = active.plans.find((p) => p.id === active.activePlanId);
       if (prev && prev.hash === updated.hash && prev.abbrev === updated.abbrev) return;
-      persist(upsertPlan({ plans, activeId }, updated));
+      const shelf = upsertPlan({ plans: active.plans, activeId: active.activePlanId }, updated);
+      persistLib(
+        upsertSavedSeed(lib, {
+          ...active,
+          plans: shelf.plans,
+          activePlanId: shelf.activeId,
+          updatedAt: Date.now(),
+        }),
+      );
     });
     return unsub;
-  }, [persist]);
+  }, [persistLib]);
+
+  // Reload: prefer library active saved seed seed
+  useEffect(() => {
+    const lib = loadSeedLibrary();
+    const active = getActiveSavedSeed(lib);
+    if (active) {
+      const cur = useAppStore.getState().seed;
+      if (!mapSeedsEqual(cur, active.seed)) {
+        skipPersistActive.current = true;
+        setSeed(active.seed);
+        if (active.activePlanId) {
+          const plan = active.plans.find((p) => p.id === active.activePlanId);
+          if (plan) {
+            const snap = snapFromPlan(plan);
+            if (snap) applyPlanSnapshot(snap, { applySeed: false });
+          }
+        }
+        queueMicrotask(() => {
+          skipPersistActive.current = false;
+        });
+      }
+    }
+  }, [applyPlanSnapshot, setSeed]);
 
   useEffect(() => {
     if (!importOpen) return;
@@ -150,28 +227,58 @@ export function SavedPlansBar() {
     return () => window.clearTimeout(t);
   }, [importOpen]);
 
+  const ensureSavedSeedForPlanSave = (): SeedLibrary | null => {
+    let lib = loadSeedLibrary();
+    if (lib.activeId) return snapshotActiveIntoLibrary(lib);
+    // Ephemeral: auto-save with default name (no browser prompt) so + still works
+    const mapSeed = useAppStore.getState().seed;
+    const result = commitSaveSeed(lib, mapSeed, defaultNameForSeed(mapSeed), null);
+    const pt = {
+      ...result.saved,
+      plans: ephemeralPlans,
+      activePlanId: ephemeralActiveId,
+    };
+    lib = upsertSavedSeed(result.library, pt);
+    persistLib(lib);
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    return lib;
+  };
+
   /**
-   * + button:
-   * - No builds yet → save current only (stay on it; one chip). Never inject a second plan.
-   * - Already have builds → shelf current, start a blank Iron Plate 0/min build, select that chip.
+   * + button: always lock the current live plan as a chip, then start a blank
+   * Iron Plate 0/min build as a new selected chip. Edits after this must not
+   * rewrite the chip that was just locked (including the first save on a saved seed).
    */
   const onAdd = () => {
-    // localStorage is source of truth (avoids stale React state after prior saves)
-    const shelf = loadSavedPlansState();
-    let next = snapshotLivePlan(shelf);
+    let lib = ensureSavedSeedForPlanSave();
+    if (!lib) return;
 
-    if (shelf.plans.length === 0) {
-      // First save: one chip for the live plan, remain selected on it
-      persist(next);
-      writeUrlHash(next.plans[0]?.hash ?? "");
+    skipPersistActive.current = true;
+
+    // 1) Lock current live plan (BS, etc.) onto the shelf — creates chip if empty
+    lib = snapshotActiveIntoLibrary(lib);
+    const afterLock = getActiveSavedSeed(lib);
+    if (!afterLock) {
+      skipPersistActive.current = false;
       return;
     }
 
-    skipPersistActive.current = true;
+    // 2) Blank editor, then 3) new chip selected as active
     startBlankBuild();
     const fresh = buildSavedPlan(null, planSourceFromStore(), labelSourceFromStore());
-    next = upsertPlan(next, fresh);
-    persist(next);
+    const withFresh = upsertPlan(
+      { plans: afterLock.plans, activeId: afterLock.activePlanId },
+      fresh,
+    );
+    persistLib(
+      upsertSavedSeed(lib, {
+        ...afterLock,
+        plans: withFresh.plans,
+        activePlanId: withFresh.activeId,
+        updatedAt: Date.now(),
+      }),
+    );
     writeUrlHash(fresh.hash);
     queueMicrotask(() => {
       skipPersistActive.current = false;
@@ -179,20 +286,44 @@ export function SavedPlansBar() {
   };
 
   const selectPlan = (plan: SavedPlan) => {
-    if (plan.id === state.activeId) return;
+    if (plan.id === activePlanId) return;
 
-    let next = loadSavedPlansState();
-    if (next.activeId) {
-      next = snapshotLivePlan(next);
-    }
-
-    const snap = decodePlanHash(plan.hash);
+    const snap = snapFromPlan(plan);
     if (!snap) return;
 
+    if (ephemeral) {
+      skipPersistActive.current = true;
+      applyPlanSnapshot(snap, { applySeed: false });
+      writeUrlHash(encodePlanHash(planSourceFromStore()));
+      setEphemeralActiveId(plan.id);
+      queueMicrotask(() => {
+        skipPersistActive.current = false;
+      });
+      return;
+    }
+
+    // Snapshot current live plan into the *outgoing* chip before switching
+    let lib = loadSeedLibrary();
+    lib = snapshotActiveIntoLibrary(lib);
+    const active = getActiveSavedSeed(lib);
+    if (!active) return;
+
+    // Re-read target plan from library (may have been refreshed only for active chip)
+    const target = active.plans.find((p) => p.id === plan.id) ?? plan;
+    const targetSnap = snapFromPlan(target);
+    if (!targetSnap) return;
+
     skipPersistActive.current = true;
-    applyPlanSnapshot(snap);
-    writeUrlHash(plan.hash);
-    persist({ ...next, activeId: plan.id });
+    // Chip select: demand/knobs only — keep saved seed seed
+    applyPlanSnapshot(targetSnap, { applySeed: false });
+    writeUrlHash(encodePlanHash(planSourceFromStore()));
+    persistLib(
+      upsertSavedSeed(lib, {
+        ...active,
+        activePlanId: plan.id,
+        updatedAt: Date.now(),
+      }),
+    );
     queueMicrotask(() => {
       skipPersistActive.current = false;
     });
@@ -201,18 +332,50 @@ export function SavedPlansBar() {
   const deletePlan = (id: string, e: MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    const wasActive = state.activeId === id;
-    const next = removePlan(loadSavedPlansState(), id);
-    persist(next);
 
-    if (wasActive && next.activeId) {
-      const plan = next.plans.find((p) => p.id === next.activeId);
+    if (ephemeral) {
+      const next = removePlan({ plans: ephemeralPlans, activeId: ephemeralActiveId }, id);
+      setEphemeralPlans(next.plans);
+      setEphemeralActiveId(next.activeId);
+      if (next.activeId) {
+        const plan = next.plans.find((p) => p.id === next.activeId);
+        if (plan) {
+          const snap = snapFromPlan(plan);
+          if (snap) {
+            skipPersistActive.current = true;
+            applyPlanSnapshot(snap, { applySeed: false });
+            writeUrlHash(encodePlanHash(planSourceFromStore()));
+            queueMicrotask(() => {
+              skipPersistActive.current = false;
+            });
+          }
+        }
+      }
+      return;
+    }
+
+    const wasActive = activePlanId === id;
+    let lib = loadSeedLibrary();
+    const active = getActiveSavedSeed(lib);
+    if (!active) return;
+    const shelf = removePlan({ plans: active.plans, activeId: active.activePlanId }, id);
+    const updated: SavedSeed = {
+      ...active,
+      plans: shelf.plans,
+      activePlanId: shelf.activeId,
+      updatedAt: Date.now(),
+    };
+    lib = upsertSavedSeed(lib, updated);
+    persistLib(lib);
+
+    if (wasActive && shelf.activeId) {
+      const plan = shelf.plans.find((p) => p.id === shelf.activeId);
       if (plan) {
-        const snap = decodePlanHash(plan.hash);
+        const snap = snapFromPlan(plan);
         if (snap) {
           skipPersistActive.current = true;
-          applyPlanSnapshot(snap);
-          writeUrlHash(plan.hash);
+          applyPlanSnapshot(snap, { applySeed: false });
+          writeUrlHash(encodePlanHash(planSourceFromStore()));
           queueMicrotask(() => {
             skipPersistActive.current = false;
           });
@@ -235,7 +398,6 @@ export function SavedPlansBar() {
       return;
     }
 
-    // Accept bare hash, #hash, or a full URL containing #v1.…
     let hashBody = raw;
     const hashIdx = raw.lastIndexOf("#");
     if (hashIdx >= 0) hashBody = raw.slice(hashIdx + 1);
@@ -247,21 +409,176 @@ export function SavedPlansBar() {
       return;
     }
 
-    const shelf = loadSavedPlansState();
-    // Shelf live plan first if we already have builds (or an active chip)
-    let next = shelf.plans.length > 0 || shelf.activeId ? snapshotLivePlan(shelf) : shelf;
+    const hashSeed = snap.seed ?? null;
+    const curSeed = useAppStore.getState().seed;
+
+    // Matching seed → import onto current shelf (strip seed re-apply)
+    if (mapSeedsEqual(hashSeed, curSeed) && library.activeId) {
+      const lib = snapshotActiveIntoLibrary(loadSeedLibrary());
+      const active = getActiveSavedSeed(lib);
+      if (!active) return;
+      skipPersistActive.current = true;
+      applyPlanSnapshot(snap, { applySeed: false });
+      const imported = buildSavedPlan(null, planSourceFromStore(), labelSourceFromStore());
+      const plan: SavedPlan = { ...imported, hash: encodePlanHash(planSourceFromStore()) };
+      const shelf = upsertPlan({ plans: active.plans, activeId: active.activePlanId }, plan);
+      persistLib(
+        upsertSavedSeed(lib, {
+          ...active,
+          plans: shelf.plans,
+          activePlanId: shelf.activeId,
+          updatedAt: Date.now(),
+        }),
+      );
+      writeUrlHash(plan.hash);
+      setImportOpen(false);
+      setImportValue("");
+      setImportError(null);
+      queueMicrotask(() => {
+        skipPersistActive.current = false;
+      });
+      return;
+    }
+
+    // Seed mismatch → ephemeral world switch
+    let lib = loadSeedLibrary();
+    if (lib.activeId) {
+      lib = snapshotActiveIntoLibrary(lib);
+      lib = { ...lib, activeId: null };
+      lib = gcEmptyAutoNamed(lib);
+      persistLib(lib);
+    }
 
     skipPersistActive.current = true;
-    applyPlanSnapshot(snap);
+    applyPlanSnapshot(snap, { applySeed: true });
     const imported = buildSavedPlan(null, planSourceFromStore(), labelSourceFromStore());
-    // Keep the shared hash body on the chip (decode/encode is stable for valid pastes)
     const plan: SavedPlan = { ...imported, hash: hashBody };
-    next = upsertPlan(next, plan);
-    persist(next);
-    writeUrlHash(plan.hash);
+    setEphemeralPlans([plan]);
+    setEphemeralActiveId(plan.id);
+    writeUrlHash(hashBody);
     setImportOpen(false);
     setImportValue("");
     setImportError(null);
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
+  };
+
+  const onPasteSeed = (pasted: number) => {
+    skipPersistActive.current = true;
+    let lib = loadSeedLibrary();
+    if (lib.activeId) {
+      lib = snapshotActiveIntoLibrary(lib);
+      lib = gcEmptyAutoNamed({ ...lib, activeId: null });
+    }
+    setSeed(pasted);
+    const { library: next } = autoSaveSeed(lib, pasted);
+    persistLib(next);
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    writeUrlHash(encodePlanHash(planSourceFromStore()));
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
+  };
+
+  const leaveActiveShelfEphemeral = () => {
+    let lib = loadSeedLibrary();
+    if (lib.activeId) {
+      lib = snapshotActiveIntoLibrary(lib);
+      lib = gcEmptyAutoNamed({ ...lib, activeId: null });
+      persistLib(lib);
+    }
+  };
+
+  const onRandomSeed = () => {
+    skipPersistActive.current = true;
+    leaveActiveShelfEphemeral();
+    setSeed(randomMapSeed());
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    writeUrlHash(encodePlanHash(planSourceFromStore()));
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
+  };
+
+  const onDefaultMap = () => {
+    skipPersistActive.current = true;
+    leaveActiveShelfEphemeral();
+    setSeed(null);
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    writeUrlHash(encodePlanHash(planSourceFromStore()));
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
+  };
+
+  const onSaveSeed = (name: string) => {
+    let lib = loadSeedLibrary();
+    if (lib.activeId) {
+      lib = snapshotActiveIntoLibrary(lib);
+    }
+    const mapSeed = useAppStore.getState().seed;
+    const desired = name.trim() || defaultNameForSeed(mapSeed);
+    const active = getActiveSavedSeed(lib);
+    // Update in place only when re-saving the *same named* active shelf.
+    // Same map seed + a different name (e.g. two Defaults: "Test A" then "Test B")
+    // must create a new Saved Seed — not rename/overwrite the first.
+    const existing =
+      active &&
+      !ephemeral &&
+      mapSeedsEqual(active.seed, mapSeed) &&
+      active.name.toLowerCase() === desired.toLowerCase()
+        ? active
+        : null;
+    const result = commitSaveSeed(lib, mapSeed, desired, existing);
+    let pt = result.saved;
+    if (!existing && ephemeralPlans.length > 0) {
+      pt = {
+        ...pt,
+        plans: ephemeralPlans,
+        activePlanId: ephemeralActiveId,
+      };
+    }
+    persistLib(upsertSavedSeed(result.library, pt));
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+  };
+
+  const onSelectSavedSeed = (pt: SavedSeed, opts?: { keepOpen?: boolean }) => {
+    const lib0 = loadSeedLibrary();
+    if (pt.id === lib0.activeId) {
+      if (!opts?.keepOpen) setSeedOpen(false);
+      return;
+    }
+
+    skipPersistActive.current = true;
+    // 1–3: snapshot A while seed still A's
+    let lib = snapshotActiveIntoLibrary(lib0);
+    lib = gcEmptyAutoNamed(lib, pt.id);
+    // 4: activeId = B
+    lib = { ...lib, activeId: pt.id };
+    persistLib(lib);
+    // 5: setSeed B
+    setSeed(pt.seed);
+    // 6: apply B's active plan without re-applying seed from hash
+    if (pt.activePlanId) {
+      const plan = pt.plans.find((p) => p.id === pt.activePlanId);
+      if (plan) {
+        const snap = snapFromPlan(plan);
+        if (snap) {
+          applyPlanSnapshot(snap, { applySeed: false });
+          writeUrlHash(encodePlanHash(planSourceFromStore()));
+        }
+      }
+    } else {
+      writeUrlHash(encodePlanHash(planSourceFromStore()));
+    }
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    if (!opts?.keepOpen) setSeedOpen(false);
     queueMicrotask(() => {
       skipPersistActive.current = false;
     });
@@ -272,18 +589,18 @@ export function SavedPlansBar() {
 
   return (
     <section className="space-y-1.5">
-      {state.plans.length > 0 && (
+      {plans.length > 0 && (
         <div className="flex items-center gap-1.5 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
           Heatmaps
-          <span className="font-normal normal-case text-slate-600">({state.plans.length})</span>
+          <span className="font-normal normal-case text-slate-600">({plans.length})</span>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
-        {state.plans.map((plan) => (
+        {plans.map((plan) => (
           <PlanChip
             key={plan.id}
             plan={plan}
-            active={plan.id === state.activeId}
+            active={plan.id === activePlanId}
             onSelect={() => selectPlan(plan)}
             onDelete={(e) => deletePlan(plan.id, e)}
           />
@@ -291,12 +608,8 @@ export function SavedPlansBar() {
         <button
           type="button"
           onClick={onAdd}
-          title={
-            state.plans.length === 0 ? "Save current heatmap" : "Save current & start new heatmap"
-          }
-          aria-label={
-            state.plans.length === 0 ? "Save current heatmap" : "Save current and start new heatmap"
-          }
+          title="Save current & start new heatmap"
+          aria-label="Save current and start new heatmap"
           className={iconBtn}
         >
           <PlusIcon />
@@ -311,7 +624,39 @@ export function SavedPlansBar() {
         >
           <ImportIcon />
         </button>
+        <button
+          ref={seedBtnRef}
+          type="button"
+          onClick={() => setSeedOpen((v) => !v)}
+          title="Map seed"
+          aria-label="Map seed"
+          aria-expanded={seedOpen}
+          className={`ml-auto inline-flex h-8 shrink-0 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition ${
+            ephemeral
+              ? "border-amber-500/60 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
+              : seedOpen
+                ? "border-slate-500 bg-slate-800 text-slate-200"
+                : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200"
+          }`}
+        >
+          Seed
+        </button>
       </div>
+
+      <SeedPopover
+        open={seedOpen}
+        onClose={() => setSeedOpen(false)}
+        anchorRef={seedBtnRef}
+        library={library}
+        onLibraryChange={persistLib}
+        snapshotActiveShelf={snapshotActiveShelf}
+        ephemeral={ephemeral}
+        onSaveSeed={onSaveSeed}
+        onPasteSeed={onPasteSeed}
+        onRandomSeed={onRandomSeed}
+        onDefaultMap={onDefaultMap}
+        onSelectSavedSeed={onSelectSavedSeed}
+      />
 
       {importOpen && (
         <form
@@ -368,7 +713,6 @@ function PlusIcon() {
   );
 }
 
-/** Tray with arrow from above into the box (import). */
 function ImportIcon() {
   return (
     <svg
@@ -422,7 +766,6 @@ function PlanChip({
       const r = el.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      // Initial estimate before measuring real tip height
       setTipPos(clampTipBox(r, TIP_W, 120, vw, vh));
       setHover(true);
 

@@ -35,6 +35,10 @@ Image: [`ghcr.io/tylerr909/satisfactory-heat-map`](https://github.com/TylerR909/
 | **Product targets** (e.g. HMF 10/min, multi-product stacks)        | Default-recipe expand → same heat engine; **Send to Raw** if you want to tweak |
 | Extractor settings (Mk + clock, oil/water/wells modeled correctly) | Capacity that matches _your_ extractors                                        |
 
+## Map seeds (1.2+)
+
+Paste your world **Map Seed** via the **Seed** control (chips row). Node types/purities are computed with a TypeScript port of [Konsl’s MIT randomization algorithm](https://github.com/Konsl/satisfactory-world-generator) (see `third_party/konsl-satisfactory-world-generator.md`). Default world = vanilla slot layout; numeric seeds assume in-game **Random** + **unchanged** purity. Saved heatmaps are scoped per named saved seed.
+
 ## Core ideas
 
 **Capacity is not optional.** Sitting next to one impure node at 600/min is a bad site even if the pin is close. Pins get tags from local extract capacity:

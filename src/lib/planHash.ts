@@ -1,5 +1,6 @@
 import { canonicalizeProductId } from "@/lib/productIdAliases";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
+import type { MapSeed } from "@/lib/seed";
 import type {
   InputMode,
   MinerMk,
@@ -15,61 +16,26 @@ import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
  * Compact binary plan hash — **computation only**.
  * Format: `v1.<base64url(bytes)>`
  *
- * Encodes: mode, demand lines, miner, Centered/Weighted, centerPower, topN, site spread.
- * Does **not** encode: heat opacity, paint knobs, show-nodes, peak emphasis.
+ * Encodes: mode, demand lines, miner, Centered/Weighted, centerPower, topN, site spread,
+ * optional world seed (has-seed flag + i32; omitted when Default/null for short hashes).
+ *
+ * **Products:** ClassNames are stored inline (no product allowlist). If the Products
+ * dropdown can select it, the hash can encode it. Raw resources still use the fixed
+ * raw-picker table (`RAW_RESOURCE_OPTIONS`) — same set as the Raw mode dropdown.
+ *
+ * Does **not** encode: heat opacity, paint knobs, show-nodes, peak emphasis, mode/purity
+ * (product policy fixes strict + no_change for any numeric seed).
  */
 export const PLAN_HASH_VERSION = 1 as const;
 
-export const PLAN_PRODUCT_IDS = [
-  "Desc_AILimiter_C",
-  "Desc_AlcladAluminumSheet_C",
-  "Desc_AluminaSolution_C",
-  "Desc_AluminumCasing_C",
-  "Desc_AluminumIngot_C",
-  "Desc_AluminumScrap_C",
-  "Desc_BlackPowder_C",
-  "Desc_Cable_C",
-  "Desc_CircuitBoard_C",
-  "Desc_CompactedCoal_C",
-  "Desc_Computer_C",
-  "Desc_Cement_C", // Concrete
-  "Desc_CopperIngot_C",
-  "Desc_CopperSheet_C",
-  "Desc_CrystalOscillator_C",
-  "Desc_SteelPlateReinforced_C", // Encased Industrial Beam
-  "Desc_Fuel_C",
-  "Desc_GoldIngot_C",
-  "Desc_ModularFrameHeavy_C", // Heavy Modular Frame
-  "Desc_HeavyOilResidue_C",
-  "Desc_HighSpeedConnector_C",
-  "Desc_IronIngot_C",
-  "Desc_IronPlate_C",
-  "Desc_IronRod_C",
-  "Desc_ModularFrame_C",
-  "Desc_Motor_C",
-  "Desc_Plastic_C",
-  "Desc_PolymerResin_C",
-  "Desc_QuartzCrystal_C",
-  "Desc_Quickwire_C",
-  "Desc_RadioControlUnit_C",
-  "Desc_IronPlateReinforced_C", // Reinforced Iron Plate
-  "Desc_Rotor_C",
-  "Desc_Rubber_C",
-  "Desc_IronScrew_C", // Screws
-  "Desc_Silica_C",
-  "Desc_Stator_C",
-  "Desc_SteelPlate_C", // Steel Beam (Docs ClassName)
-  "Desc_SteelIngot_C",
-  "Desc_SteelPipe_C",
-  "Desc_Supercomputer_C",
-  "Desc_LiquidTurboFuel_C",
-  "Desc_Wire_C",
-] as const;
+/** flags bit 5: world seed present after demand payload */
+const FLAG_HAS_SEED = 1 << 5;
 
 const RAW_IDS: readonly string[] = RAW_RESOURCE_OPTIONS;
-const PRODUCT_IDS: readonly string[] = PLAN_PRODUCT_IDS;
 const MAX_LINES = 15;
 const MAX_RATE = 65_535;
+/** Max UTF-8 bytes for a compact product token (ClassName without Desc_/_C). */
+const MAX_PRODUCT_TOKEN_BYTES = 120;
 
 /** Fields applied from a shared link (scoring display knobs stay local). */
 export type PlanSnapshot = {
@@ -80,6 +46,8 @@ export type PlanSnapshot = {
   scoringMode: ScoringMode;
   /** Only centerPower / topN / siteSepFraction are meaningful from the hash. */
   scoringOptions: Pick<ScoringOptions, "centerPower" | "topN" | "siteSepFraction">;
+  /** null = Default / vanilla layout; number (incl. 0) = randomized map seed. */
+  seed: MapSeed;
 };
 
 export type PlanHashSource = {
@@ -89,6 +57,7 @@ export type PlanHashSource = {
   miner: MinerSettings;
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
+  seed: MapSeed;
 };
 
 function clamp(n: number, lo: number, hi: number, fallback: number): number {
@@ -106,6 +75,8 @@ function dequantize(q: number, min: number, step: number): number {
 }
 
 export function toSnapshot(source: PlanHashSource): PlanSnapshot {
+  const seed: MapSeed =
+    source.seed === null || source.seed === undefined ? null : Number(source.seed) | 0;
   return {
     mode: source.mode === "product" ? "product" : "raw",
     rawDemand: source.rawDemand
@@ -144,31 +115,73 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
         DEFAULT_SCORING_OPTIONS.siteSepFraction,
       ),
     },
+    seed,
   };
 }
 
-function indexOfId(list: readonly string[], id: string): number {
-  const i = list.indexOf(id);
-  return i >= 0 ? i : -1;
+function indexOfRaw(id: string): number {
+  return RAW_IDS.indexOf(id);
+}
+
+/** Compact token for hash: strip Desc_ … _C when present (round-trips for Docs ClassNames). */
+export function compactProductToken(productId: string): string {
+  const id = canonicalizeProductId(productId);
+  const m = /^Desc_(.+)_C$/.exec(id);
+  return m?.[1] ?? id;
+}
+
+export function expandProductToken(token: string): string {
+  if (token.startsWith("Desc_")) return canonicalizeProductId(token);
+  return canonicalizeProductId(`Desc_${token}_C`);
+}
+
+function utf8Encode(s: string): Uint8Array {
+  return new TextEncoder().encode(s);
+}
+
+function utf8Decode(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes);
+}
+
+type EncodedProduct = {
+  tokBytes: Uint8Array;
+  rate: number;
+};
+
+/** Encodeable products only — count byte must match payloads actually written. */
+function productsToEncode(products: PlanSnapshot["productTargets"]): EncodedProduct[] {
+  const out: EncodedProduct[] = [];
+  for (const d of products) {
+    if (!d.productId) continue;
+    const token = compactProductToken(d.productId);
+    const tokBytes = utf8Encode(token);
+    if (tokBytes.length === 0 || tokBytes.length > MAX_PRODUCT_TOKEN_BYTES) continue;
+    out.push({
+      tokBytes,
+      rate: Math.min(MAX_RATE, Math.max(0, Math.round(d.itemsPerMinute))),
+    });
+    if (out.length >= MAX_LINES) break;
+  }
+  return out;
 }
 
 export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
-  const raw = snap.rawDemand.filter((d) => indexOfId(RAW_IDS, d.resource) >= 0).slice(0, MAX_LINES);
-  const products = snap.productTargets
-    .filter((d) => indexOfId(PRODUCT_IDS, d.productId) >= 0)
-    .slice(0, MAX_LINES);
-
+  const raw = snap.rawDemand.filter((d) => indexOfRaw(d.resource) >= 0).slice(0, MAX_LINES);
+  // Any product id is allowed — same universe as the Products dropdown (no allowlist).
+  // Pre-filter so the count nibble matches only rows we actually write (no encode/decode desync).
   const activeRaw = snap.mode === "raw" ? raw : [];
-  const activeProducts = snap.mode === "product" ? products : [];
+  const activeProducts = snap.mode === "product" ? productsToEncode(snap.productTargets) : [];
 
   const out: number[] = [];
 
-  // flags: mode | scoring | mk(2) | reserved
+  // flags: mode | scoring | mk(2) | hasSeed(5) | reserved
   const mkBits = Math.min(2, Math.max(0, snap.miner.minerMk - 1));
   let flags = 0;
   if (snap.mode === "product") flags |= 1;
   if (snap.scoringMode === "weighted") flags |= 2;
   flags |= (mkBits & 3) << 3;
+  const hasSeed = snap.seed !== null && snap.seed !== undefined;
+  if (hasSeed) flags |= FLAG_HAS_SEED;
   out.push(flags);
 
   out.push(Math.min(250, Math.max(1, Math.round(snap.miner.clockPercent))));
@@ -186,16 +199,28 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   out.push((activeRaw.length & 15) | ((activeProducts.length & 15) << 4));
 
   for (const d of activeRaw) {
-    out.push(indexOfId(RAW_IDS, d.resource) & 0xff);
+    out.push(indexOfRaw(d.resource) & 0xff);
     const rate = Math.min(MAX_RATE, Math.max(0, Math.round(d.itemsPerMinute)));
     out.push(rate & 0xff);
     out.push((rate >>> 8) & 0xff);
   }
   for (const d of activeProducts) {
-    out.push(indexOfId(PRODUCT_IDS, d.productId) & 0xff);
-    const rate = Math.min(MAX_RATE, Math.max(0, Math.round(d.itemsPerMinute)));
-    out.push(rate & 0xff);
-    out.push((rate >>> 8) & 0xff);
+    out.push(d.tokBytes.length & 0xff);
+    for (let b = 0; b < d.tokBytes.length; b++) {
+      const byte = d.tokBytes[b];
+      if (byte !== undefined) out.push(byte);
+    }
+    out.push(d.rate & 0xff);
+    out.push((d.rate >>> 8) & 0xff);
+  }
+
+  // Optional seed tail: i32 little-endian (seed 0 is valid when hasSeed is set)
+  if (hasSeed && snap.seed !== null) {
+    const s = snap.seed | 0;
+    out.push(s & 0xff);
+    out.push((s >>> 8) & 0xff);
+    out.push((s >>> 16) & 0xff);
+    out.push((s >>> 24) & 0xff);
   }
 
   return new Uint8Array(out);
@@ -208,6 +233,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
   const mode: InputMode = flags & 1 ? "product" : "raw";
   const scoringMode: ScoringMode = flags & 2 ? "weighted" : "centered";
   const minerMk = (Math.min(2, (flags >>> 3) & 3) + 1) as MinerMk;
+  const hasSeed = (flags & FLAG_HAS_SEED) !== 0;
   const clockPercent = clamp(bytes[i++] ?? 100, 1, 250, 100);
 
   const b0 = bytes[i++] ?? 0;
@@ -220,7 +246,9 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
   const counts = bytes[i++] ?? 0;
   const nRaw = counts & 15;
   const nProd = (counts >>> 4) & 15;
-  if (i + nRaw * 3 + nProd * 3 > bytes.length) return null;
+
+  // Raw lines are fixed 3 bytes each; products are variable — parse carefully.
+  if (i + nRaw * 3 > bytes.length) return null;
 
   const rawDemand: PlanSnapshot["rawDemand"] = [];
   for (let k = 0; k < nRaw; k++) {
@@ -231,14 +259,34 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     if (!resource) continue;
     rawDemand.push({ resource, itemsPerMinute: lo | (hi << 8) });
   }
+
   const productTargets: PlanSnapshot["productTargets"] = [];
   for (let k = 0; k < nProd; k++) {
-    const idx = bytes[i++] ?? 0;
+    if (i >= bytes.length) return null;
+    const tokLen = bytes[i++] ?? 0;
+    if (tokLen === 0 || tokLen > MAX_PRODUCT_TOKEN_BYTES) return null;
+    if (i + tokLen + 2 > bytes.length) return null;
+    const tokBytes = bytes.subarray(i, i + tokLen);
+    i += tokLen;
     const lo = bytes[i++] ?? 0;
     const hi = bytes[i++] ?? 0;
-    const productId = PRODUCT_IDS[idx];
-    if (!productId) continue;
-    productTargets.push({ productId, itemsPerMinute: lo | (hi << 8) });
+    const token = utf8Decode(tokBytes);
+    if (!token) continue;
+    productTargets.push({
+      productId: expandProductToken(token),
+      itemsPerMinute: lo | (hi << 8),
+    });
+  }
+
+  let seed: MapSeed = null;
+  if (hasSeed) {
+    if (i + 4 > bytes.length) return null;
+    const b0s = bytes[i++] ?? 0;
+    const b1s = bytes[i++] ?? 0;
+    const b2s = bytes[i++] ?? 0;
+    const b3s = bytes[i++] ?? 0;
+    // i32 LE
+    seed = b0s | (b1s << 8) | (b2s << 16) | (b3s << 24) | 0;
   }
 
   return toSnapshot({
@@ -253,7 +301,15 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
       topN,
       siteSepFraction,
     },
+    seed,
   });
+}
+
+/** True when two map seeds refer to the same world (both Default or same number). */
+export function mapSeedsEqual(a: MapSeed, b: MapSeed): boolean {
+  if (a === null && b === null) return true;
+  if (a === null || b === null) return false;
+  return (a | 0) === (b | 0);
 }
 
 export function bytesToBase64Url(bytes: Uint8Array): string {
