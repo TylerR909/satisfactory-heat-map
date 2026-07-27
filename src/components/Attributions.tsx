@@ -39,7 +39,11 @@ const ATTRIBUTION_BODY = (
         >
           rockfactory/satisfactory-logistics
         </a>{" "}
-        (<span className="font-mono text-slate-400">WorldResourceNodes.json</span>, MIT).
+        (<span className="font-mono text-slate-400">WorldResourceNodes.json</span>, MIT). See{" "}
+        <span className="font-mono text-slate-400">
+          third_party/rockfactory-satisfactory-logistics.md
+        </span>
+        .
       </li>
       <li>
         <span className="text-slate-100">Node randomization (1.2+ seeds)</span> — algorithm ported

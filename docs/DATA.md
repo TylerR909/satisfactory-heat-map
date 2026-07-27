@@ -12,7 +12,7 @@
 
 | Path | Contents | Provenance |
 |------|----------|------------|
-| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | Bootstrap from [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) `WorldResourceNodes.json` (**MIT**). Attribute & replace with own FModel extract when possible. |
+| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | Bootstrap from [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) `WorldResourceNodes.json` (**MIT** — notice in `third_party/rockfactory-satisfactory-logistics.LICENSE`). Attribute & replace with own FModel extract when possible. |
 | `public/data/recipes/items.json` | Compact item catalog (~194) | Derived from Coffee Stain Docs via `npm run parse-docs` |
 | `public/data/recipes/recipes.json` | Factory recipes (~290: defaults + alts) | Same; **not** the 10MB Docs file |
 | `public/data/recipes/docs-meta.json` | Parse stamp / counts | Generated; safe to commit |

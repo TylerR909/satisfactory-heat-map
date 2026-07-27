@@ -1,8 +1,11 @@
 /**
  * Split / join our flat ResourceNode[] into Konsl-shaped pools for randomization.
  *
+ * TypeScript support code for the Konsl/satisfactory-world-generator MIT algorithm port.
+ * Copyright (c) 2026 Konsl — see third_party/konsl-satisfactory-world-generator.md
+ *
  * Deposit membership: Konsl extract only includes BP_ResourceNode_C — deposits are
- * EXCLUDED from the shuffle pool (see third_party/konsl-satisfactory-world-generator.md).
+ * EXCLUDED from the shuffle pool.
  */
 
 import { resourceLabel } from "@/lib/resources";

@@ -39,6 +39,10 @@ Image: [`ghcr.io/tylerr909/satisfactory-heat-map`](https://github.com/TylerR909/
 
 Paste your world **Map Seed** via the **Seed** control (chips row). Node types/purities are computed with a TypeScript port of [Konsl’s MIT randomization algorithm](https://github.com/Konsl/satisfactory-world-generator) (see `third_party/konsl-satisfactory-world-generator.md`). Default world = vanilla slot layout; numeric seeds assume in-game **Random** + **unchanged** purity. Saved heatmaps are scoped per named saved seed.
 
+## Credits / third-party
+
+OSS notices for redistributed or ported material live under [`third_party/`](third_party/) (Konsl seed algorithm; rockfactory node slots). In-app: planner **Attributions**. Not affiliated with Coffee Stain Studios.
+
 ## Core ideas
 
 **Capacity is not optional.** Sitting next to one impure node at 600/min is a bad site even if the pin is close. Pins get tags from local extract capacity:
