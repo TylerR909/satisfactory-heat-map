@@ -2,11 +2,12 @@
 
 ## Policy
 
-1. **Ship honest, attributed data** under `public/data/` and (later) `public/map/`.
-2. **`public/scraped/`** documents temporary basemap CDN use — no SC-derived node blobs. Prefer never committing proprietary calculator assets.
-3. **Do not** copy code or data from satisfactory-calculator.com (`en-Stable.json`, proprietary map tiles, etc.).
+1. **Ship honest, attributed data** under `public/data/` and generated `public/map/v1/`.
+2. Prefer never committing proprietary calculator assets or full game dumps (Docs / Persistent_Level stay gitignored).
+3. **Do not** copy code or data from satisfactory-calculator.com (`en-Stable.json`, proprietary map assets, etc.).
 4. Prefer **MIT community extraction** (rockfactory) or **your own FModel export** for node slots.
 5. Prefer **official Docs.json** for recipes when available.
+6. **Basemap:** own WebP pyramid from the public wiki map image (or a later FModel extract) — see `public/map/v1/README.md`.
 
 ## Shipped assets
 
@@ -17,8 +18,8 @@
 | `public/data/recipes/recipes.json` | Factory recipes (~290: defaults + alts) | Same; **not** the 10MB Docs file |
 | `public/data/recipes/docs-meta.json` | Parse stamp / counts | Generated; safe to commit |
 | `public/data/meta.json` | Bounds, leaflet flags, basemap URL, heatmap grid defaults | Project-owned |
-| `public/map/` | Reserved for self-hosted tiles later | Empty; runtime basemap is remote CDN |
-| `public/scraped/README.md` | Temporary basemap provenance | No committed tile binaries |
+| `public/map/v1/**/*.webp` | XYZ WebP basemap (z0–4) | **Build artifact** (gitignored). Wiki Map.jpg → Docker GDAL. See `public/map/v1/README.md`. |
+| `public/map/v1/README.md` | Runbooks (community map + FModel) | Committed |
 
 ## Node record shape
 
@@ -79,37 +80,39 @@ Actors of interest: `BP_ResourceNode_C`, `BP_ResourceDeposit_C`, `BP_FrackingCor
 Docs ClassNames differ from some wiki nicknames (e.g. HMF → `Desc_ModularFrameHeavy_C`).  
 `src/lib/productIdAliases.ts` maps old hand-curated ids on rehydrate.
 
-### Rockfactory basemap CDN
-
-Their **app / node JSON** is MIT. The **tile pyramid** on DigitalOcean is a convenience host for map **artwork** (Coffee Stain IP). Short-term hotlink for development is common and we attribute it, but:
-
-- It is **not** a license to freeload their bandwidth forever.
-- Prefer self-hosting tiles before public launch at scale.
-- Do not scrape or re-host without respecting map art ownership.
-
 ## Map basemap
 
-### Temporary (current)
+### Runtime
 
-Hot-linked WebP XYZ tiles from the public **satisfactory-logistics** CDN (same pyramid their MIT map view uses):
+| Environment | Tile source |
+|-------------|-------------|
+| **Production** (CF / Docker) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist`; Docker image generates at build) |
+| **Localhost** | Same-origin after **one** `npm run map:generate` per machine (gitignored WebPs) |
+| **Override** | `VITE_MAP_TILES_BASE_URL=https://satisfactory-heatmap.com/map/v1` only when prod serves real WebPs |
 
+**ORB / blank map:** if tiles 404 into SPA HTML (`content-type: text/html`), Chrome blocks cross-origin loads as `net::ERR_BLOCKED_BY_ORB`. Fix: generate locally or deploy `dist` that includes the pyramid.
+
+- Config: `public/data/meta.json` → `basemap.tilesUrl` = `/map/v1/{z}/{x}/{y}.webp`
+- Coord math: `src/lib/coords.ts` — community-calibrated game cm → Leaflet; **do not flip tile Y**
+- `MAX_ZOOM` = **4** (4096² pyramid)
+- Map artwork © Coffee Stain Studios. Thin map-corner credit; full notes in Attributions + `public/map/v1/README.md`
+
+### Regenerate (Docker only — no host GDAL)
+
+```bash
+npm run map:generate   # osgeo/gdal container: wiki Map.jpg → public/map/v1/
+npm run map:clean      # remove webps; keeps README
 ```
-https://satisfactory-logistics-maps.fra1.cdn.digitaloceanspaces.com/map/v2/{z}/{x}/{y}.webp
-```
 
-- Config: `public/data/meta.json` → `basemap.tilesUrl`
-- Coord math: `src/lib/coords.ts` — **same transform as rockfactory** so markers lock to their XYZ tiles.
-- **Do not invert tile `y`** in `TileLayer` (causes strip seams on zoom).
-- Provenance / replace steps: `public/scraped/README.md`
+Pipeline: download [wiki Map.jpg](https://satisfactory.wiki.gg/images/Map.jpg) (5000×5000) → resize 4096 → `gdal2tiles.py --profile=raster --xyz --tiledriver=WEBP -z 0-4`.
 
-Map **artwork** is Coffee Stain IP; we only consume a community-hosted tile mirror for development until you host your own.
+**Known wiki quirk:** white rectangle in NW corner of that upload — accepted for v1.
 
-### Long-term (your extract)
+Docker production image runs the same generator in a multi-stage build. Cloudflare Git builds **do not** include GDAL — see [DEPLOY.md](DEPLOY.md) (tiles must be present in `dist`, typically via Docker/GHA deploy that runs generate).
 
-1. Capture / FModel a square orthographic map PNG  
-2. `gdal2tiles.py` → WebP pyramid (rockfactory’s `generate-map-tiles` script is a good template)  
-3. Host under your CDN or `public/map/tiles/`  
-4. Point `basemap.tilesUrl` at it; keep or re-tune world bounds if framing changes
+### Higher quality (optional FModel)
+
+Documented in `public/map/v1/README.md`: extract map texture / `MapareatexturePersistentLevel` JSON on Windows, optional [Mapareatexture parser](https://github.com/satisfactory-dev/MapareatexturePersistentLevel.json-parser) (`make png`), then `MAP_INPUT=… npm run map:generate`. Publish under `/map/v2/` if framing changes.
 
 ## Randomization (1.2+) — later
 
@@ -172,7 +175,7 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 
 ## Attribution snippet (README / about)
 
-> Resource nodes: [satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT extract. Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Temporary basemap tiles via satisfactory-logistics CDN (map art © Coffee Stain). Not affiliated with Coffee Stain or satisfactory-calculator.com.
+> Resource nodes: [satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT extract. Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Basemap: self-hosted tiles from wiki map image (map art © Coffee Stain). Not affiliated with Coffee Stain or satisfactory-calculator.com.
 
 ## After each game patch checklist
 

@@ -36,6 +36,16 @@ async function maybeBuildWasm() {
 
 await maybeBuildWasm();
 
+const mapTile = path.join(root, "public", "map", "v1", "0", "0", "0.webp");
+if (!existsSync(mapTile)) {
+  console.warn(
+    "[start] Basemap tiles missing (public/map/v1/0/0/0.webp).\n" +
+      "        Run:  npm run map:generate\n" +
+      "        Then: npm start\n" +
+      "        (One-time per machine; tiles are gitignored.)",
+  );
+}
+
 const vite = spawn("npx", ["vite"], {
   cwd: root,
   stdio: "inherit",

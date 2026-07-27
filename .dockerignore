@@ -1,9 +1,14 @@
-# Dependencies / build outputs (image runs its own npm ci)
+# Dependencies / build outputs (image runs its own npm ci / tile gen)
 node_modules
 dist
 dist-ssr
 coverage
 dev-dist
+map-source
+dist-map-tiles
+# Host-generated tiles optional; image always regenerates in tiles stage
+public/map/v1/**
+!public/map/v1/README.md
 
 # Git / IDE / local
 .git
@@ -16,11 +21,13 @@ dev-dist
 # Large / private source dumps (never bake into the image)
 data/Docs
 data/Persistent_Level.json
+data/map
 
 # Docs & dev-only (not needed for static serve)
 docs
 *.md
 !README.md
+!public/map/v1/README.md
 
 # Tests / tooling noise
 **/*.test.ts

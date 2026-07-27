@@ -14,7 +14,14 @@ coverage
 dev-dist
 data/Persistent_Level.json
 data/Docs/
+data/map/
 *.local
+
+# Basemap pipeline (generated WebPs; keep README)
+map-source/
+dist-map-tiles/
+public/map/v1/**
+!public/map/v1/README.md
 
 # Editor directories and files
 .vscode/*

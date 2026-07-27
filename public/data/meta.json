@@ -1,6 +1,6 @@
 {
   "gameVersion": "1.0+",
-  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). See docs/DATA.md.",
+  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). Basemap: self-hosted wiki-derived tiles (npm run map:generate). See docs/DATA.md.",
   "worldBounds": {
     "minX": -324700,
     "maxX": 425300,
@@ -8,16 +8,16 @@
     "maxY": 375000
   },
   "leaflet": {
-    "comment": "CRS.Simple 0…256 space; rockfactory-compatible game→latlng. Standard XYZ tiles (no row flip).",
+    "comment": "CRS.Simple 0…256 space; community game→latlng. Standard XYZ tiles (no row flip). MAX_ZOOM 4 for v1 4096 pyramid.",
     "latIsY": true,
     "flipY": false
   },
   "basemap": {
     "kind": "tiles",
-    "tilesUrl": "https://satisfactory-logistics-maps.fra1.cdn.digitaloceanspaces.com/map/v2/{z}/{x}/{y}.webp",
-    "attribution": "Basemap tiles (temporary) via satisfactory-logistics CDN · map art © Coffee Stain Studios",
-    "source": "temporary-cdn",
-    "notes": "Replace with self-hosted FModel/in-game extract when ready. See public/scraped/README.md and docs/DATA.md."
+    "tilesUrl": "/map/v1/{z}/{x}/{y}.webp",
+    "attribution": "Map art © Coffee Stain Studios",
+    "source": "wiki-map-build",
+    "notes": "WebP pyramid from wiki Map.jpg via Docker GDAL (npm run map:generate). Same-origin /map/v1 in dev and prod; see public/map/v1/README.md."
   },
   "heatmapDefaults": {
     "coarseCols": 64,

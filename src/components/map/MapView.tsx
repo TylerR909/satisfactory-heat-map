@@ -1,17 +1,18 @@
 import L from "leaflet";
 import { useMemo } from "react";
 import { MapContainer, TileLayer } from "react-leaflet";
+import { CenterOnSelectedSite } from "@/components/map/CenterOnSelectedSite";
 import { FitWorld } from "@/components/map/FitWorld";
 import { HeatmapLayer } from "@/components/map/HeatmapLayer";
 import { MapPanes } from "@/components/map/MapPanes";
 import { NodeLayer } from "@/components/map/NodeLayer";
 import { TopSitesLayer } from "@/components/map/TopSitesLayer";
 import {
-  DEFAULT_TILES_URL,
   IMAGE_BOUNDS,
   IMAGE_SIZE,
   MAX_ZOOM,
   MIN_ZOOM,
+  resolveTilesUrl,
   worldToLeaflet,
 } from "@/lib/coords";
 import { useAppStore } from "@/store/useAppStore";
@@ -29,10 +30,8 @@ export function MapView() {
   const selectedSiteIndex = useAppStore((s) => s.selectedSiteIndex);
   const setSelectedSiteIndex = useAppStore((s) => s.setSelectedSiteIndex);
 
-  const tilesUrl = meta?.basemap?.tilesUrl ?? DEFAULT_TILES_URL;
-  const attribution =
-    meta?.basemap?.attribution ??
-    'Basemap tiles (temporary) via <a href="https://github.com/rockfactory/satisfactory-logistics">satisfactory-logistics</a> CDN · map art © Coffee Stain';
+  const tilesUrl = resolveTilesUrl(meta?.basemap?.tilesUrl);
+  const attribution = meta?.basemap?.attribution ?? "Map art © Coffee Stain Studios";
 
   const center = useMemo(() => {
     if (!meta) return [-IMAGE_SIZE / 2, IMAGE_SIZE / 2] as [number, number];
@@ -89,12 +88,19 @@ export function MapView() {
         <HeatmapLayer result={heatmap} meta={meta} opacity={heatOpacity} heatRender={heatRender} />
         <NodeLayer nodes={nodes} meta={meta} demand={activeDemand} miner={miner} show={showNodes} />
         {heatmap && (
-          <TopSitesLayer
-            sites={heatmap.topSites}
-            selectedIndex={selectedSiteIndex}
-            meta={meta}
-            onSelect={setSelectedSiteIndex}
-          />
+          <>
+            <CenterOnSelectedSite
+              sites={heatmap.topSites}
+              selectedIndex={selectedSiteIndex}
+              meta={meta}
+            />
+            <TopSitesLayer
+              sites={heatmap.topSites}
+              selectedIndex={selectedSiteIndex}
+              meta={meta}
+              onSelect={setSelectedSiteIndex}
+            />
+          </>
         )}
       </MapContainer>
     </div>

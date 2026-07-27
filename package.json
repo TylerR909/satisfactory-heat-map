@@ -17,6 +17,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "clean": "node scripts/clean.mjs",
+    "map:generate": "node scripts/map-generate.mjs",
+    "map:clean": "node scripts/map-clean.mjs",
     "parse-docs": "node scripts/parse-docs.mjs",
     "wasm:build": "node scripts/wasm-build.mjs"
   },

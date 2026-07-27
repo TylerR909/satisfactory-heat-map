@@ -57,7 +57,7 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 |---------|--------|
 | **Project / Worker name** | `satisfactory-heat-map` (must match [`wrangler.jsonc`](../wrangler.jsonc) `"name"`) |
 | **Production branch** | `main` |
-| **Build command** | `npm run build` |
+| **Build command** | See **basemap tiles** below (plain `npm run build` is not enough for a first ship with map art) |
 | **Deploy command** | `npx wrangler deploy` (dashboard default — keep it) |
 | **Root directory** | *(leave empty)* |
 | **Builds for non-production branches** | **On** (recommended — PR/preview URLs). Off = only `main` builds. |
@@ -65,6 +65,20 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 **Do not** put `npm run build` in the Deploy command. Build produces `dist/`; deploy publishes it via Wrangler.
 
 **Node version:** [`.nvmrc`](../.nvmrc) is `24`. Optional env: `NODE_VERSION=24` if the build log uses the wrong Node.
+
+### Basemap tiles on Cloudflare
+
+Tiles are **not** in git (`public/map/v1/**/*.webp` is gitignored). They must land in `dist/map/v1/` at deploy time.
+
+| Approach | How |
+|----------|-----|
+| **A. Local / GHA with Docker (recommended)** | `npm run map:generate && npm run build && npx wrangler deploy` (needs Docker + `CLOUDFLARE_API_TOKEN`) |
+| **B. Container only** | Multi-stage `Dockerfile` always generates tiles into nginx `dist` — use GHCR for self-host |
+| **C. CF dashboard Git build alone** | CF build VMs have **no GDAL/Docker** — plain `npm run build` ships a **tile-less** `dist`. Do not rely on this for production map until you add a prebuilt tile download step |
+
+**Localhost** does not need tiles on disk: dev defaults to `https://satisfactory-heatmap.com/map/v1/...`. After the first successful deploy that includes tiles, every worktree gets a basemap for free.
+
+Full runbooks: [`public/map/v1/README.md`](../public/map/v1/README.md).
 
 There is **no** separate “build output directory” field when Deploy is `wrangler deploy` — output is defined in Wrangler:
 

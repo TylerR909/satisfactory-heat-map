@@ -69,9 +69,9 @@ const ATTRIBUTION_BODY = (
         (shipped derived tables only; full Docs not redistributed).
       </li>
       <li>
-        <span className="text-slate-100">Basemap tiles</span> — temporary CDN hosted by
-        satisfactory-logistics (map art © Coffee Stain). Bandwidth courtesy of their public pyramid;
-        we plan to self-host when ready. See map corner © control for the short form.
+        <span className="text-slate-100">Basemap tiles</span> — self-hosted WebP pyramid derived
+        from the public wiki map image (map art © Coffee Stain Studios). See{" "}
+        <span className="font-mono text-slate-400">public/map/v1/README.md</span>.
       </li>
       <li>
         <span className="text-slate-100">Extractor rates</span> — project-maintained tables (not

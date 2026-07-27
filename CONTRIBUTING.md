@@ -74,7 +74,7 @@ docker compose up -d
 |-------|--------|
 | Resource nodes | [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT `WorldResourceNodes.json` |
 | Recipes & items | Compact extract from Coffee Stain `CommunityResources/Docs/en-US.json` via `npm run parse-docs` (full Docs **not** shipped) |
-| Basemap tiles | Temporary public CDN from satisfactory-logistics — map art © Coffee Stain; plan to self-host |
+| Basemap tiles | Self-hosted `/map/v1/` WebP pyramid (wiki Map.jpg → `npm run map:generate` once per machine); map art © Coffee Stain. See `public/map/v1/README.md` |
 | Extractor rates | Project tables in `src/lib/mining.ts` |
 
 Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
