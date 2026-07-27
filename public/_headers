@@ -10,9 +10,9 @@
 /data/*
   Cache-Control: public, max-age=86400
 
-# Map tiles (self-hosted later)
-/map/*
-  Cache-Control: public, max-age=86400
+# Versioned basemap pyramid (immutable path)
+/map/v1/*
+  Cache-Control: public, max-age=31536000, immutable
 
 # HTML shell + service worker — always revalidate
 /

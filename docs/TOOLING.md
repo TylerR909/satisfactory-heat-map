@@ -53,11 +53,16 @@ Config: `biome.json` with React domain recommended + those rules as error.
 | **`npm run lint`** | `biome check .` |
 | **`npm run lint:fix`** | `biome check --write .` |
 | **`npm run clean`** | Remove `dist/`, caches, coverage |
+| **`npm run map:generate`** | Docker + OSGeo GDAL: wiki Map.jpg → `public/map/v1/` WebP pyramid |
+| **`npm run map:pack`** | Pack WebPs → committed `map-tiles/v1.tar.gz` (~1.4 MB) for CF Git builds |
+| **`npm run map:ensure`** | Unpack pack into `public/map/v1/` if tiles missing (used by `npm run build`) |
+| **`npm run map:clean`** | Remove generated map tiles / scratch dirs; keep README + pack |
 | **`npm run wasm:build`** | Docker Compose `wasm-builder` only; no-op without `crates/` |
 
 ### Production Docker (idiomatic)
 
-- **Build stage:** `npm ci` + `npm run build`
+- **Tiles stage:** OSGeo GDAL image runs `scripts/map-generate-inner.sh` (wiki → WebP pyramid)
+- **Build stage:** `npm ci` + copy tiles from GDAL stage + `npm run build` (map:ensure is a no-op if tiles already present)
 - **Runtime:** nginx copies `dist/` — **no Node in runtime image**
 - Do **not** use `npm run preview` as container CMD or as “production”
 
@@ -111,4 +116,5 @@ Vite wiring lives in `vite.config.ts` (`react()` + babel `reactCompilerPreset()`
 | `docs/DATA.md` | Node/recipe/basemap provenance |
 | `docs/ROADMAP.md` | Done vs next phases |
 | `docs/STATUS.md` | Handoff snapshot after meaningful pushes |
-| `public/scraped/README.md` | Temporary basemap CDN only |
+| `public/map/v1/README.md` | Basemap generate/runtime runbooks |
+| `map-tiles/README.md` | Committed tile pack for CF Git builds |

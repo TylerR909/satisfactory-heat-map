@@ -6,7 +6,7 @@ Dev setup, data refresh, and project docs for people working on the codebase. En
 
 ```bash
 # Node 24+
-npm ci
+npm ci             # also runs prepare → lefthook install (git hooks)
 npm start          # Vite HMR
 ```
 
@@ -15,6 +15,20 @@ npm test
 npm run lint
 npm run build
 npm run preview    # optional: serve dist/ locally (not how we ship prod)
+```
+
+### Git hooks (lefthook)
+
+[`lefthook.yml`](lefthook.yml) installs a **pre-commit** hook via `npm run prepare` / `npm ci`:
+
+| Step | What |
+|------|------|
+| **biome** | `biome check --write` on **staged** source files only; auto-fixes are re-staged (`stage_fixed`) |
+| **typecheck** | full `tsc --noEmit` (`npm run typecheck`) |
+
+```bash
+npx lefthook run pre-commit   # run hooks without committing
+LEFTHOOK=0 git commit …       # skip hooks once (emergency only)
 ```
 
 ## Docker commands (local)
@@ -74,7 +88,7 @@ docker compose up -d
 |-------|--------|
 | Resource nodes | [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT `WorldResourceNodes.json` |
 | Recipes & items | Compact extract from Coffee Stain `CommunityResources/Docs/en-US.json` via `npm run parse-docs` (full Docs **not** shipped) |
-| Basemap tiles | Temporary public CDN from satisfactory-logistics — map art © Coffee Stain; plan to self-host |
+| Basemap tiles | Self-hosted `/map/v1/` WebPs. Commit pack `map-tiles/v1.tar.gz`; worktree: `npm run map:ensure` or `map:generate`. Map art © Coffee Stain. See `public/map/v1/README.md` |
 | Extractor rates | Project tables in `src/lib/mining.ts` |
 
 Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.

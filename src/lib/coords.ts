@@ -3,8 +3,8 @@ import type { MapMeta } from "@/types";
 export type LatLngTuple = [number, number];
 
 /**
- * Map projection for the temporary rockfactory WebP tile pyramid
- * (same math as satisfactory-logistics `src/map/coords.ts`).
+ * Map projection for the self-hosted WebP tile pyramid
+ * (same game→Leaflet math as rockfactory / community calibration).
  *
  * Do **not** flip tile Y in the TileLayer — that produces horizontal
  * strip seams that get worse every zoom level.
@@ -13,7 +13,7 @@ export type LatLngTuple = [number, number];
  * This transform is calibrated so **markers sit on the basemap art**, not
  * so that mathematical +Y points “up the screen.”
  *
- * See docs/DATA.md / public/scraped/README.md.
+ * See docs/DATA.md / public/map/v1/README.md.
  */
 
 /** Leaflet zoom-0 image size (= one 256px tile). */
@@ -38,16 +38,34 @@ export const IMAGE_BOUNDS: LatLngTuple[] = [
 ];
 
 export const MIN_ZOOM = 0;
-export const MAX_ZOOM = 7;
+/** Matches wiki→4096 pyramid (`npm run map:generate`, z0–4). */
+export const MAX_ZOOM = 4;
 export const DEFAULT_ZOOM = 2;
 
-/** Temporary basemap tiles (rockfactory CDN). */
-export const DEFAULT_TILES_URL =
-  "https://satisfactory-logistics-maps.fra1.cdn.digitaloceanspaces.com/map/v2/{z}/{x}/{y}.webp";
+/** Same-origin path (Vite `public/` in dev; baked into `dist` in prod). */
+export const DEFAULT_TILES_URL = "/map/v1/{z}/{x}/{y}.webp";
+
+/**
+ * Resolve TileLayer URL template.
+ * - `VITE_MAP_TILES_BASE_URL` wins (absolute host, `/map/v1`, or full `{z}/{x}/{y}` template)
+ * - Else `metaTilesUrl`, else same-origin `DEFAULT_TILES_URL`
+ *
+ * Dev and prod both default to same-origin. Local Vite: `npm run map:ensure`
+ * (unpack pack) or `npm run map:generate` (Docker). Do not point at a remote
+ * host unless it serves real WebPs (SPA HTML → `net::ERR_BLOCKED_BY_ORB`).
+ */
+export function resolveTilesUrl(metaTilesUrl?: string): string {
+  const override = import.meta.env.VITE_MAP_TILES_BASE_URL as string | undefined;
+  if (override?.trim()) {
+    const base = override.trim().replace(/\/$/, "");
+    return base.includes("{z}") ? base : `${base}/{z}/{x}/{y}.webp`;
+  }
+  return metaTilesUrl?.trim() || DEFAULT_TILES_URL;
+}
 
 /**
  * Game cm → Leaflet CRS.Simple [lat, lng].
- * Matches rockfactory so markers land on their tile pyramid.
+ * Community-calibrated so markers land on the basemap art.
  */
 export function worldToLeaflet(
   x: number,

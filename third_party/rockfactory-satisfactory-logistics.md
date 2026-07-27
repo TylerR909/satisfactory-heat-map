@@ -12,7 +12,6 @@ Bootstrap resource **node slot data** shipped as:
 
 Derived from upstream `WorldResourceNodes.json` (MIT). Coordinates, actor ids, and the vanilla type/purity layout are used as the fixed slot template for heatmaps and as input to the 1.2+ seed shuffle (Konsl algorithm — separate third_party entry).
 
-## What we do **not** claim
+## Scope of this notice
 
-- Map basemap **artwork** / tile pyramid is Coffee Stain IP (temporary CDN only; not this MIT notice).
-- Randomization of types/purities is **not** rockfactory’s work; see `konsl-satisfactory-world-generator.md`.
+This MIT notice covers **node JSON only**. Map basemap artwork is Coffee Stain IP; our tile pyramid is generated separately (see `public/map/v1/README.md`). Randomization of types/purities is **not** rockfactory’s work; see `konsl-satisfactory-world-generator.md`.

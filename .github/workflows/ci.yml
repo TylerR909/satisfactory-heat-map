@@ -39,14 +39,15 @@ jobs:
       - name: Test
         run: npm test
 
+      # map:ensure unpacks map-tiles/v1.tar.gz so dist includes real WebPs (same as CF Git).
       - name: Build
         run: npm run build
 
-  # Smoke the multi-stage Dockerfile (no registry push)
+  # Smoke the multi-stage Dockerfile (generates basemap tiles + nginx dist)
   docker:
     name: Docker build (smoke)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: check
 
     steps:
@@ -65,3 +66,11 @@ jobs:
           tags: satisfactory-heat-map:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Assert basemap tile in image
+        run: |
+          docker create --name sf-ci-map satisfactory-heat-map:ci
+          docker cp sf-ci-map:/usr/share/nginx/html/map/v1/0/0/0.webp /tmp/map-0-0-0.webp
+          docker rm sf-ci-map
+          test -s /tmp/map-0-0-0.webp
+          echo "Basemap tile OK ($(wc -c </tmp/map-0-0-0.webp) bytes)"

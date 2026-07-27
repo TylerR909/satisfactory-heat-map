@@ -1,10 +1,15 @@
 # Local development / build-from-source compose.
 # For pull-only deploy, use docker-compose.example.yml (GHCR image).
+#
+# Multi-worktree: Compose project name defaults to the directory basename
+# (e.g. istanbul vs adelaide), so containers do not collide. Host port still
+# needs to be unique — set HEATMAP_PORT when 18547 is taken:
+#   HEATMAP_PORT=18548 docker compose up --build
 
 services:
   heatmap:
     build: .
     image: satisfactory-heat-map:local
     ports:
-      - "18547:80"
+      - "${HEATMAP_PORT:-18547}:80"
     restart: unless-stopped

@@ -1,0 +1,19 @@
+# https://lefthook.dev/configuration/
+# Install hooks: npm ci  (runs prepare → lefthook install)
+# Skip once:     LEFTHOOK=0 git commit ...
+# Run manually:  npx lefthook run pre-commit
+
+pre-commit:
+  parallel: false
+  commands:
+    # lint-staged style: format/lint only staged paths, re-stage fixes
+    biome:
+      glob: "*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,css,html}"
+      # --no-errors-on-unmatched: empty staged set is fine
+      # --files-ignore-unknown: skip non-source paths that still match glob
+      run: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
+      stage_fixed: true
+
+    # Project-wide (tsc is not path-scoped in a useful way for apps)
+    typecheck:
+      run: npm run typecheck

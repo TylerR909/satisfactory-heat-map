@@ -76,7 +76,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 | Rich collectible map / save editor | SCIM, th.gl, Konsl viewer |
 | Accounts, multiplayer sync, cloud save | Out of identity |
 | PR into satisfactory-calculator.com | Not open source; inspiration only |
-| Permanent SC-scraped data | Temporary basemap CDN only; see `docs/DATA.md` |
+| Permanent SC-scraped data | No — see `docs/DATA.md` |
 | Navmesh / true cave pathfinding | Soft cave/elevation *warnings* only |
 
 ## Success criteria (current)

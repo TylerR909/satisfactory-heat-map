@@ -39,7 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,svg,webp,png,json}"],
+        // Do not precache the basemap pyramid (hundreds of WebPs); runtime TileLayer is enough.
+        globPatterns: ["**/*.{js,css,html,ico,svg,png,json}"],
+        globIgnores: ["**/map/**"],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

@@ -36,10 +36,29 @@ async function maybeBuildWasm() {
 
 await maybeBuildWasm();
 
-const vite = spawn("npx", ["vite"], {
+const mapTile = path.join(root, "public", "map", "v1", "0", "0", "0.webp");
+if (!existsSync(mapTile)) {
+  console.warn(
+    "[start] Basemap tiles missing (public/map/v1/0/0/0.webp).\n" +
+      "        Run:  npm run map:ensure     # unpack committed map-tiles/v1.tar.gz (no Docker)\n" +
+      "          or: npm run map:generate   # rebuild from wiki (needs Docker)\n" +
+      "        Then: npm start\n" +
+      "        (Once per worktree; WebPs are gitignored.)",
+  );
+}
+
+// Conductor (and other hosts) may inject CONDUCTOR_PORT / PORT for multi-worktree previews.
+const port = process.env.CONDUCTOR_PORT || process.env.PORT || process.env.VITE_PORT;
+const viteArgs = ["vite"];
+if (port) {
+  viteArgs.push("--port", String(port), "--strictPort");
+}
+
+const vite = spawn("npx", viteArgs, {
   cwd: root,
   stdio: "inherit",
   shell: true,
+  env: process.env,
 });
 
 vite.on("exit", (code) => process.exit(code ?? 0));

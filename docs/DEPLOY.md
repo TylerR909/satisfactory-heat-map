@@ -57,7 +57,7 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 |---------|--------|
 | **Project / Worker name** | `satisfactory-heat-map` (must match [`wrangler.jsonc`](../wrangler.jsonc) `"name"`) |
 | **Production branch** | `main` |
-| **Build command** | `npm run build` |
+| **Build command** | `npm run build` (runs `map:ensure` → unpacks `map-tiles/v1.tar.gz` when needed) |
 | **Deploy command** | `npx wrangler deploy` (dashboard default — keep it) |
 | **Root directory** | *(leave empty)* |
 | **Builds for non-production branches** | **On** (recommended — PR/preview URLs). Off = only `main` builds. |
@@ -65,6 +65,43 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 **Do not** put `npm run build` in the Deploy command. Build produces `dist/`; deploy publishes it via Wrangler.
 
 **Node version:** [`.nvmrc`](../.nvmrc) is `24`. Optional env: `NODE_VERSION=24` if the build log uses the wrong Node.
+
+### Basemap tiles on Cloudflare
+
+Individual WebPs under `public/map/v1/` are **gitignored**. Cloudflare Git VMs have **no Docker/GDAL**, so the build cannot run `map:generate`.
+
+**MVP approach (keeps CF → Git pull/build — no wrangler login, no GHA secrets):**
+
+1. Commit a ~1.4 MB pack: [`map-tiles/v1.tar.gz`](../map-tiles/v1.tar.gz).
+2. `npm run build` always runs `map:ensure` first — unpacks the pack into `public/map/v1/` when WebPs are missing, then Vite copies them into `dist/`.
+3. CF dashboard build stays: `npm run build` → `npx wrangler deploy`.
+
+Refresh the pack only when the basemap source changes (once per change, from a machine with Docker):
+
+```bash
+npm run map:generate   # wiki → public/map/v1 WebPs
+npm run map:pack       # → map-tiles/v1.tar.gz
+git add map-tiles/v1.tar.gz && git commit -m "Update basemap tile pack"
+# merge to main → CF rebuilds with new tiles
+```
+
+After deploy, confirm real WebPs (not SPA HTML):
+
+```bash
+curl -sI "https://satisfactory-heatmap.com/map/v1/0/0/0.webp"
+# content-type: image/webp
+```
+
+If an old deploy cached HTML under `/map/v1/*` (`Cache-Control: immutable`), purge that path or bump to `/map/v2/` after a pack change.
+
+| Other paths | When |
+|-------------|------|
+| **Docker / GHCR** | Multi-stage image still **generates** tiles with GDAL (does not need the pack) |
+| **Optional laptop wrangler** | `npm run map:generate && npm run build && npx wrangler login && npx wrangler deploy` — works once, but the **next CF Git deploy without a committed pack** would drop tiles again. Prefer the pack. |
+
+**Localhost:** `npm run map:generate` once per worktree, **or** `npm run map:ensure` to unpack the committed pack without Docker.
+
+Full runbooks: [`public/map/v1/README.md`](../public/map/v1/README.md).
 
 There is **no** separate “build output directory” field when Deploy is `wrangler deploy` — output is defined in Wrangler:
 

@@ -19,7 +19,7 @@
 - [x] Extractor model: miner Mk/clock (solids only, clock max 250%); oil / water / wells
 - [x] Web Worker engine façade
 - [x] Planner knobs: Clustering (above Heat settings), Heat settings, Extractors; resets
-- [x] Map: rockfactory-compatible CRS, temporary CDN basemap tiles, heat overlay, nodes, pins, assignment lines, correct panes
+- [x] Map: community-calibrated CRS, self-hosted basemap tiles, heat overlay, nodes, pins, assignment lines, correct panes
 - [x] **Hash settings into the URL** (compact `#v1.<binary>` — mode, active demand, extractors, scoring, knobs)
 - [x] **Save & swap heatmaps** (abbrev chips; localStorage + plan hash; import paste hash; copy hash)
 - [x] Water caveat banner + omit-from-scoring toggle + Active raw demand strikethrough
@@ -47,8 +47,7 @@
 
 - [x] `scripts/parse-docs.mjs` from official Docs (en-US.json)
 - [ ] `scripts/extract-world-nodes` (or CI pull) from rockfactory MIT / FModel
-- [ ] Self-hosted basemap tiles under `public/map/` (replace temporary CDN) — **required before leaning on their bandwidth long-term**
-- [ ] Drop temporary CDN notes from `meta.json` / scraped README when done
+- [x] Basemap tiles under `public/map/v1/` (wiki → Docker GDAL; committed `map-tiles/v1.tar.gz` + `map:ensure` for CF Git)
 - [x] Cloudflare Workers static-asset deploy docs + `wrangler.jsonc` + `public/_headers` ([docs/DEPLOY.md](DEPLOY.md)); Git connect + domain is operator one-time
 - [x] Docker image + `.dockerignore` + GHCR on merge-to-main + auto Releases + `docker-compose.example.yml` (:18547)
 - [x] CI on PR/`main`: lint · test · build · Docker smoke build (`.github/workflows/ci.yml`)
