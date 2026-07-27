@@ -183,6 +183,23 @@ describe("applyWorldSeed", () => {
     expect(depOut.purity).toBe(dep.purity);
   });
 
+  it("updates displayName to match shuffled resource (not vanilla label)", () => {
+    const base = loadBaseNodes();
+    const node = base.find((n) => n.nodeType === "node" && n.resource === "Desc_OreIron_C");
+    expect(node).toBeDefined();
+    if (!node) return;
+    const out = applyWorldSeed(base, configForSeed(42));
+    const shuffled = out.find((n) => n.id === node.id);
+    expect(shuffled).toBeDefined();
+    if (!shuffled) return;
+    // After shuffle, label must follow resource — not the pre-seed displayName
+    expect(shuffled.displayName).toBeTruthy();
+    // If resource changed away from iron, displayName must not still say Iron Ore
+    if (shuffled.resource !== "Desc_OreIron_C") {
+      expect(shuffled.displayName).not.toMatch(/iron/i);
+    }
+  });
+
   it("preserves multiset of resources on shuffled nodes (strict + no_change)", () => {
     const base = loadBaseNodes();
     const nodeIds = new Set(base.filter((n) => n.nodeType === "node").map((n) => n.id));

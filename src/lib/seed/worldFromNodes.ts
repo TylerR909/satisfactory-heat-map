@@ -5,6 +5,7 @@
  * EXCLUDED from the shuffle pool (see third_party/konsl-satisfactory-world-generator.md).
  */
 
+import { resourceLabel } from "@/lib/resources";
 import { compareCodeUnit, PURITY_ORDINAL } from "@/lib/seed/resources";
 import type { Purity, ResourceNode } from "@/types";
 
@@ -119,22 +120,22 @@ export function algoWorldToNodes(baseSlots: ResourceNode[], world: AlgoWorld): R
     if (!slot) continue;
     slot.resource = rn.resource;
     slot.purity = rn.purity;
-    // Keep displayName in sync when present
-    if (slot.displayName !== undefined) {
-      // leave displayName; map layer uses resource + items catalog
-    }
+    // Must update label — vanilla displayName is the pre-shuffle type and would lie after seed
+    slot.displayName = resourceLabel(rn.resource);
   }
 
   for (const core of world.frackingCores) {
     const coreSlot = out[core.baseIndex];
     if (coreSlot) {
       coreSlot.resource = core.resource;
+      coreSlot.displayName = resourceLabel(core.resource);
     }
     for (const sat of core.satellites) {
       const satSlot = out[sat.baseIndex];
       if (!satSlot) continue;
       satSlot.resource = core.resource;
       satSlot.purity = sat.purity;
+      satSlot.displayName = resourceLabel(core.resource);
     }
   }
 

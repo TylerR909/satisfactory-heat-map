@@ -53,10 +53,13 @@ export function HeatmapLayer({ result, meta, opacity, heatRender = DEFAULT_HEAT_
     return () => cancelAnimationFrame(id);
   }, [result, heatRender]);
 
-  if (!url || !imageBounds) return null;
+  if (!url || !imageBounds || !result) return null;
 
+  // Key forces Leaflet to replace the overlay when the raster changes (url prop alone
+  // can leave a stale heat image while top-site pins already reflect the new demand).
   return (
     <ImageOverlay
+      key={url}
       url={url}
       bounds={imageBounds}
       opacity={opacity}
