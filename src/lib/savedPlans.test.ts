@@ -79,9 +79,7 @@ describe("buildSavedPlan snapshot", () => {
       {
         mode: "product",
         rawDemand: [],
-        productTargets: [
-          { id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 },
-        ],
+        productTargets: [{ id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 }],
         miner: { ...DEFAULT_MINER_SETTINGS },
         scoringMode: "centered",
         scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
@@ -90,9 +88,7 @@ describe("buildSavedPlan snapshot", () => {
       {
         mode: "product",
         rawDemand: [],
-        productTargets: [
-          { id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 },
-        ],
+        productTargets: [{ id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 }],
         items: {
           Desc_SpaceElevatorPart_10_C: {
             id: "Desc_SpaceElevatorPart_10_C",
