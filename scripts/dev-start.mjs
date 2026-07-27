@@ -42,14 +42,22 @@ if (!existsSync(mapTile)) {
     "[start] Basemap tiles missing (public/map/v1/0/0/0.webp).\n" +
       "        Run:  npm run map:generate\n" +
       "        Then: npm start\n" +
-      "        (One-time per machine; tiles are gitignored.)",
+      "        (Once per worktree; tiles are gitignored.)",
   );
 }
 
-const vite = spawn("npx", ["vite"], {
+// Conductor (and other hosts) may inject CONDUCTOR_PORT / PORT for multi-worktree previews.
+const port = process.env.CONDUCTOR_PORT || process.env.PORT || process.env.VITE_PORT;
+const viteArgs = ["vite"];
+if (port) {
+  viteArgs.push("--port", String(port), "--strictPort");
+}
+
+const vite = spawn("npx", viteArgs, {
   cwd: root,
   stdio: "inherit",
   shell: true,
+  env: process.env,
 });
 
 vite.on("exit", (code) => process.exit(code ?? 0));

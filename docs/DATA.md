@@ -87,7 +87,7 @@ Docs ClassNames differ from some wiki nicknames (e.g. HMF → `Desc_ModularFrame
 | Environment | Tile source |
 |-------------|-------------|
 | **Production** (CF / Docker) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist`; Docker image generates at build) |
-| **Localhost** | Same-origin after **one** `npm run map:generate` per machine (gitignored WebPs) |
+| **Localhost** | Same-origin after **one** `npm run map:generate` per worktree (gitignored WebPs) |
 | **Override** | `VITE_MAP_TILES_BASE_URL=https://satisfactory-heatmap.com/map/v1` only when prod serves real WebPs |
 
 **ORB / blank map:** if tiles 404 into SPA HTML (`content-type: text/html`), Chrome blocks cross-origin loads as `net::ERR_BLOCKED_BY_ORB`. Fix: generate locally or deploy `dist` that includes the pyramid.

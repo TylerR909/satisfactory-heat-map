@@ -76,7 +76,7 @@ Tiles are **not** in git (`public/map/v1/**/*.webp` is gitignored). They must la
 | **B. Container only** | Multi-stage `Dockerfile` always generates tiles into nginx `dist` — use GHCR for self-host |
 | **C. CF dashboard Git build alone** | CF build VMs have **no GDAL/Docker** — plain `npm run build` ships a **tile-less** `dist`. Do not rely on this for production map until you add a prebuilt tile download step |
 
-**Localhost** does not need tiles on disk: dev defaults to `https://satisfactory-heatmap.com/map/v1/...`. After the first successful deploy that includes tiles, every worktree gets a basemap for free.
+**Localhost** serves same-origin tiles from `public/map/v1/` after `npm run map:generate` (once per worktree). Docker Compose / the production image generate tiles in the multi-stage build.
 
 Full runbooks: [`public/map/v1/README.md`](../public/map/v1/README.md).
 

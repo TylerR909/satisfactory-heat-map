@@ -17,8 +17,8 @@ services:
     image: ghcr.io/tylerr909/satisfactory-heat-map:latest
     container_name: satisfactory-heatmap
     ports:
-      # Host:container — 18547 is uncommon (avoids clashing with 8080/3000/80)
-      - "18547:80"
+      # Host:container — override with HEATMAP_PORT for multi-worktree (default 18547)
+      - "${HEATMAP_PORT:-18547}:80"
     restart: unless-stopped
     # Optional — nginx:alpine has busybox wget
     healthcheck:

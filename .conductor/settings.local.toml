@@ -1,0 +1,27 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+# Surface env files + generated basemap tiles in the workspace file picker.
+# (Tiles stay gitignored; setup regenerates them per worktree.)
+file_include_globs = ".env*\n**/*.webp"
+
+# Preview URLs from the Conductor Open menu.
+# $CONDUCTOR_PORT is assigned per workspace so multiple worktrees can run Vite.
+[[preview_urls]]
+name = "localhost"
+url = "http://localhost:$CONDUCTOR_PORT/"
+
+# Docker Compose host port (default 18547). For a second worktree, set
+# HEATMAP_PORT and update this URL or open the port manually — Conductor only
+# injects one dynamic port ($CONDUCTOR_PORT) for the run script today.
+[[preview_urls]]
+name = "docker"
+url = "http://localhost:18547/"
+
+[scripts]
+# Per-worktree: install deps + build basemap WebPs into public/map/v1/
+setup = "npm ci && npm run map:generate"
+# Drop large gitignored tile artifacts when archiving the workspace
+archive = "npm run map:clean"
+# Start Vite on Conductor's port (see scripts/dev-start.mjs)
+run = "npm start"
+auto_run_after_setup = false

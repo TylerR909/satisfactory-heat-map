@@ -33,7 +33,7 @@ adelaide/
 5. **Extractor model** distinguishes miner Mk (solids), oil extractors, water, wells, deposits (`mining.ts`).
 6. **Engine façade** (`createEngine`) isolates future WASM.
 7. **Leaflet CRS.Simple** rockfactory-compatible coords; heat is `ImageOverlay` PNG (no rescore on pan/zoom).
-8. **Basemap:** self-hosted `/map/v1/` WebP pyramid (wiki Map.jpg → `npm run map:generate` once per machine; same-origin in dev and prod).
+8. **Basemap:** self-hosted `/map/v1/` WebP pyramid (wiki Map.jpg → `npm run map:generate` once per worktree; same-origin in dev and prod).
 9. **Nodes** bootstrapped from rockfactory MIT JSON (**626** entries).
 10. **Recipes** are a minimal hand set — Mode B is intentionally thin.
 11. **Persist** `sf-heatmap-v5`; reset-all keeps products/inputs.

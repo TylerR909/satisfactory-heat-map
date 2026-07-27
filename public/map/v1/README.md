@@ -13,7 +13,7 @@ XYZ WebP tile pyramid for the Leaflet basemap (`CRS.Simple`, 256×256 tiles, no 
 | **Production** (Cloudflare / Docker image) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist` at deploy) |
 | **Localhost** (`npm start`) | Same-origin `/map/v1/{z}/{x}/{y}.webp` from Vite `public/` |
 
-**Once per machine** (tiles are gitignored):
+**Once per worktree** (tiles are gitignored, not shared across worktrees):
 
 ```bash
 npm run map:generate
