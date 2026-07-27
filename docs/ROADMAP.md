@@ -30,10 +30,10 @@
 
 ## Phase 1.5 — Seeds (high value)
 
-- [ ] Konsl MIT randomization (TS port **or** Docker WASM)
-- [ ] UI: seed + mode + purity settings
-- [ ] Re-assign node types/purities on fixed slots → recompute heatmap
-- [ ] Share URL includes seed params
+- [x] Konsl MIT randomization (TypeScript port of algorithm; see `src/lib/seed/`, `third_party/konsl-…`)
+- [x] UI: Seed button + popover (paste / random / named saved seeds) — mode/purity fixed to Random + unchanged
+- [x] Re-assign node types/purities on fixed slots → cached nodes → heatmap
+- [x] Share URL includes seed (omitted for Default; seed `0` valid randomized world)
 
 ## Phase 2 — Depth without becoming a calculator
 

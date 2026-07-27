@@ -12,7 +12,7 @@
 
 | Path | Contents | Provenance |
 |------|----------|------------|
-| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | Bootstrap from [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) `WorldResourceNodes.json` (**MIT**). Attribute & replace with own FModel extract when possible. |
+| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | Bootstrap from [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) `WorldResourceNodes.json` (**MIT** — notice in `third_party/rockfactory-satisfactory-logistics.LICENSE`). Attribute & replace with own FModel extract when possible. |
 | `public/data/recipes/items.json` | Compact item catalog (~194) | Derived from Coffee Stain Docs via `npm run parse-docs` |
 | `public/data/recipes/recipes.json` | Factory recipes (~290: defaults + alts) | Same; **not** the 10MB Docs file |
 | `public/data/recipes/docs-meta.json` | Parse stamp / counts | Generated; safe to commit |
@@ -40,6 +40,8 @@
 - Coordinates: Unreal **cm**.
 - `nodeType`: `node` | `deposit` | `frackingCore` | `frackingSatellite` | `geyser`.
 - Slot **positions** are fixed even under 1.2 randomization; seed only reassigns resource/purity (and well distributions).
+- **Deposits** (`BP_ResourceDeposit_*`) are **not** in the shuffle pool (Konsl extracts only `BP_ResourceNode_C`); they stay vanilla under all seeds.
+- **Seed algorithm:** TypeScript port of [Konsl/satisfactory-world-generator](https://github.com/Konsl/satisfactory-world-generator) MIT core (`src/lib/seed/`). Product policy: Default = `seed: null` (identity); any numeric seed uses in-game **Random** mode + **unchanged** purity. Full MIT notice: `third_party/konsl-satisfactory-world-generator.md`.
 
 ## Honest regeneration: resource nodes (FModel)
 

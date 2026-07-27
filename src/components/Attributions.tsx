@@ -29,7 +29,8 @@ const ATTRIBUTION_BODY = (
     </p>
     <ul className="list-disc space-y-1.5 pl-4">
       <li>
-        <span className="text-slate-100">Resource nodes</span> — positions bootstrapped from{" "}
+        <span className="text-slate-100">Resource nodes (slots)</span> — positions and vanilla
+        types/purities bootstrapped from{" "}
         <a
           className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
           href="https://github.com/rockfactory/satisfactory-logistics"
@@ -38,7 +39,28 @@ const ATTRIBUTION_BODY = (
         >
           rockfactory/satisfactory-logistics
         </a>{" "}
-        (<span className="font-mono text-slate-400">WorldResourceNodes.json</span>, MIT).
+        (<span className="font-mono text-slate-400">WorldResourceNodes.json</span>, MIT). See{" "}
+        <span className="font-mono text-slate-400">
+          third_party/rockfactory-satisfactory-logistics.md
+        </span>
+        .
+      </li>
+      <li>
+        <span className="text-slate-100">Node randomization (1.2+ seeds)</span> — algorithm ported
+        from{" "}
+        <a
+          className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
+          href="https://github.com/Konsl/satisfactory-world-generator"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Konsl/satisfactory-world-generator
+        </a>{" "}
+        (MIT; viewer UI not used). See{" "}
+        <span className="font-mono text-slate-400">
+          third_party/konsl-satisfactory-world-generator.md
+        </span>
+        .
       </li>
       <li>
         <span className="text-slate-100">Recipes &amp; items</span> — compact extract derived from

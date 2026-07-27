@@ -37,9 +37,11 @@
 | `workers/heatmap.worker.ts` | Off-main-thread scoring |
 | `hooks/useAutoHeatmap.ts` | Debounced live recompute from store deps |
 | `hooks/useHeatmapWorker.ts` | Worker client |
-| `store/useAppStore.ts` | Mode, demand, products, knobs, heatmap, persist, Send to Raw |
+| `lib/seed/*` | Konsl MIT node randomization port + seed→nodes cache |
+| `lib/savedSeeds.ts` | Named saved-seed library (map seed + plan shelf) |
+| `store/useAppStore.ts` | Mode, demand, products, knobs, `seed` / `baseSlots` / `nodes`, heatmap, persist |
 | `components/map/*` | Leaflet layers, panes, fit-world |
-| `components/planner/*` | Side panel |
+| `components/planner/*` | Side panel, Seed popover, saved plans |
 
 ## Data flow
 

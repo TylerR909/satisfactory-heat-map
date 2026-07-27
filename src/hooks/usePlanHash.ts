@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { decodePlanHash, encodePlanHash, type PlanHashSource } from "@/lib/planHash";
+import { decodePlanHash, encodePlanHash, mapSeedsEqual, type PlanHashSource } from "@/lib/planHash";
+import { getActiveSavedSeed, loadSeedLibrary, persistSeedLibrary } from "@/lib/savedSeeds";
 import { useAppStore } from "@/store/useAppStore";
 
 function pickPlanSource(): PlanHashSource {
@@ -11,6 +12,7 @@ function pickPlanSource(): PlanHashSource {
     miner: s.miner,
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
+    seed: s.seed,
   };
 }
 
@@ -41,7 +43,21 @@ export function usePlanHash(writeDebounceMs = 200) {
       const snap = decodePlanHash(hash);
       if (!snap) return false;
       applyingHash.current = true;
-      useAppStore.getState().applyPlanSnapshot(snap);
+
+      // Shared URL: stay on active saved seed only if seed matches; else ephemeral
+      const lib = loadSeedLibrary();
+      const active = getActiveSavedSeed(lib);
+      const hashSeed = snap.seed ?? null;
+      if (active && mapSeedsEqual(active.seed, hashSeed)) {
+        useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+      } else if (active && !mapSeedsEqual(active.seed, hashSeed)) {
+        // Ephemeral: clear active saved seed so we don't rewrite its shelf
+        persistSeedLibrary({ ...lib, activeId: null });
+        useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+      } else {
+        useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+      }
+
       queueMicrotask(() => {
         applyingHash.current = false;
       });

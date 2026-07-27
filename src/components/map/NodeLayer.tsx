@@ -2,7 +2,7 @@ import { CircleMarker, Tooltip, useMap } from "react-leaflet";
 import { ensureMapPanes } from "@/components/map/MapPanes";
 import { worldToLeaflet } from "@/lib/coords";
 import { formatRate, nodeExtractRate } from "@/lib/mining";
-import { RESOURCE_COLORS } from "@/lib/resources";
+import { RESOURCE_COLORS, resourceLabel } from "@/lib/resources";
 import type { MapMeta, MinerSettings, RawDemand, ResourceNode } from "@/types";
 
 type Props = {
@@ -33,9 +33,12 @@ export function NodeLayer({ nodes, meta, demand, miner, show }: Props) {
         const stroke =
           n.resource === "Desc_LiquidOil_C" || n.resource === "Desc_Coal_C" ? "#f8fafc" : color;
         const rate = nodeExtractRate(n, miner);
+        // Key includes type/purity so seed reshuffles remount markers (Leaflet pathOptions
+        // often do not repaint fillColor when only props change under a stable key).
+        const markerKey = `${n.id}:${n.resource}:${n.purity}`;
         return (
           <CircleMarker
-            key={n.id}
+            key={markerKey}
             center={worldToLeaflet(n.x, n.y, meta)}
             radius={radius}
             pane="nodePane"
@@ -48,7 +51,7 @@ export function NodeLayer({ nodes, meta, demand, miner, show }: Props) {
             }}
           >
             <Tooltip>
-              {n.displayName ?? n.resource} · {n.purity}
+              {resourceLabel(n.resource)} · {n.purity}
               {n.nodeType !== "node" ? ` · ${n.nodeType}` : ""}
               <br />
               {rate > 0 ? `${formatRate(rate)}/min` : "no extract rate"}

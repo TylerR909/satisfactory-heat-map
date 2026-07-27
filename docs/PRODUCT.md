@@ -65,7 +65,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 - Clear **shortfall** when the region cannot supply demand.
 - Diverse **top-N** candidate sites with per-resource node assignment and haul cost.
 - Peak-emphasized heat paint (display only) so the whole map does not wash yellow.
-- Seed-aware worlds later (fixed slots, reassigned types/purities).
+- Seed-aware worlds: paste Map Seed → fixed slots, reassigned types/purities (Konsl MIT algorithm).
 
 ## Explicit non-goals
 

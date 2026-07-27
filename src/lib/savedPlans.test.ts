@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { planAbbrev, primaryPlanLabel } from "@/lib/savedPlans";
+import { decodePlanHash } from "@/lib/planHash";
+import {
+  buildSavedPlan,
+  planAbbrev,
+  planSnapshotFromSaved,
+  primaryPlanLabel,
+} from "@/lib/savedPlans";
+import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
 
 describe("planAbbrev", () => {
   it("uses first letters for multi-word names", () => {
@@ -62,5 +69,42 @@ describe("primaryPlanLabel", () => {
     });
     expect(title).toBe("Iron Plate");
     expect(abbrev).toBe("IP");
+  });
+});
+
+describe("buildSavedPlan snapshot", () => {
+  it("stores a full snapshot so chip restore is not hash-lossy", () => {
+    const plan = buildSavedPlan(
+      null,
+      {
+        mode: "product",
+        rawDemand: [],
+        productTargets: [{ id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 }],
+        miner: { ...DEFAULT_MINER_SETTINGS },
+        scoringMode: "centered",
+        scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
+        seed: null,
+      },
+      {
+        mode: "product",
+        rawDemand: [],
+        productTargets: [{ id: "1", productId: "Desc_SpaceElevatorPart_10_C", itemsPerMinute: 2 }],
+        items: {
+          Desc_SpaceElevatorPart_10_C: {
+            id: "Desc_SpaceElevatorPart_10_C",
+            name: "Biochemical Sculptor",
+            raw: false,
+          },
+        },
+        recipes: [],
+      },
+    );
+    expect(plan.abbrev).toBe("BS");
+    expect(plan.snapshot.productTargets[0]?.productId).toBe("Desc_SpaceElevatorPart_10_C");
+    expect(plan.snapshot.productTargets[0]?.itemsPerMinute).toBe(2);
+
+    const restored = planSnapshotFromSaved(plan, decodePlanHash);
+    expect(restored?.productTargets[0]?.productId).toBe("Desc_SpaceElevatorPart_10_C");
+    expect(restored?.productTargets[0]?.itemsPerMinute).toBe(2);
   });
 });
