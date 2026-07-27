@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "prepare": "lefthook install",
+    "prepare": "node scripts/lefthook-install.mjs",
     "clean": "node scripts/clean.mjs",
     "map:generate": "node scripts/map-generate.mjs",
     "map:pack": "node scripts/map-pack.mjs",

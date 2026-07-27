@@ -15,7 +15,8 @@ RUN chmod +x /work/scripts/map-generate-inner.sh \
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: skip prepare/lefthook (needs git + full tree; not useful in the image)
+RUN npm ci --ignore-scripts
 COPY . .
 # Inject GDAL-generated tiles (not stored in git)
 COPY --from=tiles /work/public/map/v1/ /app/public/map/v1/
