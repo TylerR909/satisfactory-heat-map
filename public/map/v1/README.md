@@ -13,10 +13,15 @@ XYZ WebP tile pyramid for the Leaflet basemap (`CRS.Simple`, 256×256 tiles, no 
 | **Production** (Cloudflare / Docker image) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist` at deploy) |
 | **Localhost** (`npm start`) | Same-origin `/map/v1/{z}/{x}/{y}.webp` from Vite `public/` |
 
-**Once per worktree** (tiles are gitignored, not shared across worktrees):
+**Per worktree** (extracted/generated WebPs are gitignored):
 
 ```bash
+# With Docker (regenerate from wiki):
 npm run map:generate
+npm start
+
+# Without Docker (unpack the committed ~1.4MB pack — same as Cloudflare builds):
+npm run map:ensure
 npm start
 ```
 
@@ -43,9 +48,13 @@ Map artwork © Coffee Stain Studios — used as a public fair-use community refe
 **Requirements:** Docker (image `osgeo/gdal:ubuntu-small-3.6.3` — includes `gdal2tiles.py`). No host GDAL install.
 
 ```bash
-npm run map:generate   # wiki → 4096² → WebP z0–4 → public/map/v1/
-npm run map:clean      # remove generated webps + scratch dirs; keeps this README
+npm run map:generate   # wiki → 4096² → WebP z0–4 → public/map/v1/  (needs Docker)
+npm run map:pack       # → map-tiles/v1.tar.gz  (commit this for Cloudflare Git builds)
+npm run map:ensure     # unpack pack → public/map/v1/ if WebPs missing (no Docker)
+npm run map:clean      # remove generated webps + scratch dirs; keeps this README + pack
 ```
+
+**Cloudflare:** build runs `map:ensure` automatically via `npm run build`. Keep `map-tiles/v1.tar.gz` in git so previews/production get real `image/webp` (not SPA HTML). No wrangler tokens required.
 
 What `map:generate` does inside Docker:
 

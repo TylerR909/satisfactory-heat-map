@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node scripts/dev-start.mjs",
     "dev": "vite",
-    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "build": "node scripts/map-ensure-tiles.mjs && tsc -p tsconfig.app.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
@@ -18,6 +18,8 @@
     "lint:fix": "biome check --write .",
     "clean": "node scripts/clean.mjs",
     "map:generate": "node scripts/map-generate.mjs",
+    "map:pack": "node scripts/map-pack.mjs",
+    "map:ensure": "node scripts/map-ensure-tiles.mjs",
     "map:clean": "node scripts/map-clean.mjs",
     "parse-docs": "node scripts/parse-docs.mjs",
     "wasm:build": "node scripts/wasm-build.mjs"

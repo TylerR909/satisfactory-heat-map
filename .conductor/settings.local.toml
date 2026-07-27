@@ -19,7 +19,8 @@ url = "http://localhost:18547/"
 
 [scripts]
 # Per-worktree: install deps + build basemap WebPs into public/map/v1/
-setup = "npm ci && npm run map:generate"
+# Prefer pack unpack (no Docker on all machines); generate still available via map:generate
+setup = "npm ci && npm run map:ensure"
 # Drop large gitignored tile artifacts when archiving the workspace
 archive = "npm run map:clean"
 # Start Vite on Conductor's port (see scripts/dev-start.mjs)

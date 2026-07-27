@@ -18,6 +18,7 @@ data/map/
 *.local
 
 # Basemap pipeline (generated WebPs; keep README)
+# Committed pack for Cloudflare Git builds: map-tiles/v1.tar.gz (not ignored)
 map-source/
 dist-map-tiles/
 public/map/v1/**

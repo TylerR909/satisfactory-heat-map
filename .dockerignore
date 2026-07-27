@@ -6,9 +6,11 @@ coverage
 dev-dist
 map-source
 dist-map-tiles
-# Host-generated tiles optional; image always regenerates in tiles stage
+# Host-generated tiles optional; image regenerates in tiles stage (or could unpack pack)
 public/map/v1/**
 !public/map/v1/README.md
+# Pack not required in Docker image (GDAL stage builds tiles from wiki)
+map-tiles
 
 # Git / IDE / local
 .git

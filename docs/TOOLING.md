@@ -54,7 +54,9 @@ Config: `biome.json` with React domain recommended + those rules as error.
 | **`npm run lint:fix`** | `biome check --write .` |
 | **`npm run clean`** | Remove `dist/`, caches, coverage |
 | **`npm run map:generate`** | Docker + OSGeo GDAL: wiki Map.jpg → `public/map/v1/` WebP pyramid |
-| **`npm run map:clean`** | Remove generated map tiles / scratch dirs; keep `public/map/v1/README.md` |
+| **`npm run map:pack`** | Pack WebPs → committed `map-tiles/v1.tar.gz` (~1.4 MB) for CF Git builds |
+| **`npm run map:ensure`** | Unpack pack into `public/map/v1/` if tiles missing (used by `npm run build`) |
+| **`npm run map:clean`** | Remove generated map tiles / scratch dirs; keep README + pack |
 | **`npm run wasm:build`** | Docker Compose `wasm-builder` only; no-op without `crates/` |
 
 ### Production Docker (idiomatic)
