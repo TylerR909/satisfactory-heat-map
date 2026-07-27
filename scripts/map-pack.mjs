@@ -41,11 +41,7 @@ if (members.length === 0) {
 }
 
 console.log(`[map:pack] packing ${members.join(", ")} → map-tiles/v1.tar.gz`);
-execFileSync(
-  "tar",
-  ["-czf", outFile, "-C", v1, ...members],
-  { stdio: "inherit" },
-);
+execFileSync("tar", ["-czf", outFile, "-C", v1, ...members], { stdio: "inherit" });
 
 const kb = Math.round(statSync(outFile).size / 1024);
 console.log(`[map:pack] wrote map-tiles/v1.tar.gz (${kb} KiB)`);
