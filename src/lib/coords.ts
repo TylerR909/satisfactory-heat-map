@@ -50,9 +50,9 @@ export const DEFAULT_TILES_URL = "/map/v1/{z}/{x}/{y}.webp";
  * - `VITE_MAP_TILES_BASE_URL` wins (absolute host, `/map/v1`, or full `{z}/{x}/{y}` template)
  * - Else `metaTilesUrl`, else same-origin `DEFAULT_TILES_URL`
  *
- * Dev and prod both default to same-origin. Generate tiles once with
- * `npm run map:generate` for local Vite. Do not point at a remote host unless
- * it serves real WebPs (SPA HTML fallback → `net::ERR_BLOCKED_BY_ORB` in Chrome).
+ * Dev and prod both default to same-origin. Local Vite: `npm run map:ensure`
+ * (unpack pack) or `npm run map:generate` (Docker). Do not point at a remote
+ * host unless it serves real WebPs (SPA HTML → `net::ERR_BLOCKED_BY_ORB`).
  */
 export function resolveTilesUrl(metaTilesUrl?: string): string {
   const override = import.meta.env.VITE_MAP_TILES_BASE_URL as string | undefined;

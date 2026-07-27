@@ -128,7 +128,7 @@ See `src/lib/mining.ts` and `docs/DATA.md`. **Miner Mk only affects solid ores**
 - Leaflet **`L.CRS.Simple`** in 0…256 image space (community-calibrated).
 - `worldToLeaflet` in `src/lib/coords.ts` maps game cm onto the self-hosted `/map/v1` pyramid.
 - **Do not flip tile Y** in `TileLayer` — causes horizontal strip seams that worsen with zoom.
-- Basemap: WebP tiles via `npm run map:generate` (dev) or Docker multi-stage (image); same-origin `/map/v1/`.
+- Basemap: same-origin `/map/v1/` WebPs. CF/`npm run build` unpacks committed `map-tiles/v1.tar.gz` (`map:ensure`); Docker multi-stage still GDAL-generates from wiki.
 
 Approximate bounds (`meta.worldBounds`):
 
@@ -172,7 +172,7 @@ UI never imports WASM directly; worker uses the façade.
 | 2 | Live recompute | Debounce (~160 ms); generation token drops stale results |
 | 3 | Canvas/PNG bake | Once per result; Leaflet transforms the overlay |
 | 4 | Many DOM markers | Filter to demanded resources |
-| 5 | Basemap | Self-hosted WebP `/map/v1/`; wiki→Docker GDAL |
+| 5 | Basemap | Self-hosted WebP `/map/v1/`; pack for CF, GDAL for Docker |
 
 64×64 + refine is typically **tens–hundreds of ms** in pure TS on full node data.
 

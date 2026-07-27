@@ -40,9 +40,10 @@ const mapTile = path.join(root, "public", "map", "v1", "0", "0", "0.webp");
 if (!existsSync(mapTile)) {
   console.warn(
     "[start] Basemap tiles missing (public/map/v1/0/0/0.webp).\n" +
-      "        Run:  npm run map:generate\n" +
+      "        Run:  npm run map:ensure     # unpack committed map-tiles/v1.tar.gz (no Docker)\n" +
+      "          or: npm run map:generate   # rebuild from wiki (needs Docker)\n" +
       "        Then: npm start\n" +
-      "        (Once per worktree; tiles are gitignored.)",
+      "        (Once per worktree; WebPs are gitignored.)",
   );
 }
 

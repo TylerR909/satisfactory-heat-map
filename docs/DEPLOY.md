@@ -57,7 +57,7 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 |---------|--------|
 | **Project / Worker name** | `satisfactory-heat-map` (must match [`wrangler.jsonc`](../wrangler.jsonc) `"name"`) |
 | **Production branch** | `main` |
-| **Build command** | See **basemap tiles** below (plain `npm run build` is not enough for a first ship with map art) |
+| **Build command** | `npm run build` (runs `map:ensure` → unpacks `map-tiles/v1.tar.gz` when needed) |
 | **Deploy command** | `npx wrangler deploy` (dashboard default — keep it) |
 | **Root directory** | *(leave empty)* |
 | **Builds for non-production branches** | **On** (recommended — PR/preview URLs). Off = only `main` builds. |

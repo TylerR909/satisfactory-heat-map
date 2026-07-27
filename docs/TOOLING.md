@@ -62,7 +62,7 @@ Config: `biome.json` with React domain recommended + those rules as error.
 ### Production Docker (idiomatic)
 
 - **Tiles stage:** OSGeo GDAL image runs `scripts/map-generate-inner.sh` (wiki → WebP pyramid)
-- **Build stage:** `npm ci` + copy tiles + `npm run build`
+- **Build stage:** `npm ci` + copy tiles from GDAL stage + `npm run build` (map:ensure is a no-op if tiles already present)
 - **Runtime:** nginx copies `dist/` — **no Node in runtime image**
 - Do **not** use `npm run preview` as container CMD or as “production”
 
@@ -117,3 +117,4 @@ Vite wiring lives in `vite.config.ts` (`react()` + babel `reactCompilerPreset()`
 | `docs/ROADMAP.md` | Done vs next phases |
 | `docs/STATUS.md` | Handoff snapshot after meaningful pushes |
 | `public/map/v1/README.md` | Basemap generate/runtime runbooks |
+| `map-tiles/README.md` | Committed tile pack for CF Git builds |

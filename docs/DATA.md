@@ -18,8 +18,9 @@
 | `public/data/recipes/recipes.json` | Factory recipes (~290: defaults + alts) | Same; **not** the 10MB Docs file |
 | `public/data/recipes/docs-meta.json` | Parse stamp / counts | Generated; safe to commit |
 | `public/data/meta.json` | Bounds, leaflet flags, basemap URL, heatmap grid defaults | Project-owned |
-| `public/map/v1/**/*.webp` | XYZ WebP basemap (z0–4) | **Build artifact** (gitignored). Wiki Map.jpg → Docker GDAL. See `public/map/v1/README.md`. |
+| `public/map/v1/**/*.webp` | XYZ WebP basemap (z0–4) | **Worktree/build artifact** (gitignored). Unpacked from pack or `map:generate`. |
 | `public/map/v1/README.md` | Runbooks (community map + FModel) | Committed |
+| `map-tiles/v1.tar.gz` | ~1.4 MB packed zoom dirs | **Committed** so Cloudflare Git / plain `npm run build` can ship tiles without Docker. Refresh with `map:generate` + `map:pack`. |
 
 ## Node record shape
 
@@ -86,29 +87,41 @@ Docs ClassNames differ from some wiki nicknames (e.g. HMF → `Desc_ModularFrame
 
 | Environment | Tile source |
 |-------------|-------------|
-| **Production** (CF / Docker) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist`; Docker image generates at build) |
-| **Localhost** | Same-origin after **one** `npm run map:generate` per worktree (gitignored WebPs) |
-| **Override** | `VITE_MAP_TILES_BASE_URL=https://satisfactory-heatmap.com/map/v1` only when prod serves real WebPs |
+| **Production (Cloudflare Git)** | Same-origin `/map/v1/…webp` in `dist` — `npm run build` runs **`map:ensure`**, which unpacks committed **`map-tiles/v1.tar.gz`** (no GDAL on CF) |
+| **Production (Docker / GHCR)** | Multi-stage image **generates** tiles with GDAL from the wiki (pack not required) |
+| **Localhost** | Same-origin after **`map:ensure`** (unpack pack) or **`map:generate`** (Docker) per worktree |
+| **Override** | `VITE_MAP_TILES_BASE_URL=…` only when you intentionally point elsewhere |
 
-**ORB / blank map:** if tiles 404 into SPA HTML (`content-type: text/html`), Chrome blocks cross-origin loads as `net::ERR_BLOCKED_BY_ORB`. Fix: generate locally or deploy `dist` that includes the pyramid.
+**ORB / blank map:** if a host SPA-falls-back missing tiles to `index.html` (`text/html`), Chrome may show `net::ERR_BLOCKED_BY_ORB` cross-origin. Fix: ensure real WebPs in `dist` (committed pack + `map:ensure`, or Docker generate).
 
 - Config: `public/data/meta.json` → `basemap.tilesUrl` = `/map/v1/{z}/{x}/{y}.webp`
 - Coord math: `src/lib/coords.ts` — community-calibrated game cm → Leaflet; **do not flip tile Y**
 - `MAX_ZOOM` = **4** (4096² pyramid)
 - Map artwork © Coffee Stain Studios. Thin map-corner credit; full notes in Attributions + `public/map/v1/README.md`
 
-### Regenerate (Docker only — no host GDAL)
+### Scripts
+
+| Script | Role |
+|--------|------|
+| `npm run map:ensure` | Unpack `map-tiles/v1.tar.gz` → `public/map/v1/` if WebPs missing (**used by `npm run build`**) |
+| `npm run map:generate` | Docker + OSGeo GDAL: wiki Map.jpg → WebP pyramid (no host GDAL) |
+| `npm run map:pack` | Pack WebPs → **`map-tiles/v1.tar.gz`** (commit when basemap source changes) |
+| `npm run map:clean` | Remove worktree WebPs / scratch dirs; keeps README + pack |
+
+### Regenerate basemap source (Docker)
 
 ```bash
-npm run map:generate   # osgeo/gdal container: wiki Map.jpg → public/map/v1/
-npm run map:clean      # remove webps; keeps README
+npm run map:generate   # wiki → public/map/v1/
+npm run map:pack       # refresh committed pack for CF Git
+# git add map-tiles/v1.tar.gz && commit
+npm run map:clean      # optional: drop local WebPs; pack stays
 ```
 
 Pipeline: download [wiki Map.jpg](https://satisfactory.wiki.gg/images/Map.jpg) (5000×5000) → resize 4096 → `gdal2tiles.py --profile=raster --xyz --tiledriver=WEBP -z 0-4`.
 
 **Known wiki quirk:** white rectangle in NW corner of that upload — accepted for v1.
 
-Docker production image runs the same generator in a multi-stage build. Cloudflare Git builds **do not** include GDAL — see [DEPLOY.md](DEPLOY.md) (tiles must be present in `dist`, typically via Docker/GHA deploy that runs generate).
+See also [DEPLOY.md](DEPLOY.md) (Cloudflare pack path) and `map-tiles/README.md`.
 
 ### Higher quality (optional FModel)
 
@@ -175,7 +188,7 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 
 ## Attribution snippet (README / about)
 
-> Resource nodes: [satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT extract. Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Basemap: self-hosted tiles from wiki map image (map art © Coffee Stain). Not affiliated with Coffee Stain or satisfactory-calculator.com.
+> Resource nodes: [satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT extract. Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Basemap: wiki-derived self-hosted tiles (`map-tiles/v1.tar.gz` / Docker GDAL; map art © Coffee Stain). Not affiliated with Coffee Stain or satisfactory-calculator.com.
 
 ## After each game patch checklist
 
@@ -183,4 +196,6 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 - [ ] Re-parse Docs → recipes/items  
 - [ ] Diff Konsl/default-world tables if randomization changed  
 - [ ] Bump `meta.json` `gameVersion`  
+- [ ] If map art changed: `map:generate` + `map:pack` + commit `map-tiles/v1.tar.gz`  
 - [ ] Smoke: Mode A multi-resource, Mode B multi-product + Send to Raw, capacity tags (Limited/Abundant), seed mode when present  
+

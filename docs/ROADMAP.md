@@ -47,7 +47,7 @@
 
 - [x] `scripts/parse-docs.mjs` from official Docs (en-US.json)
 - [ ] `scripts/extract-world-nodes` (or CI pull) from rockfactory MIT / FModel
-- [x] Basemap tiles under `public/map/v1/` (wiki Map.jpg → Docker GDAL; `npm run map:generate`)
+- [x] Basemap tiles under `public/map/v1/` (wiki → Docker GDAL; committed `map-tiles/v1.tar.gz` + `map:ensure` for CF Git)
 - [x] Cloudflare Workers static-asset deploy docs + `wrangler.jsonc` + `public/_headers` ([docs/DEPLOY.md](DEPLOY.md)); Git connect + domain is operator one-time
 - [x] Docker image + `.dockerignore` + GHCR on merge-to-main + auto Releases + `docker-compose.example.yml` (:18547)
 - [x] CI on PR/`main`: lint · test · build · Docker smoke build (`.github/workflows/ci.yml`)

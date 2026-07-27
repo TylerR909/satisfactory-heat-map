@@ -39,7 +39,7 @@ jobs:
       - name: Test
         run: npm test
 
-      # Vite build does not need tiles (dev/prod can hit CF URL). Docker job validates full image.
+      # map:ensure unpacks map-tiles/v1.tar.gz so dist includes real WebPs (same as CF Git).
       - name: Build
         run: npm run build
 
