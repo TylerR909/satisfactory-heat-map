@@ -19,6 +19,41 @@ body {
     sans-serif;
   background: #020617;
   color: #e2e8f0;
+  /* Avoid rubber-band scroll of the page chrome behind the app shell */
+  overscroll-behavior: none;
+}
+
+/*
+ * Thin dark scrollbars — especially helps Windows (default classic bars are huge
+ * and light). Firefox: scrollbar-*; Chromium/Safari/Edge: ::-webkit-scrollbar.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Static pitch in index.html for crawlers; hide once the SPA shell is present */
@@ -40,12 +75,51 @@ body {
 .leaflet-container {
   font: inherit;
   background: #020617;
+  /* Touch: keep pan/zoom snappy; don't let the browser steal gestures for page scroll */
+  touch-action: none;
 }
 
 .leaflet-container .leaflet-control-zoom a {
   background: #1e293b;
   color: #e2e8f0;
   border-color: #334155;
+}
+
+/* Zoom + ℹ share --sf-ctrl size so they read as one column */
+.leaflet-container {
+  --sf-ctrl: 26px;
+}
+.leaflet-container.leaflet-touch {
+  --sf-ctrl: 30px;
+}
+
+/* Slightly larger hit targets on coarse pointers (phones / tablets) */
+@media (pointer: coarse) {
+  .leaflet-container {
+    --sf-ctrl: 34px;
+  }
+
+  .leaflet-container .leaflet-control-zoom a {
+    width: var(--sf-ctrl);
+    height: var(--sf-ctrl);
+    line-height: var(--sf-ctrl);
+    font-size: 18px;
+  }
+}
+
+/*
+ * iOS Safari auto-zooms the viewport when a focused form control is under 16px.
+ * Unrelated to map pan-to-selection — pure browser behavior. Tailwind's text-sm
+ * is 14px and wins over element selectors, so !important is required.
+ * Scope to the app panel breakpoint (md = 768) so desktop keeps text-sm.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    /* biome-ignore lint/complexity/noImportantStyles: beat Tailwind text-sm (14px) so iOS does not zoom on focus */
+    font-size: 16px !important;
+  }
 }
 
 .leaflet-tooltip {
@@ -57,6 +131,63 @@ body {
 
 .leaflet-tooltip-top::before {
   border-top-color: #334155;
+}
+
+/*
+ * ℹ as a Leaflet control: same left/right margins as zoom, stacks under it
+ * on topleft with the standard 10px control gap.
+ */
+.sf-map-attrib-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Width matches zoom buttons; Leaflet supplies top/left margins for column */
+  width: var(--sf-ctrl, 26px);
+  clear: both;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sf-map-attrib-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sf-ctrl, 26px);
+  height: var(--sf-ctrl, 26px);
+  padding: 0;
+  border: 1px solid #475569;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.92);
+  color: #cbd5e1;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.sf-map-attrib-btn:hover,
+.sf-map-attrib-btn:focus-visible {
+  background: #1e293b;
+  border-color: #64748b;
+  color: #f1f5f9;
+  outline: none;
+}
+
+.sf-map-attrib-btn:focus-visible {
+  box-shadow:
+    0 0 0 2px #0f172a,
+    0 0 0 4px #38bdf8;
+}
+
+.sf-map-attrib-icon {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Nearest-neighbor scaling so coarse heat cells stay blocky, not blurry.

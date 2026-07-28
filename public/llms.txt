@@ -1,4 +1,4 @@
-# Satisfactory Factory Heatmap
+# Satisfactory Heatmap
 
 > Capacity-aware factory location heatmap for the game Satisfactory.
 > Free static web tool — not a full production calculator.

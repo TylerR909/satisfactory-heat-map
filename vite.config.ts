@@ -22,7 +22,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "Satisfactory Factory Heatmap",
+        name: "Satisfactory Heatmap",
         short_name: "SF Heatmap",
         description:
           "Capacity-aware heatmap for Satisfactory — raw rates or product targets, including 1.2+ map seeds.",

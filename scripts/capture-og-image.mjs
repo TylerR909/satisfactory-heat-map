@@ -104,7 +104,7 @@ execFileSync(
     "NorthWest",
     "-annotate",
     "+28+26",
-    "Satisfactory Factory Heatmap",
+    "Satisfactory Heatmap",
     "-fill",
     "#94a3b8",
     "-font",

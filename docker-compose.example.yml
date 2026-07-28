@@ -1,4 +1,4 @@
-# Satisfactory Factory Heatmap — drop-in compose for your infra.
+# Satisfactory Heatmap — drop-in compose for your infra.
 #
 # Prerequisites: Docker + Compose v2, ability to pull from ghcr.io
 # (public images: no login; private: docker login ghcr.io)

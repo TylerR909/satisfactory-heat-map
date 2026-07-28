@@ -180,7 +180,7 @@ See `src/lib/mining.ts` — **miner Mk only affects solid ores**:
 | Well satellite (oil/water/N₂) | Resource Well Extractor | 30 / 60 / 120 by purity — pressurizer on core |
 | Well core | Pressurizer only | 0 throughput |
 | Resource deposit | Portable miner (approx.) | 20 / 40 / 80 by purity |
-| Geyser | Geothermal (not raw feed) | 0 for factory heatmap |
+| Geyser | Geothermal (not raw feed) | 0 for heatmap scoring |
 
 Clock % multiplies all continuous extractors.
 
