@@ -67,7 +67,7 @@ Do after the SEO PR merges (or post as a **PR comment** while review is open):
 
 ## Ranking expectations
 
-- Strong shot at **“satisfactory heatmap”** / **“satisfactory factory heatmap”** (domain + title + backlinks).
+- Strong shot at **“satisfactory heatmap”** (domain + title + backlinks).
 - Intent queries (“where to put factory satisfactory”) need copy + community mentions.
 - Do **not** try to outrank full calculators for “satisfactory calculator.”
 

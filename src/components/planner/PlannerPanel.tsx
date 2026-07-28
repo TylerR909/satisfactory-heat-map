@@ -187,12 +187,10 @@ export function PlannerPanel() {
     heatmap && selectedSiteIndex != null ? heatmap.topSites[selectedSiteIndex] : null;
 
   return (
-    <aside className="flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-r border-slate-800 bg-slate-950/95 p-4 text-slate-100">
+    <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto overscroll-contain border-slate-800 bg-slate-950/95 p-4 text-slate-100 [-webkit-overflow-scrolling:touch] md:border-r">
       <header>
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-lg font-semibold tracking-tight text-white">
-            Satisfactory Factory Heatmap
-          </h1>
+          <h1 className="text-lg font-semibold tracking-tight text-white">Satisfactory Heatmap</h1>
           {computing && (
             <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
               Updating…

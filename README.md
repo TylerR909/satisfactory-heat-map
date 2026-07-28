@@ -1,4 +1,4 @@
-# Satisfactory Factory Heatmap
+# Satisfactory Heatmap
 
 **Heatmap-first web tool:** given raw resource rates (or stacked product targets), find ideal factory locations on the Satisfactory map — with **capacity-aware** scoring, site-preference modes, and user-selectable extractors.
 

@@ -4,8 +4,10 @@ import { MapContainer, TileLayer } from "react-leaflet";
 import { CenterOnSelectedSite } from "@/components/map/CenterOnSelectedSite";
 import { FitWorld } from "@/components/map/FitWorld";
 import { HeatmapLayer } from "@/components/map/HeatmapLayer";
+import { MapAttribution } from "@/components/map/MapAttribution";
 import { MapPanes } from "@/components/map/MapPanes";
 import { NodeLayer } from "@/components/map/NodeLayer";
+import { ResponsiveZoomControl } from "@/components/map/ResponsiveControls";
 import { TopSitesLayer } from "@/components/map/TopSitesLayer";
 import {
   IMAGE_BOUNDS,
@@ -18,7 +20,12 @@ import {
 import { useAppStore } from "@/store/useAppStore";
 import "leaflet/dist/leaflet.css";
 
-export function MapView() {
+type MapViewProps = {
+  /** Bumps when app chrome resizes the map (mobile panel collapse, etc.). */
+  layoutKey?: string | number | boolean;
+};
+
+export function MapView({ layoutKey = 0 }: MapViewProps) {
   const meta = useAppStore((s) => s.meta);
   const nodes = useAppStore((s) => s.nodes);
   const heatmap = useAppStore((s) => s.heatmap);
@@ -62,14 +69,23 @@ export function MapView() {
         zoom={MIN_ZOOM}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
+        // Fractional zoom so fit-to-world isn't stuck on coarse integer steps
+        // (was the main reason first paint left a huge empty letterbox).
+        zoomSnap={0.25}
+        zoomDelta={0.5}
+        wheelPxPerZoomLevel={80}
         maxBounds={maxBounds}
         maxBoundsViscosity={0.6}
-        attributionControl
+        // Zoom position is set by ResponsiveZoomControl (mobile vs desktop).
+        zoomControl={false}
+        // Compact ℹ — full credits on hover/click (not removed).
+        attributionControl={false}
         className="h-full w-full bg-slate-950"
         style={{ height: "100%", width: "100%", background: "#0a1628" }}
       >
         <MapPanes />
-        <FitWorld />
+        <ResponsiveZoomControl />
+        <FitWorld layoutKey={layoutKey} />
         {/*
           Standard XYZ TileLayer — do not invert tile Y.
           Flipping Y in getTileUrl causes horizontal strip misalignment.
@@ -82,7 +98,6 @@ export function MapView() {
           minZoom={MIN_ZOOM}
           maxZoom={MAX_ZOOM}
           maxNativeZoom={MAX_ZOOM}
-          attribution={attribution}
         />
 
         <HeatmapLayer result={heatmap} meta={meta} opacity={heatOpacity} heatRender={heatRender} />
@@ -102,6 +117,8 @@ export function MapView() {
             />
           </>
         )}
+        {/* ℹ: mobile top-left; desktop bottom-right (zoom is the opposite corner) */}
+        <MapAttribution basemapAttribution={attribution} />
       </MapContainer>
     </div>
   );
