@@ -24,7 +24,8 @@ export default defineConfig({
       manifest: {
         name: "Satisfactory Factory Heatmap",
         short_name: "SF Heatmap",
-        description: "Find ideal factory locations from raw demand or a target product.",
+        description:
+          "Capacity-aware heatmap for Satisfactory — raw rates or product targets, including 1.2+ map seeds.",
         theme_color: "#0f172a",
         background_color: "#0f172a",
         display: "standalone",

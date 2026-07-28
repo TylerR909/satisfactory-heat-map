@@ -21,6 +21,21 @@ body {
   color: #e2e8f0;
 }
 
+/* Static pitch in index.html for crawlers; hide once the SPA shell is present */
+.seo-pitch {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Without JS/CSS, pitch stays readable in the body above #root */
+
 /* Leaflet overrides for dark game map */
 .leaflet-container {
   font: inherit;

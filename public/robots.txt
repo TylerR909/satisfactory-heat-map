@@ -1,0 +1,5 @@
+# https://satisfactory-heatmap.com — public free tool; search + AI discovery welcome.
+User-agent: *
+Allow: /
+
+Sitemap: https://satisfactory-heatmap.com/sitemap.xml

@@ -127,6 +127,12 @@ You do **not** need a successful empty-`main` deploy to “prove” the hook. Li
 
 Recommended: apex as canonical; redirect `www` → apex (or the reverse).
 
+### 5. SEO / AI crawlers (operator)
+
+Crawl files and Open Graph meta ship from the repo (`public/robots.txt`, `sitemap.xml`, `og-image.png`, `index.html`). Cloudflare still owns bot policy and DNS. Full checklist: **[docs/SEO.md](SEO.md)** (AI Crawl Control, managed robots.txt, Search Console, post-deploy smoke curls).
+
+When opening an SEO PR, paste that checklist as a **separate PR comment** so it is not lost in the description.
+
 ---
 
 ## What the repo provides
@@ -137,6 +143,7 @@ Recommended: apex as canonical; redirect `www` → apex (or the reverse).
 | `npm run build` | `tsc` + `vite build` → `dist/` |
 | `wrangler.jsonc` | Static assets from `./dist`; SPA not-found handling |
 | `public/_headers` | Cache + security headers (copied into `dist/`) |
+| `public/robots.txt` · `sitemap.xml` · `llms.txt` · `og-image.png` | Crawl + social preview assets ([SEO.md](SEO.md)) |
 | `.github/workflows/ci.yml` | Gate on PR + `main` |
 | `.github/workflows/docker-publish.yml` | GHCR only — **not** the website |
 
