@@ -53,6 +53,31 @@
 - [x] CI on PR/`main`: lint · test · build · Docker smoke build (`.github/workflows/ci.yml`)
 - [ ] First intentional PR → `main` + CF project linked + satisfactory-heatmap.com Active + GHCR Public
 
+## SEO / discoverability
+
+Full notes: [docs/SEO.md](SEO.md). Code owns crawl files + meta; CF owns bot policy / DNS; Search Console is operator.
+
+### Phase 1 — Baseline (static SPA)
+
+- [x] `public/robots.txt` + `sitemap.xml` + optional `llms.txt` (real files so SPA fallback is not HTML-200)
+- [x] Open Graph / Twitter Card / canonical / JSON-LD in `index.html`
+- [x] Static `og-image.png` (1200×630) — production screenshot of default **HMF 10/min** heat + title bar (`scripts/capture-og-image.mjs` to regenerate)
+- [x] Crawlable pitch copy in the HTML shell
+- [ ] Operator: CF AI Crawl Control + managed robots stance; www↔apex; Search Console / Bing; post-merge unfurl smoke
+
+### Phase 2 — Share-aware unfurls (optional; only if Phase 1 feels insufficient)
+
+- [ ] Path or query share routes (hash can remain primary for app state)
+- [ ] Small Cloudflare Worker that, for bot UAs or `/s/*`, returns HTML with plan-derived `og:title` / description (product, rate, seed)
+- [ ] Image still the static OG card unless Phase 3 lands
+- [ ] Dual share formats + Worker tests; Docker remains pure static unless Worker is CF-only
+
+### Phase 3 — Dynamic heatmap cards (aspirational — probably never)
+
+- [ ] Edge render: run scorer + canvas/PNG in a Worker, or Browser Rendering API
+- [ ] Cache by plan hash
+- [ ] Revisit only if social virality depends on “see *my* heat in the embed”
+
 ## Later / maybe
 
 - [ ] Save-file upload (actual world extraction)
@@ -67,3 +92,5 @@
 - Backend, accounts, multiplayer
 - Host-installed Rust toolchain
 - Shipping full 10MB Docs.json to browsers
+- SSR / Next rewrite solely for SEO
+- Indexing every shared `#v1.…` plan as its own SEO page
