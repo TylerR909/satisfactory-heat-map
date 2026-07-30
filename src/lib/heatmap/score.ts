@@ -326,6 +326,126 @@ export function scoreSite(
 }
 
 /**
+ * Ideal factory pin for a fixed assignment.
+ *
+ * - **centered**: mean of per-resource rate-weighted centroids (equal resources)
+ * - **weighted**: single rate-weighted centroid of all assigned nodes
+ *
+ * Returns null when nothing was assigned.
+ */
+export function assignmentCentroid(
+  byResource: ResourceAssignment[],
+  scoringMode: ScoringMode = "centered",
+): { x: number; y: number } | null {
+  if (scoringMode === "weighted") {
+    let sx = 0;
+    let sy = 0;
+    let w = 0;
+    for (const ra of byResource) {
+      for (const n of ra.nodes) {
+        sx += n.x * n.rateUsed;
+        sy += n.y * n.rateUsed;
+        w += n.rateUsed;
+      }
+    }
+    if (w <= 1e-9) return null;
+    return { x: sx / w, y: sy / w };
+  }
+
+  let sx = 0;
+  let sy = 0;
+  let nRes = 0;
+  for (const ra of byResource) {
+    let rx = 0;
+    let ry = 0;
+    let w = 0;
+    for (const n of ra.nodes) {
+      rx += n.x * n.rateUsed;
+      ry += n.y * n.rateUsed;
+      w += n.rateUsed;
+    }
+    if (w <= 1e-9) continue;
+    sx += rx / w;
+    sy += ry / w;
+    nRes++;
+  }
+  if (nRes === 0) return null;
+  return { x: sx / nRes, y: sy / nRes };
+}
+
+function siteBetter(a: SiteScore, b: SiteScore): boolean {
+  if (a.satisfiable !== b.satisfiable) return a.satisfiable;
+  return a.score > b.score;
+}
+
+/**
+ * Move a grid-sampled site onto the multi-resource midpoint of its assignment.
+ *
+ * Hierarchical search scores cell centers (good for heat). Those samples often
+ * sit off to one side of the nodes they haul from — or even off the coast —
+ * especially after diversity pushes lower ranks into empty cells that still
+ * "see" a distant pocket. Alternating assignment → centroid → re-score pulls
+ * the pin onto the true local hub so top-N is not a star of spokes into the sea.
+ */
+export function relocateSiteToAssignment(
+  site: SiteScore,
+  demand: RawDemand[],
+  nodesByResource: Map<string, ScoredNode[]>,
+  caveDeltaZCm: number,
+  scoringMode: ScoringMode = "centered",
+  centerPower = 1.35,
+  maxIters = 6,
+): SiteScore {
+  let best = site;
+  let cur = site;
+  const epsCm = 50; // ~0.5 m — sub-cell noise
+
+  for (let i = 0; i < maxIters; i++) {
+    const target = assignmentCentroid(cur.byResource, scoringMode);
+    if (!target) break;
+    const step = distXY(cur.x, cur.y, target.x, target.y);
+    if (step < epsCm) break;
+
+    const next = scoreSite(
+      target.x,
+      target.y,
+      demand,
+      nodesByResource,
+      caveDeltaZCm,
+      scoringMode,
+      centerPower,
+    );
+
+    if (siteBetter(next, best)) best = next;
+
+    // Accept the move when score does not collapse (assignment can flicker on ties).
+    if (siteBetter(next, cur) || next.score >= cur.score * 0.995) {
+      cur = next;
+      continue;
+    }
+
+    // Half-step fallback — pure centroid can overshoot when assignment flips.
+    const mid = scoreSite(
+      (cur.x + target.x) / 2,
+      (cur.y + target.y) / 2,
+      demand,
+      nodesByResource,
+      caveDeltaZCm,
+      scoringMode,
+      centerPower,
+    );
+    if (siteBetter(mid, best)) best = mid;
+    if (siteBetter(mid, cur) || mid.score >= cur.score * 0.995) {
+      cur = mid;
+      continue;
+    }
+    break;
+  }
+
+  return siteBetter(best, site) || best.score >= site.score * 0.999 ? best : site;
+}
+
+/**
  * Normalize raw scores for heat paint (display only — rankings unchanged).
  *
  * Peak-relative with a **strong floor** and power ≥ 1 so mid-map dies and only

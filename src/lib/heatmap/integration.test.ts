@@ -87,4 +87,59 @@ describe("integration with shipped data", () => {
     expect(result.topSites.some((s) => s.capacityTag === "abundant")).toBe(true);
     expect(result.topSites.every((s) => s.capacityByResource?.length)).toBeTruthy();
   });
+
+  /**
+   * Regression: plan hash v1.CPr0BAMDLAEGyAAFZAA (coal 300 + sulfur 200 + quartz 100,
+   * centered power 2, topN 10, sep 12%). Lower ranks used to sit ~1.3 km off the coast
+   * while hauling from the same northern pocket as a better pin — site generation now
+   * relocates onto the assignment midpoint before diversity.
+   */
+  it("keeps top-site pins near their assigned nodes (no off-coast clones)", () => {
+    const result = engine.scoreGrid({
+      nodes,
+      demand: [
+        { resource: "Desc_Coal_C", itemsPerMinute: 300 },
+        { resource: "Desc_Sulfur_C", itemsPerMinute: 200 },
+        { resource: "Desc_RawQuartz_C", itemsPerMinute: 100 },
+      ],
+      miner: { minerMk: 2, clockPercent: 250 },
+      scoringMode: "centered",
+      options: {
+        ...DEFAULT_SCORING_OPTIONS,
+        centerPower: 2,
+        topN: 10,
+        siteSepFraction: 0.12,
+      },
+      bounds: meta.worldBounds,
+      coarseCols: meta.heatmapDefaults.coarseCols,
+      coarseRows: meta.heatmapDefaults.coarseRows,
+      refineTopK: meta.heatmapDefaults.refineTopK,
+      refineSubdiv: meta.heatmapDefaults.refineSubdiv,
+      caveDeltaZCm: meta.heatmapDefaults.caveDeltaZCm,
+    });
+
+    expect(result.topSites.length).toBeGreaterThanOrEqual(3);
+
+    for (const site of result.topSites) {
+      let sx = 0;
+      let sy = 0;
+      let n = 0;
+      let minDist = Number.POSITIVE_INFINITY;
+      for (const ra of site.byResource) {
+        for (const node of ra.nodes) {
+          sx += node.x;
+          sy += node.y;
+          n++;
+          minDist = Math.min(minDist, node.dist);
+        }
+      }
+      expect(n).toBeGreaterThan(0);
+      const cx = sx / n;
+      const cy = sy / n;
+      const offset = Math.hypot(site.x - cx, site.y - cy);
+      // Pin should sit in the hub (~hundreds of m), not a kilometre out to sea
+      expect(offset).toBeLessThan(80_000); // 800 m
+      expect(minDist).toBeLessThan(90_000); // 900 m to nearest assigned node
+    }
+  });
 });

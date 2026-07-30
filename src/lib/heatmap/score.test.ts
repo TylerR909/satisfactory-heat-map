@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   annotateSiteCapacity,
+  assignmentCentroid,
   combineHaulCost,
   inferCapacityTag,
   normalizeScoresForDisplay,
   prepareNodes,
   pureNodeExtractRate,
+  relocateSiteToAssignment,
   scoreSite,
 } from "@/lib/heatmap/score";
 import type { ResourceAssignment, ResourceCapacityInfo, ResourceNode } from "@/types";
@@ -260,6 +262,76 @@ describe("capacity tags from local utilization", () => {
       clockPercent: 250,
     });
     expect(r250).toBeCloseTo(r100 * 2.5, 5);
+  });
+});
+
+describe("assignmentCentroid / relocateSiteToAssignment", () => {
+  it("centered centroid is the mean of per-resource hubs", () => {
+    const byResource: ResourceAssignment[] = [
+      {
+        resource: "Desc_OreIron_C",
+        demanded: 100,
+        supplied: 100,
+        shortfall: 0,
+        nodes: [
+          {
+            nodeId: "i1",
+            rateUsed: 100,
+            dist: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            purity: "pure",
+            caveRisk: false,
+          },
+        ],
+      },
+      {
+        resource: "Desc_OreCopper_C",
+        demanded: 100,
+        supplied: 100,
+        shortfall: 0,
+        nodes: [
+          {
+            nodeId: "c1",
+            rateUsed: 100,
+            dist: 0,
+            x: 1000,
+            y: 0,
+            z: 0,
+            purity: "pure",
+            caveRisk: false,
+          },
+        ],
+      },
+    ];
+    const c = assignmentCentroid(byResource, "centered");
+    expect(c).not.toBeNull();
+    if (!c) return;
+    expect(c.x).toBeCloseTo(500, 5);
+    expect(c.y).toBeCloseTo(0, 5);
+  });
+
+  it("pulls an off-coast sample onto the resource hub and improves score", () => {
+    // Hub around origin; sample far "north" still assigns the same nodes
+    const nodes = [
+      node("i1", "Desc_OreIron_C", "pure", 0, 0),
+      node("c1", "Desc_OreCopper_C", "pure", 2000, 0),
+      node("s1", "Desc_Sulfur_C", "pure", 1000, 1000),
+    ];
+    const demand = [
+      { resource: "Desc_OreIron_C", itemsPerMinute: 100 },
+      { resource: "Desc_OreCopper_C", itemsPerMinute: 100 },
+      { resource: "Desc_Sulfur_C", itemsPerMinute: 50 },
+    ];
+    const byRes = prepareNodes(nodes, miner, new Set(demand.map((d) => d.resource)));
+    const far = scoreSite(1000, -80_000, demand, byRes, 4000, "centered", 2);
+    const moved = relocateSiteToAssignment(far, demand, byRes, 4000, "centered", 2);
+    expect(moved.score).toBeGreaterThan(far.score);
+    // Should land near the multi-resource midpoint, not stay in open water
+    expect(Math.abs(moved.y)).toBeLessThan(5_000);
+    expect(moved.x).toBeGreaterThan(0);
+    expect(moved.x).toBeLessThan(2_500);
   });
 });
 
