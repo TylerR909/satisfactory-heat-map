@@ -2,6 +2,7 @@ import {
   annotateSiteCapacity,
   normalizeScoresForDisplay,
   prepareNodes,
+  relocateSiteToAssignment,
   scoreSite,
 } from "@/lib/heatmap/score";
 import type { HeatmapGrid, HeatmapResult, ScoreGridInput, SiteScore } from "@/types";
@@ -99,6 +100,7 @@ export function computeHierarchicalHeatmap(input: ScoreGridInput): HeatmapResult
       input.caveDeltaZCm,
       input.scoringMode,
       options.centerPower,
+      options.includeElevation,
     );
 
   const coarseSites: { site: SiteScore; col: number; row: number }[] = [];
@@ -155,7 +157,24 @@ export function computeHierarchicalHeatmap(input: ScoreGridInput): HeatmapResult
     regionalBest.push(best);
   }
 
-  const pool = [...regionalBest, ...coarseSites.slice(0, seedCount).map((c) => c.site)];
+  // Grid samples score heat correctly but pins sit on cell centers. Relocate each
+  // candidate onto the multi-resource midpoint of its assignment before diversity
+  // so we don't list "sites" floating in open water that only haul from a far pocket.
+  const relocate = (s: SiteScore) =>
+    relocateSiteToAssignment(
+      s,
+      demand,
+      nodesByResource,
+      input.caveDeltaZCm,
+      input.scoringMode,
+      options.centerPower,
+      options.includeElevation,
+    );
+
+  const pool = [
+    ...regionalBest.map(relocate),
+    ...coarseSites.slice(0, seedCount).map((c) => relocate(c.site)),
+  ];
   const picked = pickDiverseSites(pool, options.topN, minSiteSep);
   const topSites = picked.map((s) => annotateSiteCapacity(s, nodesByResource, input.miner));
 

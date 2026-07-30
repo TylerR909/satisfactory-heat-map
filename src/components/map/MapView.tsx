@@ -114,6 +114,7 @@ export function MapView({ layoutKey = 0 }: MapViewProps) {
               selectedIndex={selectedSiteIndex}
               meta={meta}
               onSelect={setSelectedSiteIndex}
+              elevDashThresholdCm={heatRender.elevDashThresholdCm}
             />
           </>
         )}

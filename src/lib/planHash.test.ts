@@ -57,10 +57,23 @@ describe("planHash compact v1 (computation only)", () => {
     expect(decoded.scoringOptions.topN).toBe(7);
     expect(decoded.scoringOptions.centerPower).toBeCloseTo(1.8, 1);
     expect(decoded.scoringOptions.siteSepFraction).toBeCloseTo(0.12, 2);
+    expect(decoded.scoringOptions.includeElevation).toBe(true);
     // heatContrast is not hashed — decode fills default scoring options for unused fields
     expect(decoded.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
     expect(decoded.productTargets[0]?.itemsPerMinute).toBe(10);
     expect(decoded.rawDemand).toHaveLength(0);
+  });
+
+  it("round-trips includeElevation=false (flat haul flag)", () => {
+    const src = sample({
+      scoringOptions: { ...DEFAULT_SCORING_OPTIONS, includeElevation: false },
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.scoringOptions.includeElevation).toBe(false);
+    const withElev = encodePlanHash(
+      sample({ scoringOptions: { ...DEFAULT_SCORING_OPTIONS, includeElevation: true } }),
+    );
+    expect(encodePlanHash(src)).not.toBe(withElev);
   });
 
   it("does not change hash when only heatContrast differs", () => {

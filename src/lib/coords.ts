@@ -118,6 +118,47 @@ export function distXY(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(dx, dy);
 }
 
+/** 3D Euclidean distance in Unreal cm (X/Y horizontal, Z elevation). */
+export function distXYZ(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const dx = ax - bx;
+  const dy = ay - by;
+  const dz = az - bz;
+  return Math.hypot(dx, dy, dz);
+}
+
+/**
+ * Haul distance between factory (ax,ay,az) and node (bx,by,bz).
+ * When `includeElevation` is false, Z is ignored (plan-view only).
+ */
+export function haulDist(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  includeElevation: boolean,
+): number {
+  if (!includeElevation) return distXY(ax, ay, bx, by);
+  return distXYZ(ax, ay, az, bx, by, bz);
+}
+
+/** Median of a numeric sample (empty → 0). */
+export function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  if (s.length % 2 === 1) return s[mid] ?? 0;
+  return ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2;
+}
+
 export function formatDistCm(cm: number): string {
   const m = cm / 100;
   if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;

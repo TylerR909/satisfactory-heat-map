@@ -1,4 +1,4 @@
-import { distXY } from "@/lib/coords";
+import { haulDist, median } from "@/lib/coords";
 import { nodeExtractRate } from "@/lib/mining";
 import type {
   CapacityTag,
@@ -231,43 +231,61 @@ export function combineHaulCost(
 }
 
 /** Map effective distance → (0,1] quality. Independent of items/min scale. */
-export function haulDistanceToScore(effectiveDistCm: number, cavePenalty = 1): number {
+export function haulDistanceToScore(effectiveDistCm: number): number {
   const d = Math.max(0, effectiveDistCm);
-  const quality = 1 / (1 + d / HAUL_REF_CM);
-  return quality / Math.max(1, cavePenalty);
+  return 1 / (1 + d / HAUL_REF_CM);
 }
 
 /**
- * Capacity-aware greedy assignment at factory point (x, y).
+ * Greedy nearest-capacity assignment at factory (x, y).
+ *
+ * Always ranks nodes by **plan-view (XY)** distance (one sort per resource — same cost
+ * as pre-elevation). When `includeElevation`, factory Z is the median of assigned
+ * node elevations and each haul `dist` is rewritten as 3D from that hub height.
+ * That applies cliff cost without a second full sort/assign of the entire node pool
+ * (which was ~3× slower at 64×64).
+ *
+ * `caveDeltaZCm` is retained for API compatibility; it no longer affects score.
  */
 export function scoreSite(
   x: number,
   y: number,
   demand: RawDemand[],
   nodesByResource: Map<string, ScoredNode[]>,
-  caveDeltaZCm: number,
+  _caveDeltaZCm: number,
   scoringMode: ScoringMode = "centered",
   centerPower = 1.35,
+  includeElevation = true,
 ): SiteScore {
   const byResource: ResourceAssignment[] = [];
   const caveRiskNotes: string[] = [];
   let satisfiable = true;
+  const assignedZ: number[] = [];
 
   for (const d of demand) {
     if (d.itemsPerMinute <= 0) continue;
-    const pool = [...(nodesByResource.get(d.resource) ?? [])];
-    pool.sort((a, b) => distXY(x, y, a.x, a.y) - distXY(x, y, b.x, b.y));
+    const pool = nodesByResource.get(d.resource) ?? [];
+    // Sort a shallow copy only — never mutate the shared pool arrays.
+    const ordered =
+      pool.length > 1
+        ? pool.slice().sort((a, b) => {
+            const da = (a.x - x) * (a.x - x) + (a.y - y) * (a.y - y);
+            const db = (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y);
+            return da - db;
+          })
+        : pool;
 
     let remaining = d.itemsPerMinute;
     const assigned: ResourceAssignment["nodes"] = [];
 
-    for (const n of pool) {
+    for (const n of ordered) {
       if (remaining <= 1e-6) break;
       const use = Math.min(n.rate, remaining);
-      const dist = distXY(x, y, n.x, n.y);
-      const caveRisk = Boolean(n.flags?.cave) || Math.abs(n.z) > caveDeltaZCm;
-      const elevRisk = Math.abs(n.z) > 15000;
-      const risk = caveRisk || elevRisk;
+      // Provisional XY dist; rewritten below if elevation is on
+      const dx = n.x - x;
+      const dy = n.y - y;
+      const dist = Math.hypot(dx, dy);
+      const caveRisk = Boolean(n.flags?.cave);
 
       assigned.push({
         nodeId: n.id,
@@ -277,12 +295,11 @@ export function scoreSite(
         y: n.y,
         z: n.z,
         purity: n.purity,
-        caveRisk: risk,
+        caveRisk,
       });
-      if (risk) {
-        caveRiskNotes.push(
-          `${d.resource}: node ${n.id.slice(0, 24)}… elev/cave risk (z=${Math.round(n.z)})`,
-        );
+      assignedZ.push(n.z);
+      if (caveRisk) {
+        caveRiskNotes.push(`${d.resource}: node ${n.id.slice(0, 24)}… cave (z=${Math.round(n.z)})`);
       }
       remaining -= use;
     }
@@ -301,9 +318,22 @@ export function scoreSite(
     });
   }
 
+  const zSite = median(assignedZ);
+
+  // Apply 3D haul from hub median Z — O(assigned), not O(all nodes × sort)
+  if (includeElevation && assignedZ.length > 0) {
+    for (const ra of byResource) {
+      for (const n of ra.nodes) {
+        const dx = n.x - x;
+        const dy = n.y - y;
+        const dz = n.z - zSite;
+        n.dist = Math.hypot(dx, dy, dz);
+      }
+    }
+  }
+
   const totalHaul = combineHaulCost(scoringMode, byResource, centerPower);
-  const cavePenalty = 1 + caveRiskNotes.length * 0.05;
-  const quality = haulDistanceToScore(totalHaul, cavePenalty);
+  const quality = haulDistanceToScore(totalHaul);
 
   let score: number;
   if (!satisfiable) {
@@ -317,12 +347,136 @@ export function scoreSite(
   return {
     x,
     y,
+    z: zSite,
     score,
     satisfiable,
     totalHaul,
     byResource,
     caveRiskNotes: [...new Set(caveRiskNotes)].slice(0, 6),
   };
+}
+
+/**
+ * Ideal factory pin for a fixed assignment.
+ *
+ * - **centered**: mean of per-resource rate-weighted centroids (equal resources)
+ * - **weighted**: single rate-weighted centroid of all assigned nodes
+ *
+ * Returns null when nothing was assigned.
+ */
+export function assignmentCentroid(
+  byResource: ResourceAssignment[],
+  scoringMode: ScoringMode = "centered",
+): { x: number; y: number } | null {
+  if (scoringMode === "weighted") {
+    let sx = 0;
+    let sy = 0;
+    let w = 0;
+    for (const ra of byResource) {
+      for (const n of ra.nodes) {
+        sx += n.x * n.rateUsed;
+        sy += n.y * n.rateUsed;
+        w += n.rateUsed;
+      }
+    }
+    if (w <= 1e-9) return null;
+    return { x: sx / w, y: sy / w };
+  }
+
+  let sx = 0;
+  let sy = 0;
+  let nRes = 0;
+  for (const ra of byResource) {
+    let rx = 0;
+    let ry = 0;
+    let w = 0;
+    for (const n of ra.nodes) {
+      rx += n.x * n.rateUsed;
+      ry += n.y * n.rateUsed;
+      w += n.rateUsed;
+    }
+    if (w <= 1e-9) continue;
+    sx += rx / w;
+    sy += ry / w;
+    nRes++;
+  }
+  if (nRes === 0) return null;
+  return { x: sx / nRes, y: sy / nRes };
+}
+
+function siteBetter(a: SiteScore, b: SiteScore): boolean {
+  if (a.satisfiable !== b.satisfiable) return a.satisfiable;
+  return a.score > b.score;
+}
+
+/**
+ * Move a grid-sampled site onto the multi-resource midpoint of its assignment.
+ *
+ * Hierarchical search scores cell centers (good for heat). Those samples often
+ * sit off to one side of the nodes they haul from — or even off the coast —
+ * especially after diversity pushes lower ranks into empty cells that still
+ * "see" a distant pocket. Alternating assignment → centroid → re-score pulls
+ * the pin onto the true local hub so top-N is not a star of spokes into the sea.
+ */
+export function relocateSiteToAssignment(
+  site: SiteScore,
+  demand: RawDemand[],
+  nodesByResource: Map<string, ScoredNode[]>,
+  caveDeltaZCm: number,
+  scoringMode: ScoringMode = "centered",
+  centerPower = 1.35,
+  includeElevation = true,
+  maxIters = 6,
+): SiteScore {
+  let best = site;
+  let cur = site;
+  const epsCm = 50; // ~0.5 m — sub-cell noise
+
+  for (let i = 0; i < maxIters; i++) {
+    const target = assignmentCentroid(cur.byResource, scoringMode);
+    if (!target) break;
+    const step = haulDist(cur.x, cur.y, 0, target.x, target.y, 0, false);
+    if (step < epsCm) break;
+
+    const next = scoreSite(
+      target.x,
+      target.y,
+      demand,
+      nodesByResource,
+      caveDeltaZCm,
+      scoringMode,
+      centerPower,
+      includeElevation,
+    );
+
+    if (siteBetter(next, best)) best = next;
+
+    // Accept the move when score does not collapse (assignment can flicker on ties).
+    if (siteBetter(next, cur) || next.score >= cur.score * 0.995) {
+      cur = next;
+      continue;
+    }
+
+    // Half-step fallback — pure centroid can overshoot when assignment flips.
+    const mid = scoreSite(
+      (cur.x + target.x) / 2,
+      (cur.y + target.y) / 2,
+      demand,
+      nodesByResource,
+      caveDeltaZCm,
+      scoringMode,
+      centerPower,
+      includeElevation,
+    );
+    if (siteBetter(mid, best)) best = mid;
+    if (siteBetter(mid, cur) || mid.score >= cur.score * 0.995) {
+      cur = mid;
+      continue;
+    }
+    break;
+  }
+
+  return siteBetter(best, site) || best.score >= site.score * 0.999 ? best : site;
 }
 
 /**
