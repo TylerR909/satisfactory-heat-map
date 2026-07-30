@@ -82,6 +82,7 @@ describe("pickDiverseSites", () => {
   const mk = (x: number, y: number, score: number): SiteScore => ({
     x,
     y,
+    z: 0,
     score,
     satisfiable: true,
     totalHaul: 1,

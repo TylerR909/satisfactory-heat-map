@@ -17,17 +17,20 @@ import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
  * Format: `v1.<base64url(bytes)>`
  *
  * Encodes: mode, demand lines, miner, Centered/Weighted, centerPower, topN, site spread,
- * optional world seed (has-seed flag + i32; omitted when Default/null for short hashes).
+ * includeElevation (flat-haul flag), optional world seed (has-seed flag + i32;
+ * omitted when Default/null for short hashes).
  *
  * **Products:** ClassNames are stored inline (no product allowlist). If the Products
  * dropdown can select it, the hash can encode it. Raw resources still use the fixed
  * raw-picker table (`RAW_RESOURCE_OPTIONS`) — same set as the Raw mode dropdown.
  *
- * Does **not** encode: heat opacity, paint knobs, show-nodes, peak emphasis, mode/purity
- * (product policy fixes strict + no_change for any numeric seed).
+ * Does **not** encode: heat opacity, paint knobs (incl. elev dash threshold), show-nodes,
+ * peak emphasis, mode/purity (product policy fixes strict + no_change for any numeric seed).
  */
 export const PLAN_HASH_VERSION = 1 as const;
 
+/** flags bit 2: haul is plan-view only (includeElevation = false) */
+const FLAG_FLAT_HAUL = 1 << 2;
 /** flags bit 5: world seed present after demand payload */
 const FLAG_HAS_SEED = 1 << 5;
 
@@ -44,8 +47,11 @@ export type PlanSnapshot = {
   productTargets: Array<{ productId: string; itemsPerMinute: number }>;
   miner: MinerSettings;
   scoringMode: ScoringMode;
-  /** Only centerPower / topN / siteSepFraction are meaningful from the hash. */
-  scoringOptions: Pick<ScoringOptions, "centerPower" | "topN" | "siteSepFraction">;
+  /** Computation knobs from the hash (display knobs stay local). */
+  scoringOptions: Pick<
+    ScoringOptions,
+    "centerPower" | "topN" | "siteSepFraction" | "includeElevation"
+  >;
   /** null = Default / vanilla layout; number (incl. 0) = randomized map seed. */
   seed: MapSeed;
 };
@@ -114,6 +120,7 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
         0.4,
         DEFAULT_SCORING_OPTIONS.siteSepFraction,
       ),
+      includeElevation: source.scoringOptions.includeElevation !== false,
     },
     seed,
   };
@@ -174,11 +181,12 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
 
   const out: number[] = [];
 
-  // flags: mode | scoring | mk(2) | hasSeed(5) | reserved
+  // flags: mode | scoring | flatHaul(2) | mk(3–4) | hasSeed(5) | reserved
   const mkBits = Math.min(2, Math.max(0, snap.miner.minerMk - 1));
   let flags = 0;
   if (snap.mode === "product") flags |= 1;
   if (snap.scoringMode === "weighted") flags |= 2;
+  if (snap.scoringOptions.includeElevation === false) flags |= FLAG_FLAT_HAUL;
   flags |= (mkBits & 3) << 3;
   const hasSeed = snap.seed !== null && snap.seed !== undefined;
   if (hasSeed) flags |= FLAG_HAS_SEED;
@@ -232,6 +240,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
   const flags = bytes[i++] ?? 0;
   const mode: InputMode = flags & 1 ? "product" : "raw";
   const scoringMode: ScoringMode = flags & 2 ? "weighted" : "centered";
+  const includeElevation = (flags & FLAG_FLAT_HAUL) === 0;
   const minerMk = (Math.min(2, (flags >>> 3) & 3) + 1) as MinerMk;
   const hasSeed = (flags & FLAG_HAS_SEED) !== 0;
   const clockPercent = clamp(bytes[i++] ?? 100, 1, 250, 100);
@@ -300,6 +309,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
       centerPower,
       topN,
       siteSepFraction,
+      includeElevation,
     },
     seed,
   });

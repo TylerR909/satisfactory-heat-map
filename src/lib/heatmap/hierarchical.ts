@@ -100,6 +100,7 @@ export function computeHierarchicalHeatmap(input: ScoreGridInput): HeatmapResult
       input.caveDeltaZCm,
       input.scoringMode,
       options.centerPower,
+      options.includeElevation,
     );
 
   const coarseSites: { site: SiteScore; col: number; row: number }[] = [];
@@ -167,6 +168,7 @@ export function computeHierarchicalHeatmap(input: ScoreGridInput): HeatmapResult
       input.caveDeltaZCm,
       input.scoringMode,
       options.centerPower,
+      options.includeElevation,
     );
 
   const pool = [

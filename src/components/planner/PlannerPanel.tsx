@@ -3,7 +3,14 @@ import { createPortal } from "react-dom";
 import { Attributions } from "@/components/Attributions";
 import { SavedPlansBar } from "@/components/planner/SavedPlansBar";
 import { useAutoHeatmap } from "@/hooks/useAutoHeatmap";
-import { DEFAULT_HEAT_RENDER, formatHeatRenderCode } from "@/lib/heatmap/heatRender";
+import { formatDistCm } from "@/lib/coords";
+import {
+  DEFAULT_HEAT_RENDER,
+  ELEV_DASH_SLIDER_OFF_M,
+  elevDashSliderMToThresholdCm,
+  elevDashThresholdToSliderM,
+  formatHeatRenderCode,
+} from "@/lib/heatmap/heatRender";
 import { formatRate } from "@/lib/mining";
 import { encodePlanHash } from "@/lib/planHash";
 import { RAW_RESOURCE_OPTIONS, resourceLabel, WATER_RESOURCE_ID } from "@/lib/resources";
@@ -526,6 +533,25 @@ export function PlannerPanel() {
                 <span>Peaks only</span>
               </span>
             </label>
+            <label className="flex items-start gap-2 text-xs text-slate-400">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={scoringOptions.includeElevation}
+                onChange={(e) => setScoringOptions({ includeElevation: e.target.checked })}
+              />
+              <span>
+                <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+                  Elevation in distance
+                  <InfoTip text="On (default): distance includes elevation. Factory height is the median Z of assigned nodes — a high plateau is free; cliffs between hub and node stretch the route. Off: plan-view XY only (same as older builds)." />
+                </span>
+                <span className="mt-0.5 block text-[10px] text-slate-500">
+                  {scoringOptions.includeElevation
+                    ? "3D · cliffs cost real distance"
+                    : "2D · vertical ignored"}
+                </span>
+              </span>
+            </label>
             <label className="flex items-center gap-2 text-xs text-slate-400">
               <input
                 type="checkbox"
@@ -579,6 +605,39 @@ export function PlannerPanel() {
               Color and opacity of heat that already passed Peak emphasis (under Clustering). Does
               not change rankings or pins. Saved in this browser — not in the share URL.
             </p>
+            <label className="block space-y-1 text-xs text-slate-400">
+              <span className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1">
+                  Elev. dash threshold
+                  <InfoTip text="Haul lines only (display). Left = dash on any elevation difference. Sliding right raises the bar (only larger Δz dashes). Far right = Off (never dash for elevation). Cave-flagged nodes always dash (lilac)." />
+                </span>
+                <span className="font-mono text-slate-300">
+                  {heatRender.elevDashThresholdCm < 0
+                    ? "Off"
+                    : heatRender.elevDashThresholdCm === 0
+                      ? "Any Δz"
+                      : `${(heatRender.elevDashThresholdCm / 100).toFixed(0)} m`}
+                </span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={ELEV_DASH_SLIDER_OFF_M}
+                step={5}
+                className="w-full"
+                // Left 0 m (any Δz) → 150 m (harder) → Off
+                value={elevDashThresholdToSliderM(heatRender.elevDashThresholdCm)}
+                onChange={(e) =>
+                  setHeatRender({
+                    elevDashThresholdCm: elevDashSliderMToThresholdCm(Number(e.target.value)),
+                  })
+                }
+              />
+              <span className="flex justify-between text-[10px] text-slate-600">
+                <span>0 · any Δz</span>
+                <span>Off</span>
+              </span>
+            </label>
             <label className="block space-y-1 text-xs text-slate-400">
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
@@ -909,7 +968,10 @@ export function PlannerPanel() {
                   {ra.nodes.map((n) => (
                     <li key={n.nodeId}>
                       {n.purity} · {formatRate(n.rateUsed)}/min · {(n.dist / 100).toFixed(0)} m
-                      {n.caveRisk ? " · elev risk" : ""}
+                      {n.caveRisk ? " · cave" : ""}
+                      {selected.z != null && Math.abs(n.z - selected.z) >= 1
+                        ? ` · Δz ${formatDistCm(Math.abs(n.z - selected.z))}`
+                        : ""}
                     </li>
                   ))}
                 </ul>

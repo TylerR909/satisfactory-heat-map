@@ -55,6 +55,11 @@ export type ScoringOptions = {
   topN: number;
   /** Min pin separation as fraction of map diagonal (≈0.04–0.40). Wider → fewer pins. */
   siteSepFraction: number;
+  /**
+   * When true (default), haul uses 3D distance with factory Z = median assigned elevation.
+   * When false, plan-view XY only (cliffs/caves do not stretch haul).
+   */
+  includeElevation: boolean;
 };
 
 export type RawDemand = {
@@ -131,11 +136,16 @@ export type MapMeta = {
 export type NodeAssignment = {
   nodeId: string;
   rateUsed: number;
+  /** Haul distance used for scoring (XY or 3D depending on includeElevation). */
   dist: number;
   x: number;
   y: number;
   z: number;
   purity: Purity;
+  /**
+   * Node is flagged as cave in world data (display: non-solid haul line).
+   * Not a score penalty — elevation is modeled in distance when enabled.
+   */
   caveRisk: boolean;
 };
 
@@ -161,10 +171,16 @@ export type ResourceCapacityInfo = {
 export type SiteScore = {
   x: number;
   y: number;
+  /**
+   * Estimated factory elevation (cm): median Z of assigned nodes.
+   * Used for 3D haul and for elevation-offset haul-line styling.
+   */
+  z: number;
   score: number;
   satisfiable: boolean;
   totalHaul: number;
   byResource: ResourceAssignment[];
+  /** Informational only (e.g. cave-flagged nodes) — does not change score. */
   caveRiskNotes: string[];
   /** Inferred capacity story for this site at the user's exact demand. */
   capacityTag?: CapacityTag;
@@ -221,6 +237,8 @@ export const DEFAULT_SCORING_OPTIONS: ScoringOptions = {
   heatContrast: 2.35,
   topN: 5,
   siteSepFraction: 0.1,
+  /** 3D haul on by default so cliffs cost real distance. */
+  includeElevation: true,
 };
 
 export const DEFAULT_MINER_SETTINGS = {

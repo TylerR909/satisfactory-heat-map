@@ -349,6 +349,7 @@ export const useAppStore = create<AppState>()(
             centerPower: snap.scoringOptions.centerPower,
             topN: snap.scoringOptions.topN,
             siteSepFraction: snap.scoringOptions.siteSepFraction,
+            includeElevation: snap.scoringOptions.includeElevation,
           },
           seed: nextSeed,
           nodes,
@@ -462,6 +463,7 @@ export const useAppStore = create<AppState>()(
           heatContrast: rawOpts.heatContrast,
           topN: rawOpts.topN,
           siteSepFraction: rawOpts.siteSepFraction,
+          includeElevation: rawOpts.includeElevation !== false,
         };
         const heatRender = clampHeatRender({
           ...DEFAULT_HEAT_RENDER,

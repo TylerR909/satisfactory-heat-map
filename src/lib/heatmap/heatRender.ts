@@ -36,7 +36,22 @@ export type HeatRenderOptions = {
    * Into orange peak (after stopOrange). Higher = orange only on narrow core.
    */
   stopRed: number;
+  /**
+   * Haul-line display only (cm), elevation-offset dashing:
+   * - **−1 (Off):** never dash for elevation (caves still dash when flagged)
+   * - **0:** dash on any |node.z − site.z| > 0
+   * - **> 0:** dash when |Δz| ≥ this many cm
+   *
+   * Not in URL hash.
+   */
+  elevDashThresholdCm: number;
 };
+
+/** Sentinel: elevation-based haul dashing disabled. */
+export const ELEV_DASH_OFF = -1;
+
+/** Slider far-right stop (meters UI); maps to {@link ELEV_DASH_OFF}. */
+export const ELEV_DASH_SLIDER_OFF_M = 155;
 
 /**
  * Defaults aimed at: sparse yellow bodies, orange only on narrow peaks,
@@ -51,6 +66,8 @@ export const DEFAULT_HEAT_RENDER: HeatRenderOptions = {
   stopYellow: 0.48,
   stopOrange: 0.9,
   stopRed: 0.97,
+  /** 30 m off median elevation → dashed haul line */
+  elevDashThresholdCm: 3_000,
 };
 
 export function clampHeatRender(o: Partial<HeatRenderOptions>): HeatRenderOptions {
@@ -61,6 +78,13 @@ export function clampHeatRender(o: Partial<HeatRenderOptions>): HeatRenderOption
   const stopYellow = Math.min(0.65, Math.max(0.05, d.stopYellow));
   const stopOrange = Math.min(0.95, Math.max(stopYellow + 0.05, d.stopOrange));
   const stopRed = Math.min(0.99, Math.max(stopOrange + 0.02, d.stopRed));
+  // −1 = Off; 0…200 m threshold
+  let elevDashThresholdCm = d.elevDashThresholdCm;
+  if (!Number.isFinite(elevDashThresholdCm) || elevDashThresholdCm < 0) {
+    elevDashThresholdCm = ELEV_DASH_OFF;
+  } else {
+    elevDashThresholdCm = Math.min(20_000, Math.max(0, elevDashThresholdCm));
+  }
   return {
     fadeDead,
     fadeFull,
@@ -69,12 +93,33 @@ export function clampHeatRender(o: Partial<HeatRenderOptions>): HeatRenderOption
     stopYellow,
     stopOrange,
     stopRed,
+    elevDashThresholdCm,
   };
+}
+
+/** Slider meters (0…150) or {@link ELEV_DASH_SLIDER_OFF_M} ↔ stored cm / Off. */
+export function elevDashThresholdToSliderM(cm: number): number {
+  if (cm < 0) return ELEV_DASH_SLIDER_OFF_M;
+  return Math.min(150, Math.max(0, Math.round(cm / 100 / 5) * 5));
+}
+
+export function elevDashSliderMToThresholdCm(sliderM: number): number {
+  if (sliderM >= ELEV_DASH_SLIDER_OFF_M - 2.5) return ELEV_DASH_OFF;
+  return Math.min(150, Math.max(0, sliderM)) * 100;
+}
+
+/** Whether a haul line should dash for elevation offset (not caves). */
+export function elevOffsetShouldDash(nodeZ: number, siteZ: number, thresholdCm: number): boolean {
+  if (thresholdCm < 0) return false; // Off
+  const dz = Math.abs(nodeZ - siteZ);
+  if (thresholdCm === 0) return dz > 0; // any difference
+  return dz >= thresholdCm;
 }
 
 /** Compact line for support / sharing paint prefs (not URL hash). */
 export function formatHeatRenderCode(o: HeatRenderOptions): string {
   const c = clampHeatRender(o);
+  const elev = c.elevDashThresholdCm < 0 ? "off" : `${(c.elevDashThresholdCm / 100).toFixed(0)}m`;
   return [
     c.fadeDead.toFixed(2),
     c.fadeFull.toFixed(2),
@@ -83,5 +128,6 @@ export function formatHeatRenderCode(o: HeatRenderOptions): string {
     c.stopYellow.toFixed(2),
     c.stopOrange.toFixed(2),
     c.stopRed.toFixed(2),
+    `elevDash=${elev}`,
   ].join(" / ");
 }
