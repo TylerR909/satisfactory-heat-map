@@ -32,7 +32,7 @@ Image: [`ghcr.io/tylerr909/satisfactory-heat-map`](https://github.com/TylerR909/
 | You bring…                                                         | You get…                                                                       |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | **Raw demand** (e.g. 1200 iron / 600 copper /min)                  | A live heatmap of _where that shopping list is easiest to feed_                |
-| **Product targets** (e.g. HMF 10/min, multi-product stacks)        | Default-recipe expand → same heat engine; **Send to Raw** if you want to tweak |
+| **Product targets** (e.g. HMF 10/min, multi-product stacks)        | Default-recipe expand → same heat engine; **off-site** intermediate prune; **Send to Raw** to hand-tune |
 | Extractor settings (Mk + clock, oil/water/wells modeled correctly) | Capacity that matches _your_ extractors                                        |
 
 ## Map seeds (1.2+)

@@ -121,8 +121,14 @@ export function nodeExtractRate(node: ResourceNode, settings: MinerSettings): nu
   }
 }
 
+/**
+ * Format items/min for UI: magnitude-based precision, no trailing zeros
+ * (90 not 90.0, 3 not 3.00, 12.5 stays 12.5).
+ */
 export function formatRate(n: number): string {
-  if (n >= 100) return n.toFixed(0);
-  if (n >= 10) return n.toFixed(1);
-  return n.toFixed(2);
+  if (!Number.isFinite(n)) return "0";
+  const places = Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2;
+  const s = n.toFixed(places);
+  if (!s.includes(".")) return s;
+  return s.replace(/\.?0+$/, "");
 }

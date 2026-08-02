@@ -188,4 +188,35 @@ describe("planHash compact v1 (computation only)", () => {
       ["Desc_Motor_C", 10],
     ]);
   });
+
+  it("round-trips external intermediate items (Mode B off-site prune)", () => {
+    const src = sample({
+      mode: "product",
+      productTargets: [{ id: "p", productId: "Desc_Fuel_C", itemsPerMinute: 60 }],
+      externalItems: ["Desc_FluidCanister_C", "Desc_GasTank_C"],
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.externalItems).toEqual(["Desc_FluidCanister_C", "Desc_GasTank_C"]);
+  });
+
+  it("omits external tail when empty (backward-compatible short hash)", () => {
+    const bare = encodePlanHash(sample({ externalItems: [] }));
+    const withExt = encodePlanHash(sample({ externalItems: ["Desc_FluidCanister_C"] }));
+    expect(bare.length).toBeLessThan(withExt.length);
+    expect(decodePlanHash(bare)?.externalItems).toEqual([]);
+  });
+
+  it("decodes older hashes without external flag as empty externalItems", () => {
+    // Product HMF 10, no external / seed — must still decode
+    const legacy = encodePlanHash(
+      sample({
+        mode: "product",
+        productTargets: [{ id: "p", productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+        externalItems: [],
+      }),
+    );
+    const decoded = decodePlanHash(legacy);
+    expect(decoded?.externalItems).toEqual([]);
+    expect(decoded?.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
+  });
 });

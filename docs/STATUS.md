@@ -51,12 +51,12 @@ npm start         # Vite HMR (no crates → TS engine)
 ## Known limits
 
 - Individual basemap WebPs are not in git; CF relies on committed **`map-tiles/v1.tar.gz`** + `map:ensure` (see `docs/DEPLOY.md`).
-- Mode B alternate-recipe toggles still incomplete in UI (alts in data).
+- Mode B alternate-recipe toggles still incomplete in UI (alts in data; Expansion rows ready for recipe pickers later).
 - Cave/elevation is soft notes only (no navmesh).
 - Peak emphasis / heat knobs are **display-only**; they do not invent new top sites.
 
 ## Sensible next coding priorities
 
-1. Optional Mode B alternate recipe toggles (alts already in data).
+1. Optional Mode B alternate recipe toggles on Expansion rows (alts already in data).
 2. Own FModel node extract when desired (`extract-world-nodes`).
 3. Basemap v2 ~8k FModel extract (board: Ready) — `public/map/v1/README.md`.

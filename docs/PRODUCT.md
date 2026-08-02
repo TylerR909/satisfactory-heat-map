@@ -32,6 +32,8 @@ Both share extractors, site preference, capacity intent, heatmap engine, map, an
 
 Mode A is **not** a secondary escape hatch — power users who already solved ratios live there permanently. Mode B can **Send to Raw** to hand-tune the expanded rates.
 
+Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. This is *not* a full recipe planner — only “what pulls into site selection.”
+
 In Raw mode the “Active raw demand” summary is omitted (the editor *is* the demand). In Products mode it shows the expanded raw list.
 
 ## Site preference (haul combine)

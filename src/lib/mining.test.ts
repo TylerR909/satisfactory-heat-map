@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractorKindFor, nodeExtractRate } from "@/lib/mining";
+import { extractorKindFor, formatRate, nodeExtractRate } from "@/lib/mining";
 import type { ResourceNode } from "@/types";
 
 function n(
@@ -60,5 +60,20 @@ describe("extractor hardware vs miner Mk", () => {
   it("applies clock % to oil extractors", () => {
     const oil = n({ resource: "Desc_LiquidOil_C", nodeType: "node", purity: "normal" });
     expect(nodeExtractRate(oil, { minerMk: 1, clockPercent: 250 })).toBe(300);
+  });
+});
+
+describe("formatRate", () => {
+  it("drops trailing zeros", () => {
+    expect(formatRate(90)).toBe("90");
+    expect(formatRate(30)).toBe("30");
+    expect(formatRate(3)).toBe("3");
+    expect(formatRate(100)).toBe("100");
+  });
+
+  it("keeps meaningful decimals", () => {
+    expect(formatRate(12.5)).toBe("12.5");
+    expect(formatRate(0.33)).toBe("0.33");
+    expect(formatRate(1.5)).toBe("1.5");
   });
 });

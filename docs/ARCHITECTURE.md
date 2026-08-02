@@ -29,7 +29,7 @@
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
 | `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
-| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (default recipes) |
+| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (default recipes + optional externalItems prune) |
 | `lib/heatmap/score.ts` | Capacity greedy assignment, haul combine, adaptive scale, display norm |
 | `lib/heatmap/hierarchical.ts` | Coarse grid → refine seeds → diverse top-N + Limited flags |
 | `lib/heatmap/rasterize.ts` | Grid → PNG data URL for `ImageOverlay` |
@@ -45,8 +45,8 @@
 
 ## Data flow
 
-1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks).
-2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw`).
+1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks) and optional **off-site** intermediates.
+2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems`) and **`expansionRows`** for the Expansion UI.
 3. **`useAutoHeatmap`** (debounced) posts `ScoreGridInput` to the worker whenever demand, miner, scoring mode, or knobs change.
 4. Worker runs `createEngine().scoreGrid(input)` → `HeatmapResult` (grid + topSites with capacity tags).
 5. Map paints heat via `ImageOverlay` from the coarse grid; pins/lines from `topSites` / selection.
