@@ -6,16 +6,58 @@ export type ProductTarget = {
   itemsPerMinute: number;
 };
 
+export type SolveOptions = {
+  /**
+   * Crafted items treated as off-site / imported / recycled — expansion stops here
+   * (their ingredient subtrees never become map raw demand).
+   * Does not apply to top-level product targets (those always expand one level).
+   */
+  externalItems?: ReadonlySet<string> | readonly string[];
+};
+
+/** One row in the Mode B Expansion list (crafted only — map raws stay on Active raw demand). */
+export type ExpansionEntry = {
+  itemId: string;
+  itemsPerMinute: number;
+  /** True when expansion stopped here (off-site / imported). */
+  external: boolean;
+  /**
+   * Graph distance from a product target (0 = target). Used for UI order:
+   * deeper precursors first, targets last.
+   */
+  depth: number;
+};
+
 export type SolveResult = {
   demand: RawDemand[];
-  /** Intermediate craft rates for UI debug (item → items/min). */
+  /** Intermediate craft rates for on-site expansion (item → items/min). */
   intermediates: Record<string, number>;
+  /**
+   * Items that were needed but marked external — rates for UI, not heatmap demand.
+   */
+  external: Record<string, number>;
+  /**
+   * Expansion UI rows: deep precursors → … → direct recipe inputs → targets.
+   * Duplicates are merged; position uses the **minimum** depth (bottom-most / closest to target).
+   */
+  expansion: ExpansionEntry[];
   /**
    * Crafted items we could not expand to map raws (missing recipe / alt not chosen).
    * Not placed on the heatmap as node demand.
    */
   unresolved: Array<{ itemId: string; itemsPerMinute: number; reason: string }>;
 };
+
+/** Packaging vessels usually produced/recycled off the factory site. */
+export const DEFAULT_EXTERNAL_ITEM_IDS = ["Desc_FluidCanister_C", "Desc_GasTank_C"] as const;
+
+export function toExternalItemSet(
+  items?: ReadonlySet<string> | readonly string[] | null,
+): Set<string> {
+  if (!items) return new Set();
+  if (items instanceof Set) return items;
+  return new Set(items);
+}
 
 const MAP_RAW_IDS = new Set<string>(RAW_RESOURCE_OPTIONS);
 
@@ -94,20 +136,46 @@ export function indexProductionRecipes(recipes: Recipe[]): Map<string, Recipe> {
 /**
  * Expand one or more product targets into **map raw** demand for heatmap scoring.
  * Intermediate crafted items never appear as node demand unless they are true map raws.
+ *
+ * `externalItems` stops expansion at those crafted ids (import / off-site / recycled) —
+ * their ingredient subtrees never become map demand. Top-level product targets always
+ * expand at least one recipe level so a product row is never a no-op.
  */
 export function solveProductsToRaw(
   targets: ProductTarget[],
   recipes: Recipe[],
   items: Record<string, ItemDef>,
+  options?: SolveOptions,
 ): SolveResult {
+  const externalSet = toExternalItemSet(options?.externalItems);
   const byProduct = indexProductionRecipes(recipes);
   const rawNeed = new Map<string, number>();
   const intermediates: Record<string, number> = {};
+  const externalNeed = new Map<string, number>();
   const unresolvedMap = new Map<string, { rate: number; reason: string }>();
   const visiting = new Set<string>();
+  /**
+   * Placement for Expansion UI: min depth (closer to target = lower on screen) and
+   * visit seq at that depth (recipe ingredient order among siblings).
+   */
+  const place = new Map<string, { depth: number; seq: number }>();
+  let visitSeq = 0;
+
+  function notePlace(itemId: string, depth: number) {
+    const prev = place.get(itemId);
+    // Bottom-most wins: smaller depth (nearer product target). Re-seq when depth improves.
+    if (prev === undefined || depth < prev.depth) {
+      place.set(itemId, { depth, seq: visitSeq++ });
+    }
+  }
 
   function addRaw(itemId: string, rate: number) {
     rawNeed.set(itemId, (rawNeed.get(itemId) ?? 0) + rate);
+  }
+
+  function addExternal(itemId: string, rate: number, depth: number) {
+    externalNeed.set(itemId, (externalNeed.get(itemId) ?? 0) + rate);
+    notePlace(itemId, depth);
   }
 
   function addUnresolved(itemId: string, rate: number, reason: string) {
@@ -118,12 +186,22 @@ export function solveProductsToRaw(
     });
   }
 
-  function need(itemId: string, rate: number) {
+  /**
+   * @param asTarget when true, ignore externalItems so product rows always expand.
+   * @param depth 0 = product target; +1 per recipe hop toward raws.
+   */
+  function need(itemId: string, rate: number, asTarget = false, depth = 0) {
     if (rate <= 1e-9) return;
 
-    // Map raws stop expansion (heatmap node demand)
+    // Map raws stop expansion (heatmap node demand) — not listed in Expansion UI
     if (isMapRawResource(itemId, items)) {
       addRaw(itemId, rate);
+      return;
+    }
+
+    // Off-site / imported crafted input — do not pull ingredient raws into the site
+    if (!asTarget && externalSet.has(itemId)) {
+      addExternal(itemId, rate, depth);
       return;
     }
 
@@ -142,6 +220,7 @@ export function solveProductsToRaw(
 
     visiting.add(itemId);
     intermediates[itemId] = (intermediates[itemId] ?? 0) + rate;
+    notePlace(itemId, depth);
 
     const productLine = recipe.products.find((p) => p.item === itemId);
     if (!productLine || productLine.amount <= 0) {
@@ -151,20 +230,47 @@ export function solveProductsToRaw(
     }
 
     const craftsPerMin = rate / productLine.amount;
+    // Recipe ingredient order → sibling seq among the next depth band
     for (const ing of recipe.ingredients) {
-      need(ing.item, craftsPerMin * ing.amount);
+      need(ing.item, craftsPerMin * ing.amount, false, depth + 1);
     }
     visiting.delete(itemId);
   }
 
   for (const t of targets) {
     if (!t.productId || t.itemsPerMinute <= 0) continue;
-    need(t.productId, t.itemsPerMinute);
+    need(t.productId, t.itemsPerMinute, true, 0);
   }
 
   const demand: RawDemand[] = [...rawNeed.entries()]
     .map(([resource, itemsPerMinute]) => ({ resource, itemsPerMinute }))
     .sort((a, b) => b.itemsPerMinute - a.itemsPerMinute);
+
+  const external: Record<string, number> = Object.fromEntries(externalNeed.entries());
+
+  // Deep precursors first (high depth), targets last (depth 0); ties by recipe visit seq
+  const expansion: ExpansionEntry[] = [...place.entries()]
+    .map(([itemId, { depth, seq }]) => {
+      const extRate = externalNeed.get(itemId);
+      const onSite = intermediates[itemId];
+      const isExt = extRate != null && extRate > 1e-9 && !(onSite != null && onSite > 1e-9);
+      const itemsPerMinute = isExt ? (extRate ?? 0) : (onSite ?? extRate ?? 0);
+      return {
+        itemId,
+        itemsPerMinute,
+        external: isExt,
+        depth,
+        seq,
+      };
+    })
+    .filter((e) => e.itemsPerMinute > 1e-9)
+    .sort((a, b) => b.depth - a.depth || a.seq - b.seq || a.itemId.localeCompare(b.itemId))
+    .map(({ itemId, itemsPerMinute, external: ext, depth }) => ({
+      itemId,
+      itemsPerMinute,
+      external: ext,
+      depth,
+    }));
 
   const unresolved = [...unresolvedMap.entries()]
     .map(([itemId, v]) => ({
@@ -174,7 +280,7 @@ export function solveProductsToRaw(
     }))
     .sort((a, b) => b.itemsPerMinute - a.itemsPerMinute);
 
-  return { demand, intermediates, unresolved };
+  return { demand, intermediates, external, expansion, unresolved };
 }
 
 /** @deprecated Prefer {@link solveProductsToRaw} for multi-target plans. */
@@ -183,6 +289,7 @@ export function solveProductToRaw(
   itemsPerMinute: number,
   recipes: Recipe[],
   items: Record<string, ItemDef>,
+  options?: SolveOptions,
 ): SolveResult {
-  return solveProductsToRaw([{ productId, itemsPerMinute }], recipes, items);
+  return solveProductsToRaw([{ productId, itemsPerMinute }], recipes, items, options);
 }

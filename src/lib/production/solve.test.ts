@@ -486,3 +486,262 @@ describe("fluid unit normalization (Docs milliliters → m³)", () => {
     expect(unresolved.find((u) => u.itemId === "Desc_AlienProtein_C")).toBeUndefined();
   });
 });
+
+describe("externalItems (import / off-site prune)", () => {
+  const items: Record<string, ItemDef> = {
+    Desc_OreIron_C: { id: "Desc_OreIron_C", name: "Iron Ore", raw: true },
+    Desc_Coal_C: { id: "Desc_Coal_C", name: "Coal", raw: true },
+    Desc_LiquidOil_C: { id: "Desc_LiquidOil_C", name: "Crude Oil", raw: true },
+    Desc_Water_C: { id: "Desc_Water_C", name: "Water", raw: true },
+    Desc_Plastic_C: { id: "Desc_Plastic_C", name: "Plastic", raw: false },
+    Desc_FluidCanister_C: { id: "Desc_FluidCanister_C", name: "Empty Canister", raw: false },
+    Desc_LiquidFuel_C: { id: "Desc_LiquidFuel_C", name: "Fuel", raw: false },
+    Desc_Fuel_C: { id: "Desc_Fuel_C", name: "Packaged Fuel", raw: false },
+    Desc_IronIngot_C: { id: "Desc_IronIngot_C", name: "Iron Ingot", raw: false },
+    Desc_IronRod_C: { id: "Desc_IronRod_C", name: "Iron Rod", raw: false },
+    Desc_IronPlate_C: { id: "Desc_IronPlate_C", name: "Iron Plate", raw: false },
+    Desc_ModularFrame_C: { id: "Desc_ModularFrame_C", name: "Modular Frame", raw: false },
+    Desc_ModularFrameHeavy_C: {
+      id: "Desc_ModularFrameHeavy_C",
+      name: "Heavy Modular Frame",
+      raw: false,
+    },
+  };
+
+  const recipes: Recipe[] = [
+    {
+      id: "Recipe_Plastic_C",
+      name: "Plastic",
+      durationSec: 6,
+      ingredients: [
+        { item: "Desc_LiquidOil_C", amount: 3 },
+        { item: "Desc_Water_C", amount: 0 }, // simplified
+      ],
+      products: [{ item: "Desc_Plastic_C", amount: 2 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_FluidCanister_C",
+      name: "Empty Canister",
+      durationSec: 4,
+      ingredients: [{ item: "Desc_Plastic_C", amount: 2 }],
+      products: [{ item: "Desc_FluidCanister_C", amount: 4 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_LiquidFuel_C",
+      name: "Fuel",
+      durationSec: 6,
+      ingredients: [{ item: "Desc_LiquidOil_C", amount: 6 }],
+      products: [{ item: "Desc_LiquidFuel_C", amount: 4 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_Fuel_C",
+      name: "Packaged Fuel",
+      durationSec: 3,
+      ingredients: [
+        { item: "Desc_LiquidFuel_C", amount: 2 },
+        { item: "Desc_FluidCanister_C", amount: 2 },
+      ],
+      products: [{ item: "Desc_Fuel_C", amount: 2 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_IronIngot_C",
+      name: "Iron Ingot",
+      durationSec: 2,
+      ingredients: [{ item: "Desc_OreIron_C", amount: 1 }],
+      products: [{ item: "Desc_IronIngot_C", amount: 1 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_IronRod_C",
+      name: "Iron Rod",
+      durationSec: 4,
+      ingredients: [{ item: "Desc_IronIngot_C", amount: 1 }],
+      products: [{ item: "Desc_IronRod_C", amount: 1 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_IronPlate_C",
+      name: "Iron Plate",
+      durationSec: 6,
+      ingredients: [{ item: "Desc_IronIngot_C", amount: 3 }],
+      products: [{ item: "Desc_IronPlate_C", amount: 2 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_ModularFrame_C",
+      name: "Modular Frame",
+      durationSec: 60,
+      ingredients: [
+        { item: "Desc_IronRod_C", amount: 10 },
+        { item: "Desc_IronPlate_C", amount: 2 },
+      ],
+      products: [{ item: "Desc_ModularFrame_C", amount: 2 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_ModularFrameHeavy_C",
+      name: "Heavy Modular Frame",
+      durationSec: 30,
+      ingredients: [
+        { item: "Desc_ModularFrame_C", amount: 5 },
+        { item: "Desc_Coal_C", amount: 10 },
+      ],
+      products: [{ item: "Desc_ModularFrameHeavy_C", amount: 1 }],
+      alternate: false,
+    },
+  ];
+
+  it("external Empty Canister drops plastic (and oil-for-plastic) from demand", () => {
+    // 60 packaged fuel → 60 liquid fuel + 60 canisters
+    // liquid fuel 60 → oil 90; canisters on-site: 60 → plastic 30 → oil 45
+    const full = solveProductsToRaw(
+      [{ productId: "Desc_Fuel_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    const oilFull = full.demand.find((d) => d.resource === "Desc_LiquidOil_C");
+    expect(oilFull?.itemsPerMinute).toBeCloseTo(135, 5);
+
+    const pruned = solveProductsToRaw(
+      [{ productId: "Desc_Fuel_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { externalItems: ["Desc_FluidCanister_C"] },
+    );
+    const oil = pruned.demand.find((d) => d.resource === "Desc_LiquidOil_C");
+    expect(oil?.itemsPerMinute).toBeCloseTo(90, 5);
+    expect(pruned.external.Desc_FluidCanister_C).toBeCloseTo(60, 5);
+    expect(pruned.intermediates.Desc_FluidCanister_C).toBeUndefined();
+    expect(pruned.intermediates.Desc_Plastic_C).toBeUndefined();
+  });
+
+  it("external Modular Frame prunes iron subtree for HMF but keeps coal", () => {
+    // 10 HMF → 50 MF + 100 coal; MF 50 → lots of iron
+    const full = solveProductsToRaw(
+      [{ productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+      recipes,
+      items,
+    );
+    expect(full.demand.some((d) => d.resource === "Desc_OreIron_C")).toBe(true);
+
+    const pruned = solveProductsToRaw(
+      [{ productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+      recipes,
+      items,
+      { externalItems: ["Desc_ModularFrame_C"] },
+    );
+    expect(pruned.demand.find((d) => d.resource === "Desc_OreIron_C")).toBeUndefined();
+    expect(pruned.demand.find((d) => d.resource === "Desc_Coal_C")?.itemsPerMinute).toBeCloseTo(
+      100,
+      5,
+    );
+    expect(pruned.external.Desc_ModularFrame_C).toBeCloseTo(50, 5);
+  });
+
+  it("does not treat top-level product target as external (still expands)", () => {
+    const { demand, external, intermediates } = solveProductsToRaw(
+      [{ productId: "Desc_ModularFrame_C", itemsPerMinute: 10 }],
+      recipes,
+      items,
+      { externalItems: ["Desc_ModularFrame_C"] },
+    );
+    // Target expands despite being in external set
+    expect(intermediates.Desc_ModularFrame_C).toBeCloseTo(10, 5);
+    expect(external.Desc_ModularFrame_C).toBeUndefined();
+    expect(demand.some((d) => d.resource === "Desc_OreIron_C")).toBe(true);
+  });
+
+  it("orders expansion deep → inputs → target; merges duplicates at min depth", () => {
+    // HMF ingredients: Modular Frame, Coal (raw — not in expansion)
+    const { expansion } = solveProductsToRaw(
+      [{ productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+      recipes,
+      items,
+    );
+    const ids = expansion.map((e) => e.itemId);
+    // Target last
+    expect(ids[ids.length - 1]).toBe("Desc_ModularFrameHeavy_C");
+    // Direct crafted input just above target
+    expect(ids[ids.length - 2]).toBe("Desc_ModularFrame_C");
+    // Depths: target 0, MF 1, plate/rod 2, ingot 3
+    const byId = Object.fromEntries(expansion.map((e) => [e.itemId, e]));
+    expect(byId.Desc_ModularFrameHeavy_C?.depth).toBe(0);
+    expect(byId.Desc_ModularFrame_C?.depth).toBe(1);
+    expect(byId.Desc_IronPlate_C?.depth).toBe(2);
+    expect(byId.Desc_IronRod_C?.depth).toBe(2);
+    expect(byId.Desc_IronIngot_C?.depth).toBe(3);
+    // Deeper before shallower
+    expect(ids.indexOf("Desc_IronIngot_C")).toBeLessThan(ids.indexOf("Desc_IronPlate_C"));
+    expect(ids.indexOf("Desc_IronPlate_C")).toBeLessThan(ids.indexOf("Desc_ModularFrame_C"));
+  });
+
+  it("lists external items in expansion at their depth (no precursor expand)", () => {
+    const { expansion, intermediates, external } = solveProductsToRaw(
+      [{ productId: "Desc_Fuel_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { externalItems: ["Desc_FluidCanister_C"] },
+    );
+    expect(external.Desc_FluidCanister_C).toBeCloseTo(60, 5);
+    expect(intermediates.Desc_Plastic_C).toBeUndefined();
+    const row = expansion.find((e) => e.itemId === "Desc_FluidCanister_C");
+    expect(row?.external).toBe(true);
+    expect(row?.depth).toBe(1);
+    // Target still last
+    expect(expansion[expansion.length - 1]?.itemId).toBe("Desc_Fuel_C");
+  });
+});
+
+describe("expansion order (live Docs — plutonium fuel rod)", () => {
+  it("puts target + four direct ingredients at the bottom", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+
+    const { expansion } = solveProductsToRaw(
+      [{ productId: "Desc_PlutoniumFuelRod_C", itemsPerMinute: 1 }],
+      recipes,
+      items,
+    );
+    const bottom = expansion.slice(-5).map((e) => e.itemId);
+    // Recipe ingredient order, then target last
+    expect(bottom).toEqual([
+      "Desc_PlutoniumCell_C", // Encased Plutonium Cell
+      "Desc_SteelPlate_C", // Steel Beam (Docs ClassName)
+      "Desc_ElectromagneticControlRod_C",
+      "Desc_AluminumPlateReinforced_C", // Heat Sink
+      "Desc_PlutoniumFuelRod_C",
+    ]);
+  });
+
+  it("Packaged Rocket Fuel + external tank keeps iron from nitric acid only", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+
+    const { intermediates, external, expansion } = solveProductsToRaw(
+      [{ productId: "Desc_PackagedRocketFuel_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { externalItems: ["Desc_GasTank_C", "Desc_FluidCanister_C"] },
+    );
+    expect(external.Desc_GasTank_C).toBeCloseTo(60, 5);
+    // Tank is aluminum-only; no aluminum on-site when tank is external
+    expect(intermediates.Desc_AluminumIngot_C).toBeUndefined();
+    // Iron plate is a Nitric Acid ingredient (rocket fuel chain), not a tank precursor
+    expect(intermediates.Desc_IronPlate_C).toBeGreaterThan(0);
+    expect(expansion.find((e) => e.itemId === "Desc_GasTank_C")?.external).toBe(true);
+  });
+});

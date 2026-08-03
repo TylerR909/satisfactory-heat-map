@@ -44,6 +44,8 @@ export type PlanLabelSource = {
   productTargets: ProductTargetLine[];
   items: Record<string, ItemDef>;
   recipes: Recipe[];
+  /** Mode B off-site intermediates (affects expand for chip demand tooltips). */
+  externalItems?: string[];
 };
 
 function newId(): string {
@@ -104,7 +106,9 @@ function expandDemand(src: PlanLabelSource): RawDemand[] {
     .filter((t) => t.productId && t.itemsPerMinute > 0)
     .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
   if (targets.length === 0) return [];
-  return solveProductsToRaw(targets, src.recipes, src.items).demand;
+  return solveProductsToRaw(targets, src.recipes, src.items, {
+    externalItems: src.externalItems,
+  }).demand;
 }
 
 export function buildSavedPlan(

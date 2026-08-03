@@ -69,6 +69,7 @@ function planSourceFromStore(): PlanHashSource {
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
     seed: s.seed,
+    externalItems: s.externalItems,
   };
 }
 
@@ -80,6 +81,7 @@ function labelSourceFromStore() {
     productTargets: s.productTargets,
     items: s.items,
     recipes: s.recipes,
+    externalItems: s.externalItems,
   };
 }
 

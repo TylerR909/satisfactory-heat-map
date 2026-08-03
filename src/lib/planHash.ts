@@ -18,14 +18,16 @@ import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
  *
  * Encodes: mode, demand lines, miner, Centered/Weighted, centerPower, topN, site spread,
  * includeElevation (flat-haul flag), optional world seed (has-seed flag + i32;
- * omitted when Default/null for short hashes).
+ * omitted when Default/null for short hashes), optional external intermediates
+ * (has-external flag + ClassName tokens; Mode B off-site / imported prune).
  *
  * **Products:** ClassNames are stored inline (no product allowlist). If the Products
  * dropdown can select it, the hash can encode it. Raw resources still use the fixed
  * raw-picker table (`RAW_RESOURCE_OPTIONS`) — same set as the Raw mode dropdown.
  *
  * Does **not** encode: heat opacity, paint knobs (incl. elev dash threshold), show-nodes,
- * peak emphasis, mode/purity (product policy fixes strict + no_change for any numeric seed).
+ * peak emphasis, omit-water preference, mode/purity (product policy fixes strict +
+ * no_change for any numeric seed).
  */
 export const PLAN_HASH_VERSION = 1 as const;
 
@@ -33,10 +35,14 @@ export const PLAN_HASH_VERSION = 1 as const;
 const FLAG_FLAT_HAUL = 1 << 2;
 /** flags bit 5: world seed present after demand payload */
 const FLAG_HAS_SEED = 1 << 5;
+/** flags bit 6: external item list after optional seed */
+const FLAG_HAS_EXTERNAL = 1 << 6;
 
 const RAW_IDS: readonly string[] = RAW_RESOURCE_OPTIONS;
 const MAX_LINES = 15;
 const MAX_RATE = 65_535;
+/** Max external intermediate ids encoded in the share hash. */
+const MAX_EXTERNAL = 15;
 /** Max UTF-8 bytes for a compact product token (ClassName without Desc_/_C). */
 const MAX_PRODUCT_TOKEN_BYTES = 120;
 
@@ -54,6 +60,11 @@ export type PlanSnapshot = {
   >;
   /** null = Default / vanilla layout; number (incl. 0) = randomized map seed. */
   seed: MapSeed;
+  /**
+   * Mode B: crafted item ids treated as off-site (not expanded into map raws).
+   * Empty when absent from older hashes.
+   */
+  externalItems: string[];
 };
 
 export type PlanHashSource = {
@@ -64,6 +75,8 @@ export type PlanHashSource = {
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
   seed: MapSeed;
+  /** Mode B off-site intermediates (optional; omitted from hash when empty). */
+  externalItems?: string[];
 };
 
 function clamp(n: number, lo: number, hi: number, fallback: number): number {
@@ -78,6 +91,22 @@ function quantize(value: number, min: number, step: number, maxSteps: number): n
 
 function dequantize(q: number, min: number, step: number): number {
   return min + q * step;
+}
+
+function normalizeExternalItems(ids: string[] | undefined): string[] {
+  if (!ids || ids.length === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of ids) {
+    if (!raw) continue;
+    const id = canonicalizeProductId(raw);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_EXTERNAL) break;
+  }
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
 }
 
 export function toSnapshot(source: PlanHashSource): PlanSnapshot {
@@ -123,6 +152,7 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
       includeElevation: source.scoringOptions.includeElevation !== false,
     },
     seed,
+    externalItems: normalizeExternalItems(source.externalItems),
   };
 }
 
@@ -172,16 +202,31 @@ function productsToEncode(products: PlanSnapshot["productTargets"]): EncodedProd
   return out;
 }
 
+/** External item tokens only — ids with encodeable ClassName tokens. */
+function externalToEncode(ids: string[]): Uint8Array[] {
+  const out: Uint8Array[] = [];
+  for (const id of normalizeExternalItems(ids)) {
+    const token = compactProductToken(id);
+    const tokBytes = utf8Encode(token);
+    if (tokBytes.length === 0 || tokBytes.length > MAX_PRODUCT_TOKEN_BYTES) continue;
+    out.push(tokBytes);
+    if (out.length >= MAX_EXTERNAL) break;
+  }
+  return out;
+}
+
 export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   const raw = snap.rawDemand.filter((d) => indexOfRaw(d.resource) >= 0).slice(0, MAX_LINES);
   // Any product id is allowed — same universe as the Products dropdown (no allowlist).
   // Pre-filter so the count nibble matches only rows we actually write (no encode/decode desync).
   const activeRaw = snap.mode === "raw" ? raw : [];
   const activeProducts = snap.mode === "product" ? productsToEncode(snap.productTargets) : [];
+  // Externals only meaningful in product mode (Mode B expand prune)
+  const activeExternal = snap.mode === "product" ? externalToEncode(snap.externalItems ?? []) : [];
 
   const out: number[] = [];
 
-  // flags: mode | scoring | flatHaul(2) | mk(3–4) | hasSeed(5) | reserved
+  // flags: mode | scoring | flatHaul(2) | mk(3–4) | hasSeed(5) | hasExternal(6)
   const mkBits = Math.min(2, Math.max(0, snap.miner.minerMk - 1));
   let flags = 0;
   if (snap.mode === "product") flags |= 1;
@@ -190,6 +235,8 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   flags |= (mkBits & 3) << 3;
   const hasSeed = snap.seed !== null && snap.seed !== undefined;
   if (hasSeed) flags |= FLAG_HAS_SEED;
+  const hasExternal = activeExternal.length > 0;
+  if (hasExternal) flags |= FLAG_HAS_EXTERNAL;
   out.push(flags);
 
   out.push(Math.min(250, Math.max(1, Math.round(snap.miner.clockPercent))));
@@ -229,6 +276,18 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
     out.push((s >>> 8) & 0xff);
     out.push((s >>> 16) & 0xff);
     out.push((s >>> 24) & 0xff);
+  }
+
+  // Optional external intermediates: count + length-prefixed ClassName tokens
+  if (hasExternal) {
+    out.push(activeExternal.length & 0xff);
+    for (const tokBytes of activeExternal) {
+      out.push(tokBytes.length & 0xff);
+      for (let b = 0; b < tokBytes.length; b++) {
+        const byte = tokBytes[b];
+        if (byte !== undefined) out.push(byte);
+      }
+    }
   }
 
   return new Uint8Array(out);
@@ -298,6 +357,25 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     seed = b0s | (b1s << 8) | (b2s << 16) | (b3s << 24) | 0;
   }
 
+  const hasExternal = (flags & FLAG_HAS_EXTERNAL) !== 0;
+  const externalItems: string[] = [];
+  if (hasExternal) {
+    if (i >= bytes.length) return null;
+    const nExt = bytes[i++] ?? 0;
+    if (nExt > MAX_EXTERNAL) return null;
+    for (let k = 0; k < nExt; k++) {
+      if (i >= bytes.length) return null;
+      const tokLen = bytes[i++] ?? 0;
+      if (tokLen === 0 || tokLen > MAX_PRODUCT_TOKEN_BYTES) return null;
+      if (i + tokLen > bytes.length) return null;
+      const tokBytes = bytes.subarray(i, i + tokLen);
+      i += tokLen;
+      const token = utf8Decode(tokBytes);
+      if (!token) continue;
+      externalItems.push(expandProductToken(token));
+    }
+  }
+
   return toSnapshot({
     mode,
     rawDemand: rawDemand.map((d, j) => ({ id: `h${j}`, ...d })),
@@ -312,6 +390,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
       includeElevation,
     },
     seed,
+    externalItems,
   });
 }
 

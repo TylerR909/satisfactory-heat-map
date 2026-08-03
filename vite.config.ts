@@ -52,6 +52,9 @@ export default defineConfig({
       "@": path.resolve(rootDir, "src"),
     },
   },
+  server: {
+    open: true,
+  },
   worker: {
     format: "es",
   },

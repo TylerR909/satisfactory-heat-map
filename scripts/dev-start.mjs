@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * npm start — ensure WASM artifacts (Docker, when present), then Vite HMR.
- * Until a Rust crate exists, this is effectively `vite`.
+ * npm start — ensure WASM artifacts (Docker, when present), basemap tiles, then Vite HMR.
+ * Until a Rust crate exists, this is effectively `vite` (+ tile bootstrap).
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cratesDir = path.join(root, "crates");
+/** Production pyramid — used only when local WebPs cannot be ensured. */
+const LIVE_TILES_BASE = "https://satisfactory-heatmap.com/map/v1";
 
 async function maybeBuildWasm() {
   if (!existsSync(cratesDir)) {
@@ -34,18 +36,48 @@ async function maybeBuildWasm() {
   });
 }
 
-await maybeBuildWasm();
+/**
+ * Local Vite serves `public/map/v1/*.webp` same-origin. WebPs are gitignored, so
+ * fresh worktrees only have README.md — missing paths fall through to SPA
+ * `index.html` (Content-Type: text/html), which looks like a broken basemap.
+ *
+ * Prefer unpacking the committed pack (same as `npm run build`). If that fails
+ * and the user did not set VITE_MAP_TILES_BASE_URL, fall back to production tiles.
+ */
+function ensureBasemapTiles() {
+  const mapTile = path.join(root, "public", "map", "v1", "0", "0", "0.webp");
+  if (existsSync(mapTile)) {
+    return { localTiles: true };
+  }
 
-const mapTile = path.join(root, "public", "map", "v1", "0", "0", "0.webp");
-if (!existsSync(mapTile)) {
+  console.log("[start] Basemap WebPs missing — running map:ensure (unpack map-tiles/v1.tar.gz)…");
+  const ensure = spawnSync("npm", ["run", "map:ensure"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+  });
+  if (ensure.status === 0 && existsSync(mapTile)) {
+    return { localTiles: true };
+  }
+
+  if (process.env.VITE_MAP_TILES_BASE_URL?.trim()) {
+    console.warn(
+      "[start] Local tiles still missing; using existing VITE_MAP_TILES_BASE_URL=" +
+        process.env.VITE_MAP_TILES_BASE_URL.trim(),
+    );
+    return { localTiles: false };
+  }
+
   console.warn(
-    "[start] Basemap tiles missing (public/map/v1/0/0/0.webp).\n" +
-      "        Run:  npm run map:ensure     # unpack committed map-tiles/v1.tar.gz (no Docker)\n" +
-      "          or: npm run map:generate   # rebuild from wiki (needs Docker)\n" +
-      "        Then: npm start\n" +
-      "        (Once per worktree; WebPs are gitignored.)",
+    "[start] Local tiles still missing — pointing TileLayer at live site:\n" +
+      `        ${LIVE_TILES_BASE}/{z}/{x}/{y}.webp\n` +
+      "        (Override with VITE_MAP_TILES_BASE_URL; or npm run map:generate for a local pyramid.)",
   );
+  return { localTiles: false, useLiveTiles: true };
 }
+
+await maybeBuildWasm();
+const basemap = ensureBasemapTiles();
 
 // Conductor (and other hosts) may inject CONDUCTOR_PORT / PORT for multi-worktree previews.
 const port = process.env.CONDUCTOR_PORT || process.env.PORT || process.env.VITE_PORT;
@@ -54,11 +86,16 @@ if (port) {
   viteArgs.push("--port", String(port), "--strictPort");
 }
 
+const env = { ...process.env };
+if (basemap.useLiveTiles && !env.VITE_MAP_TILES_BASE_URL?.trim()) {
+  env.VITE_MAP_TILES_BASE_URL = LIVE_TILES_BASE;
+}
+
 const vite = spawn("npx", viteArgs, {
   cwd: root,
   stdio: "inherit",
   shell: true,
-  env: process.env,
+  env,
 });
 
 vite.on("exit", (code) => process.exit(code ?? 0));

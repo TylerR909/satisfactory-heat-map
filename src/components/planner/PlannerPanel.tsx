@@ -67,12 +67,17 @@ function nearbySupplySummary(maxUtilization: number | undefined): string | null 
   return `uses ${pct}% of nearby supply`;
 }
 
-/** Cap for rate fields (matches plan-hash u16). */
+/** Cap for rate fields (matches plan-hash u16 ceiling). */
 const RATE_INPUT_MAX = 65_535;
 
+/** True for "", "3", "3.", ".5", "3.5" — one optional fractional part. */
+function isRateDraft(s: string): boolean {
+  return s === "" || /^\d*\.?\d*$/.test(s);
+}
+
 /**
- * Integer items/min field: empty while 0 (so clear + retype works),
- * digits only, leading zeros stripped via parseInt ("030" → 30).
+ * Items/min field: empty while 0 (clear + retype works), decimals allowed (e.g. 3.5).
+ * Draft string while focused so trailing "." is not eaten by controlled numeric value.
  */
 function RateInput({
   value,
@@ -85,26 +90,38 @@ function RateInput({
   "aria-label": string;
   className?: string;
 }) {
-  const display = value === 0 ? "" : String(value);
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft !== null ? draft : value === 0 ? "" : String(value);
 
   return (
     <input
       type="text"
-      inputMode="numeric"
+      inputMode="decimal"
       autoComplete="off"
       spellCheck={false}
       aria-label={ariaLabel}
       className={className}
       value={display}
+      onFocus={() => setDraft(value === 0 ? "" : String(value))}
+      onBlur={() => {
+        setDraft(null);
+        // Normalize e.g. "3." → 3, ".5" → 0.5 already applied via onChange
+        if (Number.isFinite(value) && value > 0) {
+          const clamped = Math.min(RATE_INPUT_MAX, Math.max(0, value));
+          if (clamped !== value) onChange(clamped);
+        }
+      }}
       onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, "");
-        if (digits === "") {
+        const raw = e.target.value;
+        if (!isRateDraft(raw)) return;
+        setDraft(raw);
+        if (raw === "" || raw === ".") {
           onChange(0);
           return;
         }
-        const n = Number.parseInt(digits, 10);
+        const n = Number(raw);
         if (!Number.isFinite(n)) return;
-        onChange(Math.min(RATE_INPUT_MAX, n));
+        onChange(Math.min(RATE_INPUT_MAX, Math.max(0, n)));
       }}
     />
   );
@@ -124,6 +141,9 @@ export function PlannerPanel() {
     updateProductLine,
     addProductLine,
     removeProductLine,
+    externalItems,
+    expansionRows,
+    setItemExternal,
     miner,
     setMiner,
     scoringMode,
@@ -141,6 +161,8 @@ export function PlannerPanel() {
     setExtractorsOpen,
     advancedOpen,
     setAdvancedOpen,
+    expansionOpen,
+    setExpansionOpen,
     activeDemand,
     items,
     computing,
@@ -179,6 +201,7 @@ export function PlannerPanel() {
       scoringMode,
       scoringOptions,
       seed,
+      externalItems,
     });
     try {
       await navigator.clipboard.writeText(hash);
@@ -344,6 +367,80 @@ export function PlannerPanel() {
           >
             + Add product
           </button>
+        </section>
+      )}
+
+      {mode === "product" && expansionRows.length > 0 && (
+        <section className="rounded-lg border border-slate-800">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-900/80"
+            onClick={() => setExpansionOpen(!expansionOpen)}
+            aria-expanded={expansionOpen}
+          >
+            <span className="font-medium">
+              Expansion
+              <span className="ml-2 font-normal text-slate-500">
+                {expansionRows.length} item{expansionRows.length === 1 ? "" : "s"}
+                {externalItems.length > 0
+                  ? ` · ${expansionRows.filter((r) => externalItems.includes(r.itemId)).length} off-site`
+                  : ""}
+              </span>
+            </span>
+            <span className="text-slate-500">{expansionOpen ? "▾" : "▸"}</span>
+          </button>
+          {expansionOpen && (
+            <div className="space-y-2 border-t border-slate-800 px-3 py-3">
+              <p className="text-[11px] leading-snug text-slate-500">
+                Mark anything you import as <span className="text-slate-400">off-site</span> so it
+                doesn’t pull into the heatmap (e.g. Empty Canisters recycled elsewhere, or Modular
+                Frames from another factory).
+              </p>
+              <ul className="space-y-1.5 text-sm">
+                {expansionRows.map((row) => {
+                  const isTarget = productTargets.some((t) => t.productId === row.itemId);
+                  const offSite = externalItems.includes(row.itemId);
+                  const label = items[row.itemId]?.name ?? row.itemId;
+                  return (
+                    <li
+                      key={row.itemId}
+                      className={`flex items-center justify-between gap-2 ${
+                        offSite ? "text-slate-500" : "text-slate-200"
+                      }`}
+                    >
+                      <span
+                        className={`min-w-0 truncate ${offSite ? "line-through decoration-slate-600" : ""}`}
+                      >
+                        {label}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={`font-mono text-xs ${offSite ? "text-slate-500" : "text-slate-300"}`}
+                        >
+                          {formatRate(row.itemsPerMinute)}/min
+                        </span>
+                        {isTarget ? (
+                          <span className="w-[4.5rem] text-right text-[10px] text-slate-600">
+                            target
+                          </span>
+                        ) : (
+                          <label className="flex w-[4.5rem] cursor-pointer items-center justify-end gap-1 text-[10px] text-slate-400">
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-600"
+                              checked={offSite}
+                              onChange={(e) => setItemExternal(row.itemId, e.target.checked)}
+                            />
+                            <span>Off-site</span>
+                          </label>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

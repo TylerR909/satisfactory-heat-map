@@ -37,7 +37,8 @@
 
 ## Phase 2 — Depth without becoming a calculator
 
-- [ ] Mode B **alternate recipe toggles** (alts now in data; UI still default-only)
+- [x] Mode B **Resource Toggle** — mark intermediates off-site / imported (stop expand); Empty Canister + Empty Fluid Tank default off-site; share-hash + Expansion UI
+- [ ] Mode B **alternate recipe toggles** (alts in data; UI still default-only — same Expansion rows later)
 - [ ] **Blueprint paste** — paste a Satisfactory blueprint string; derive raw demand (and/or product targets) for the heatmap without becoming a full planner
 - [ ] “These alts unlock hotter regions” comparison (nice-to-have)
 - [ ] Cave node flags / better elevation heuristics

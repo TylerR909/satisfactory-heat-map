@@ -7,7 +7,7 @@ import {
 } from "@/lib/heatmap/heatRender";
 import type { PlanSnapshot } from "@/lib/planHash";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
-import { solveProductsToRaw } from "@/lib/production/solve";
+import { DEFAULT_EXTERNAL_ITEM_IDS, solveProductsToRaw } from "@/lib/production/solve";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
 import { clearNodeSeedCache, getNodesForSeed, type MapSeed } from "@/lib/seed";
 import type {
@@ -33,11 +33,24 @@ export function newLineId(): string {
   return `line-${lineId}-${Date.now()}`;
 }
 
+/** Mode B expand row: on-site intermediate or off-site (external) input. */
+export type ExpansionRow = {
+  itemId: string;
+  itemsPerMinute: number;
+  /** True when this item is treated as imported / not expanded into map raws. */
+  external: boolean;
+};
+
 export type AppState = {
   mode: InputMode;
   rawDemand: RawDemandLine[];
   /** Mode B: one or more co-located product targets (rates stack). */
   productTargets: ProductTargetLine[];
+  /**
+   * Mode B: crafted item ids treated as off-site (stop expand). Share-hash + plan
+   * intent — unlike omitWater (local data preference).
+   */
+  externalItems: string[];
   miner: MinerSettings;
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
@@ -46,6 +59,8 @@ export type AppState = {
   heatPaintOpen: boolean;
   extractorsOpen: boolean;
   advancedOpen: boolean;
+  /** Mode B Expansion accordion (off-site intermediate toggles). */
+  expansionOpen: boolean;
   heatOpacity: number;
   showNodes: boolean;
   /**
@@ -55,6 +70,11 @@ export type AppState = {
   omitWaterFromScoring: boolean;
   selectedSiteIndex: number | null;
   activeDemand: RawDemand[];
+  /**
+   * Mode B: intermediates from the last expand (on-site + external), for the
+   * Resource Toggle UI. Empty in raw mode.
+   */
+  expansionRows: ExpansionRow[];
   heatmap: HeatmapResult | null;
   computing: boolean;
   error: string | null;
@@ -77,6 +97,8 @@ export type AppState = {
   updateProductLine: (id: string, patch: Partial<Omit<ProductTargetLine, "id">>) => void;
   addProductLine: () => void;
   removeProductLine: (id: string) => void;
+  /** Mark / unmark a crafted item as off-site for Mode B expand. */
+  setItemExternal: (itemId: string, external: boolean) => void;
   setMiner: (m: Partial<MinerSettings>) => void;
   setScoringMode: (mode: ScoringMode) => void;
   setScoringOptions: (patch: Partial<ScoringOptions>) => void;
@@ -84,6 +106,7 @@ export type AppState = {
   setHeatPaintOpen: (v: boolean) => void;
   setExtractorsOpen: (v: boolean) => void;
   setAdvancedOpen: (v: boolean) => void;
+  setExpansionOpen: (v: boolean) => void;
   setHeatOpacity: (n: number) => void;
   setShowNodes: (v: boolean) => void;
   setOmitWaterFromScoring: (v: boolean) => void;
@@ -114,19 +137,33 @@ export type AppState = {
 };
 
 function recompute(
-  state: Pick<AppState, "mode" | "rawDemand" | "productTargets" | "items" | "recipes">,
-): RawDemand[] {
+  state: Pick<
+    AppState,
+    "mode" | "rawDemand" | "productTargets" | "externalItems" | "items" | "recipes"
+  >,
+): { demand: RawDemand[]; expansionRows: ExpansionRow[] } {
   if (state.mode === "raw") {
-    return state.rawDemand
-      .filter((d) => d.itemsPerMinute > 0 && d.resource)
-      .map(({ resource, itemsPerMinute }) => ({ resource, itemsPerMinute }));
+    return {
+      demand: state.rawDemand
+        .filter((d) => d.itemsPerMinute > 0 && d.resource)
+        .map(({ resource, itemsPerMinute }) => ({ resource, itemsPerMinute })),
+      expansionRows: [],
+    };
   }
   const targets = state.productTargets
     .filter((t) => t.productId && t.itemsPerMinute > 0)
     .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
-  if (targets.length === 0) return [];
-  const { demand } = solveProductsToRaw(targets, state.recipes, state.items);
-  return demand;
+  if (targets.length === 0) return { demand: [], expansionRows: [] };
+  const { demand, expansion } = solveProductsToRaw(targets, state.recipes, state.items, {
+    externalItems: state.externalItems,
+  });
+  // Solver already orders deep → … → direct inputs → targets (min-depth merge)
+  const expansionRows: ExpansionRow[] = expansion.map((e) => ({
+    itemId: e.itemId,
+    itemsPerMinute: e.itemsPerMinute,
+    external: e.external,
+  }));
+  return { demand, expansionRows };
 }
 
 export const useAppStore = create<AppState>()(
@@ -146,19 +183,22 @@ export const useAppStore = create<AppState>()(
           itemsPerMinute: 10,
         },
       ],
+      // Packaging vessels: fair default for packaged recipes (user can re-enable)
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
       miner: { ...DEFAULT_MINER_SETTINGS },
       scoringMode: "centered",
       scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
       heatRender: { ...DEFAULT_HEAT_RENDER },
       heatPaintOpen: false,
       extractorsOpen: false,
-      // Clustering holds site balance (Centered/Weighted) — open by default
-      advancedOpen: true,
+      advancedOpen: false,
+      expansionOpen: false,
       heatOpacity: DEFAULT_HEAT_OPACITY,
       showNodes: true,
       omitWaterFromScoring: false,
       selectedSiteIndex: null,
       activeDemand: [],
+      expansionRows: [],
       heatmap: null,
       computing: false,
       error: null,
@@ -227,6 +267,21 @@ export const useAppStore = create<AppState>()(
         set({ productTargets: get().productTargets.filter((line) => line.id !== id) });
         get().recomputeActiveDemand();
       },
+      setItemExternal: (itemId, external) => {
+        const id = canonicalizeProductId(itemId);
+        if (!id) return;
+        // Product targets always expand one level — external only applies to inputs
+        if (get().productTargets.some((t) => t.productId === id)) return;
+        const prev = get().externalItems;
+        const has = prev.includes(id);
+        if (external && has) return;
+        if (!external && !has) return;
+        const externalItems = external
+          ? [...prev, id].sort((a, b) => a.localeCompare(b))
+          : prev.filter((x) => x !== id);
+        set({ externalItems });
+        get().recomputeActiveDemand();
+      },
       setMiner: (m) => {
         const next = { ...get().miner, ...m };
         // In-game overclock max is 250%
@@ -244,6 +299,7 @@ export const useAppStore = create<AppState>()(
       setHeatPaintOpen: (heatPaintOpen) => set({ heatPaintOpen }),
       setExtractorsOpen: (extractorsOpen) => set({ extractorsOpen }),
       setAdvancedOpen: (advancedOpen) => set({ advancedOpen }),
+      setExpansionOpen: (expansionOpen) => set({ expansionOpen }),
       setHeatOpacity: (heatOpacity) => set({ heatOpacity }),
       setShowNodes: (showNodes) => set({ showNodes }),
       setOmitWaterFromScoring: (omitWaterFromScoring) => set({ omitWaterFromScoring }),
@@ -267,6 +323,7 @@ export const useAppStore = create<AppState>()(
           heatRender: { ...DEFAULT_HEAT_RENDER },
           extractorsOpen: false,
           advancedOpen: false,
+          expansionOpen: false,
           heatPaintOpen: false,
           heatOpacity: DEFAULT_HEAT_OPACITY,
           showNodes: true,
@@ -286,7 +343,9 @@ export const useAppStore = create<AppState>()(
           set({ error: "No product rates to send — add products first." });
           return;
         }
-        const { demand } = solveProductsToRaw(targets, state.recipes, state.items);
+        const { demand } = solveProductsToRaw(targets, state.recipes, state.items, {
+          externalItems: state.externalItems,
+        });
         if (demand.length === 0) {
           set({ error: "Could not expand products to raw demand." });
           return;
@@ -300,6 +359,7 @@ export const useAppStore = create<AppState>()(
           mode: "raw",
           rawDemand,
           activeDemand: demand,
+          expansionRows: [],
           error: null,
         });
       },
@@ -337,10 +397,14 @@ export const useAppStore = create<AppState>()(
             ? getNodesForSeed(prev.baseSlots, nextSeed)
             : prev.nodes;
 
+        // Older hashes omit externalItems → []; prefer snapshot list when present
+        const externalItems = (snap.externalItems ?? []).map((id) => canonicalizeProductId(id));
+
         set({
           mode: snap.mode,
           rawDemand,
           productTargets,
+          externalItems,
           miner: { ...snap.miner },
           scoringMode: snap.scoringMode,
           // Hash is computation-only — keep local display knobs (opacity, paint, peak emphasis)
@@ -374,7 +438,8 @@ export const useAppStore = create<AppState>()(
       },
       selectSite: (_site, index) => set({ selectedSiteIndex: index }),
       recomputeActiveDemand: () => {
-        set({ activeDemand: recompute(get()) });
+        const { demand, expansionRows } = recompute(get());
+        set({ activeDemand: demand, expansionRows });
       },
       loadGameData: async () => {
         try {
@@ -405,12 +470,13 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      // v8: map seed (null = Default); nodes derived from baseSlots
-      name: "sf-heatmap-v8",
+      // v9: externalItems (Mode B off-site prune); seed still null = Default
+      name: "sf-heatmap-v9",
       partialize: (s) => ({
         mode: s.mode,
         rawDemand: s.rawDemand,
         productTargets: s.productTargets,
+        externalItems: s.externalItems,
         miner: s.miner,
         scoringMode: s.scoringMode,
         scoringOptions: s.scoringOptions,
@@ -418,6 +484,7 @@ export const useAppStore = create<AppState>()(
         heatPaintOpen: s.heatPaintOpen,
         extractorsOpen: s.extractorsOpen,
         advancedOpen: s.advancedOpen,
+        expansionOpen: s.expansionOpen,
         heatOpacity: s.heatOpacity,
         showNodes: s.showNodes,
         omitWaterFromScoring: s.omitWaterFromScoring,
@@ -450,6 +517,10 @@ export const useAppStore = create<AppState>()(
           productId: canonicalizeProductId(line.productId),
           itemsPerMinute: line.itemsPerMinute,
         }));
+        // Pre-v9 localStorage has no externalItems → keep packaging vessel defaults
+        const externalItems = Array.isArray(p.externalItems)
+          ? p.externalItems.map((id) => canonicalizeProductId(id)).filter(Boolean)
+          : [...DEFAULT_EXTERNAL_ITEM_IDS];
         const rawMode = String(p.scoringMode ?? current.scoringMode);
         const scoringMode: ScoringMode =
           rawMode === "weighted" || rawMode === "volume" ? "weighted" : "centered";
@@ -497,6 +568,7 @@ export const useAppStore = create<AppState>()(
           ...p,
           rawDemand,
           productTargets,
+          externalItems,
           miner,
           scoringMode,
           scoringOptions,

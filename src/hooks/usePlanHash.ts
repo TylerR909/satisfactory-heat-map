@@ -13,6 +13,7 @@ function pickPlanSource(): PlanHashSource {
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
     seed: s.seed,
+    externalItems: s.externalItems,
   };
 }
 

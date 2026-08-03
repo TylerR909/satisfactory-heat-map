@@ -11,31 +11,28 @@ XYZ WebP tile pyramid for the Leaflet basemap (`CRS.Simple`, 256×256 tiles, no 
 | Environment | Tile URL |
 |-------------|----------|
 | **Production** (Cloudflare / Docker image) | Same-origin `/map/v1/{z}/{x}/{y}.webp` (must be in `dist` at deploy) |
-| **Localhost** (`npm start`) | Same-origin `/map/v1/{z}/{x}/{y}.webp` from Vite `public/` |
+| **Localhost** (`npm start`) | Same-origin `/map/v1/{z}/{x}/{y}.webp` from Vite `public/` after auto-`map:ensure` |
 
 **Per worktree** (extracted/generated WebPs are gitignored):
 
-```bash
-# With Docker (regenerate from wiki):
-npm run map:generate
-npm start
+`npm start` now:
 
-# Without Docker (unpack the committed ~1.4MB pack — same as Cloudflare builds):
-npm run map:ensure
-npm start
-```
+1. If `public/map/v1/0/0/0.webp` is missing → runs **`map:ensure`** (unpacks committed `map-tiles/v1.tar.gz`)
+2. If still missing and you did not set `VITE_MAP_TILES_BASE_URL` → falls back to **production** tiles (`https://satisfactory-heatmap.com/map/v1/...`)
 
-You do **not** need `VITE_MAP_TILES_BASE_URL=/map/v1` — that is already the default.
-
-### Optional: point at production tiles
-
-Only after prod actually serves WebPs (not SPA `index.html`):
+Manual options:
 
 ```bash
-VITE_MAP_TILES_BASE_URL=https://satisfactory-heatmap.com/map/v1 npm start
+npm run map:ensure     # unpack pack only (no Docker)
+npm run map:generate   # rebuild from wiki (needs Docker)
+VITE_MAP_TILES_BASE_URL=https://satisfactory-heatmap.com/map/v1 npm start  # force live tiles
 ```
 
-If prod is missing tiles, Cloudflare returns HTML for `/map/v1/*.webp`. Cross-origin that shows up as **`net::ERR_BLOCKED_BY_ORB`** in Chrome — use local generate instead.
+You do **not** need `VITE_MAP_TILES_BASE_URL=/map/v1` — that is already the default once WebPs exist.
+
+### Why a “missing” tile can look like 304 HTML
+
+Vite’s SPA fallback serves **`index.html`** for unknown paths under `public/`. A request for `/map/v1/1/1/0.webp` without a real file returns `Content-Type: text/html` (often `200` / later `304` with an HTML ETag). Leaflet then fails to paint WebPs. Fix: real tiles on disk (`map:ensure`) or a remote base URL that returns `image/webp`.
 
 ---
 
