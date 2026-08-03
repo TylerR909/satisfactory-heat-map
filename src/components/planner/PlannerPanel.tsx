@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Attributions } from "@/components/Attributions";
 import { SavedPlansBar } from "@/components/planner/SavedPlansBar";
@@ -11,12 +11,142 @@ import {
   elevDashThresholdToSliderM,
   formatHeatRenderCode,
 } from "@/lib/heatmap/heatRender";
-import { formatRate } from "@/lib/mining";
+import {
+  CLOCK_PERCENT_MAX,
+  CLOCK_PERCENT_MIN,
+  formatRate,
+  minerClockRateLabel,
+  oilClockRateLabel,
+  softSnapClockPercent,
+  waterClockRateLabel,
+  wellClockRateLabel,
+} from "@/lib/mining";
 import { encodePlanHash } from "@/lib/planHash";
-import { RAW_RESOURCE_OPTIONS, resourceLabel, WATER_RESOURCE_ID } from "@/lib/resources";
+import {
+  RAW_RESOURCE_OPTIONS,
+  resourceLabel,
+  WATER_RESOURCE_ID,
+  WELL_ONLY_RESOURCE_IDS,
+} from "@/lib/resources";
 import { useAppStore } from "@/store/useAppStore";
-import type { CapacityTag, MinerMk, ScoringMode } from "@/types";
+import type { CapacityTag, MinerMk, ScoringMode, SiteScore } from "@/types";
 import { DEFAULT_HEAT_OPACITY } from "@/types";
+
+/**
+ * Overclock control — same layout as Heat settings sliders:
+ *   [label extras…]                    250% (rate)
+ *   ==============O===================
+ *   50                               250
+ *
+ * Drag updates local draft only; commit on pointer/keyboard release.
+ */
+function ClockPercentSlider({
+  label,
+  value,
+  onChange,
+  "aria-label": ariaLabel,
+  /** Live rate readout, e.g. "300/min" or "75/150/300/min" (impure/normal/pure). */
+  rateLabel,
+}: {
+  /** Left side of the header row (section name, Mk group, checkbox, tip…). */
+  label: ReactNode;
+  value: number;
+  onChange: (n: number) => void;
+  "aria-label": string;
+  rateLabel?: (clockPercent: number) => string;
+}) {
+  const id = useId();
+  const dragging = useRef(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (!dragging.current) setDraft(value);
+  }, [value]);
+
+  const applyLocal = (raw: number) => {
+    const v = softSnapClockPercent(raw, draft);
+    setDraft(v);
+    return v;
+  };
+
+  const commit = (raw: number) => {
+    const v = applyLocal(raw);
+    onChange(v);
+  };
+
+  const endDrag = (raw: number) => {
+    dragging.current = false;
+    commit(raw);
+  };
+
+  const rateHint = rateLabel?.(draft);
+  const valueText = rateHint ? `${draft}% (${rateHint})` : `${draft}%`;
+
+  return (
+    <div className="block space-y-1 text-xs text-slate-400">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-1.5">{label}</span>
+        <span className="shrink-0 font-mono text-slate-300">{valueText}</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={CLOCK_PERCENT_MIN}
+        max={CLOCK_PERCENT_MAX}
+        step={1}
+        value={draft}
+        aria-label={ariaLabel}
+        aria-valuetext={valueText}
+        className="sf-clock-range w-full"
+        onPointerDown={() => {
+          dragging.current = true;
+        }}
+        onPointerUp={(e) => endDrag(Number((e.target as HTMLInputElement).value))}
+        onPointerCancel={(e) => endDrag(Number((e.target as HTMLInputElement).value))}
+        onBlur={(e) => {
+          if (dragging.current) endDrag(Number(e.currentTarget.value));
+        }}
+        onChange={(e) => {
+          const raw = Number(e.target.value);
+          if (dragging.current) applyLocal(raw);
+          else commit(raw);
+        }}
+      />
+      <span className="flex justify-between text-[10px] text-slate-600">
+        <span>{CLOCK_PERCENT_MIN}</span>
+        <span>{CLOCK_PERCENT_MAX}</span>
+      </span>
+    </div>
+  );
+}
+
+function MinerMkGroup({ value, onChange }: { value: MinerMk; onChange: (mk: MinerMk) => void }) {
+  return (
+    <fieldset className="m-0 inline-flex overflow-hidden rounded border border-slate-700 p-0">
+      <legend className="absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0 [clip:rect(0,0,0,0)]">
+        Miner Mk
+      </legend>
+      {([1, 2, 3] as const).map((mk) => {
+        const on = value === mk;
+        return (
+          <button
+            key={mk}
+            type="button"
+            className={
+              on
+                ? "bg-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-100"
+                : "px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-800/80 hover:text-slate-300"
+            }
+            onClick={() => onChange(mk)}
+            aria-pressed={on}
+          >
+            Mk{mk}
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
 
 /**
  * Single UI continuum for site preference:
@@ -59,8 +189,20 @@ function capacityLabel(
 /**
  * maxUtilization = demand / nearby extract capacity for the bottleneck resource.
  * Plain language so it doesn’t read like a mystery “% local” metric.
+ *
+ * Prefer naming shortfall resources (e.g. Nitrogen with wells off) over a
+ * mysterious “999% of nearby supply” when local capacity is zero.
  */
-function nearbySupplySummary(maxUtilization: number | undefined): string | null {
+function siteSupplySummary(
+  site: SiteScore,
+  items: Record<string, { name?: string } | undefined>,
+): string | null {
+  const short = site.byResource.filter((r) => r.shortfall > 1e-3);
+  if (short.length > 0) {
+    const names = short.map((r) => resourceLabel(r.resource, items)).join(", ");
+    return `missing ${names}`;
+  }
+  const maxUtilization = site.maxUtilization;
   if (maxUtilization == null || !Number.isFinite(maxUtilization)) return null;
   const pct = Math.min(999, Math.round(maxUtilization * 100));
   if (pct > 100) return `needs ${pct}% of nearby supply`;
@@ -172,15 +314,25 @@ export function PlannerPanel() {
     setHeatOpacity,
     showNodes,
     setShowNodes,
-    omitWaterFromScoring,
-    setOmitWaterFromScoring,
+    openWater,
     selectedSiteIndex,
     setSelectedSiteIndex,
   } = useAppStore();
 
   const waterInDemand = activeDemand.some((d) => d.resource === WATER_RESOURCE_ID);
-  const waterDemandRate =
-    activeDemand.find((d) => d.resource === WATER_RESOURCE_ID)?.itemsPerMinute ?? 0;
+  /** Raws that cannot be met with wells off (today: Nitrogen Gas only). */
+  const wellOnlyInDemand = activeDemand.filter(
+    (d) => d.itemsPerMinute > 0 && WELL_ONLY_RESOURCE_IDS.includes(d.resource),
+  );
+  const wellsRequiredForPlan = wellOnlyInDemand.length > 0;
+  const openWaterBodyCount = openWater?.bodies?.length ?? 0;
+
+  // Plans that need Nitrogen (wells-only) force pressurizers on for scoring.
+  useEffect(() => {
+    if (wellsRequiredForPlan && !miner.resourceWellsEnabled) {
+      setMiner({ resourceWellsEnabled: true });
+    }
+  }, [wellsRequiredForPlan, miner.resourceWellsEnabled, setMiner]);
 
   // Factory-automatable products only (see parse-docs: ItemDef.automatable)
   const craftable = Object.values(items)
@@ -393,14 +545,15 @@ export function PlannerPanel() {
             <div className="space-y-2 border-t border-slate-800 px-3 py-3">
               <p className="text-[11px] leading-snug text-slate-500">
                 Mark anything you import as <span className="text-slate-400">off-site</span> so it
-                doesn’t pull into the heatmap (e.g. Empty Canisters recycled elsewhere, or Modular
-                Frames from another factory).
+                doesn’t pull into the heatmap (e.g. Empty Canisters recycled elsewhere, Modular
+                Frames from another factory, or <span className="text-slate-400">Water</span> piped
+                in from off-site extractors).
               </p>
               <ul className="space-y-1.5 text-sm">
                 {expansionRows.map((row) => {
                   const isTarget = productTargets.some((t) => t.productId === row.itemId);
                   const offSite = externalItems.includes(row.itemId);
-                  const label = items[row.itemId]?.name ?? row.itemId;
+                  const label = resourceLabel(row.itemId, items);
                   return (
                     <li
                       key={row.itemId}
@@ -444,39 +597,6 @@ export function PlannerPanel() {
         </section>
       )}
 
-      {waterInDemand && (
-        <section className="space-y-2 rounded-lg border border-sky-800/60 bg-sky-950/30 p-3">
-          <h2 className="text-sm font-medium text-sky-200">Water data caveat</h2>
-          <p className="text-[11px] leading-snug text-sky-100/80">
-            Your plan needs{" "}
-            <span className="font-mono text-sky-100">{formatRate(waterDemandRate)}/min</span> water.
-            Node data only includes <strong>resource wells</strong> (late-game pressurizer +
-            extractors) — not free placement of Water Extractors on coasts, lakes, or rivers. Heat
-            and pins will pull toward those few wells and under-represent normal open-water sites.
-          </p>
-          <label className="flex items-start gap-2 text-xs text-sky-100/90">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={omitWaterFromScoring}
-              onChange={(e) => setOmitWaterFromScoring(e.target.checked)}
-            />
-            <span>
-              <span className="font-medium">Omit water from scoring</span>
-              <span className="mt-0.5 block text-[11px] text-sky-200/70">
-                Heatmap uses every other raw only. Place Water Extractors yourself on deep water
-                near the hotspot. Wells remain on the map if “Show demand nodes” is on.
-              </span>
-            </span>
-          </label>
-          {omitWaterFromScoring && (
-            <p className="text-[11px] text-sky-300/80">
-              Scoring ignores water for now — hotspots reflect non-water resources only.
-            </p>
-          )}
-        </section>
-      )}
-
       {/* Only useful when products expand to raw — raw mode already shows the same lines */}
       {mode === "product" && (
         <section className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
@@ -496,24 +616,14 @@ export function PlannerPanel() {
             <p className="text-xs text-slate-500">None yet — heat waits for demand.</p>
           ) : (
             <ul className="space-y-1 text-sm">
-              {activeDemand.map((d) => {
-                const omittedWater = omitWaterFromScoring && d.resource === WATER_RESOURCE_ID;
-                return (
-                  <li
-                    key={d.resource}
-                    className={`flex justify-between gap-2 ${
-                      omittedWater ? "text-slate-500 line-through decoration-slate-500" : ""
-                    }`}
-                  >
-                    <span>{resourceLabel(d.resource, items)}</span>
-                    <span
-                      className={`font-mono ${omittedWater ? "text-slate-500" : "text-slate-300"}`}
-                    >
-                      {formatRate(d.itemsPerMinute)}/min
-                    </span>
-                  </li>
-                );
-              })}
+              {activeDemand.map((d) => (
+                <li key={d.resource} className="flex justify-between gap-2">
+                  <span>{resourceLabel(d.resource, items)}</span>
+                  <span className="font-mono text-slate-300">
+                    {formatRate(d.itemsPerMinute)}/min
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
         </section>
@@ -907,7 +1017,7 @@ export function PlannerPanel() {
         )}
       </section>
 
-      {/* Extractors accordion — default closed, Mk2@250% */}
+      {/* Extractors accordion — default closed; Mk2@250%, water 250%, wells on@250% */}
       <section className="rounded-lg border border-slate-800">
         <button
           type="button"
@@ -918,56 +1028,114 @@ export function PlannerPanel() {
           <span>
             <span className="font-medium">Extractors</span>
             <span className="ml-2 text-xs text-slate-500">
-              Miner Mk.{miner.minerMk} @ {miner.clockPercent}%
+              Mk.{miner.minerMk}@{miner.clockPercent}% · Oil {miner.oilClockPercent}% · Water{" "}
+              {miner.waterClockPercent}% · Wells{" "}
+              {miner.resourceWellsEnabled || wellsRequiredForPlan
+                ? `${miner.wellClockPercent}%`
+                : "off"}
             </span>
           </span>
           <span className="text-slate-500">{extractorsOpen ? "▾" : "▸"}</span>
         </button>
         {extractorsOpen && (
-          <div className="space-y-2 border-t border-slate-800 px-3 py-3">
-            <div className="flex gap-2">
-              <label className="flex flex-1 flex-col gap-1 text-xs text-slate-400">
-                Miner (solids only)
-                <select
-                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-                  value={miner.minerMk}
-                  onChange={(e) => setMiner({ minerMk: Number(e.target.value) as MinerMk })}
-                >
-                  <option value={1}>Mk.1 (60 base)</option>
-                  <option value={2}>Mk.2 (120 base)</option>
-                  <option value={3}>Mk.3 (240 base)</option>
-                </select>
-              </label>
-              <label className="flex flex-1 flex-col gap-1 text-xs text-slate-400">
-                Clock %
-                <input
-                  type="number"
-                  min={1}
-                  max={250}
-                  step={1}
-                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-                  value={miner.clockPercent}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (!Number.isFinite(n)) {
-                      setMiner({ clockPercent: 100 });
-                      return;
-                    }
-                    setMiner({ clockPercent: Math.min(250, Math.max(1, Math.round(n))) });
-                  }}
-                />
-              </label>
-            </div>
-            <p className="text-[11px] leading-snug text-slate-500">
-              Miner Mk: solid ores only. Oil extractors 60/120/240 by purity. Water extractors
-              120/min. Well satellites 30/60/120. Clock % applies to all. Default assumes Mk.2 @
-              250%.
-            </p>
+          <div className="space-y-3 border-t border-slate-800 px-3 py-3">
+            <ClockPercentSlider
+              label={
+                <>
+                  <span className="text-slate-400">Miner</span>
+                  <MinerMkGroup
+                    value={miner.minerMk}
+                    onChange={(mk) => setMiner({ minerMk: mk })}
+                  />
+                </>
+              }
+              value={miner.clockPercent}
+              onChange={(n) => setMiner({ clockPercent: n })}
+              aria-label="Miner clock percent"
+              rateLabel={(c) => minerClockRateLabel(miner.minerMk, c)}
+            />
+
+            <ClockPercentSlider
+              label={<span className="text-slate-400">Oil Extractor</span>}
+              value={miner.oilClockPercent}
+              onChange={(n) => setMiner({ oilClockPercent: n })}
+              aria-label="Oil Extractor clock percent"
+              rateLabel={oilClockRateLabel}
+            />
+
+            <ClockPercentSlider
+              label={<span className="text-slate-400">Water Extractor</span>}
+              value={miner.waterClockPercent}
+              onChange={(n) => setMiner({ waterClockPercent: n })}
+              aria-label="Water Extractor clock percent"
+              rateLabel={waterClockRateLabel}
+            />
+
+            {miner.resourceWellsEnabled || wellsRequiredForPlan ? (
+              <ClockPercentSlider
+                label={
+                  <>
+                    <input
+                      type="checkbox"
+                      className="disabled:opacity-60"
+                      checked
+                      disabled={wellsRequiredForPlan}
+                      onChange={(e) => {
+                        if (wellsRequiredForPlan) return;
+                        setMiner({ resourceWellsEnabled: e.target.checked });
+                      }}
+                      aria-label="Pressurized Resource Wells"
+                    />
+                    <span className="text-slate-400">Resource wells</span>
+                    <InfoTip text="Tier 8 pressurizer + extractors on oil, water, and nitrogen satellites. Open water still supplies Water when this is off. Nitrogen has no other map source." />
+                    {wellsRequiredForPlan && (
+                      <span className="truncate text-[10px] font-normal text-amber-400/90">
+                        — Required for{" "}
+                        {wellOnlyInDemand.map((d) => resourceLabel(d.resource, items)).join(", ")}
+                      </span>
+                    )}
+                  </>
+                }
+                value={miner.wellClockPercent}
+                onChange={(n) => setMiner({ wellClockPercent: n })}
+                aria-label="Resource Well Pressurizer clock percent"
+                rateLabel={wellClockRateLabel}
+              />
+            ) : (
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={(e) => setMiner({ resourceWellsEnabled: e.target.checked })}
+                    aria-label="Pressurized Resource Wells"
+                  />
+                  <span>Resource wells</span>
+                  <InfoTip text="Tier 8 pressurizer + extractors on oil, water, and nitrogen satellites. Open water still supplies Water when this is off. Nitrogen has no other map source." />
+                </span>
+                <span className="shrink-0 font-mono text-slate-500">off</span>
+              </div>
+            )}
           </div>
         )}
       </section>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {!miner.resourceWellsEnabled &&
+        !wellsRequiredForPlan &&
+        waterInDemand &&
+        openWaterBodyCount === 0 && (
+          <section className="space-y-1 rounded-lg border border-amber-800/50 bg-amber-950/30 p-3">
+            <h2 className="text-sm font-medium text-amber-200">No open-water map data</h2>
+            <p className="text-[11px] leading-snug text-amber-100/85">
+              Wells are off and open-water bodies did not load, so Water has no capacity on the map.
+              Run <span className="font-mono text-amber-100">npm run map:generate</span> (or ensure{" "}
+              <span className="font-mono text-amber-100">public/data/water/open-water.json</span> is
+              present) and reload.
+            </p>
+          </section>
+        )}
 
       {heatmap && heatmap.topSites.length > 0 && (
         <section className="space-y-2">
@@ -1007,7 +1175,7 @@ export function PlannerPanel() {
                         ({Math.round(site.x)}, {Math.round(site.y)})
                       </span>
                       {(() => {
-                        const supply = nearbySupplySummary(site.maxUtilization);
+                        const supply = siteSupplySummary(site, items);
                         return supply ? <span> · {supply}</span> : null;
                       })()}
                     </span>
@@ -1022,6 +1190,32 @@ export function PlannerPanel() {
       {selected && (
         <section className="space-y-2 rounded-lg border border-slate-800 p-3 text-xs">
           <h3 className="text-sm font-medium text-slate-300">Selected site breakdown</h3>
+          {selected.capacityTag === "shortfall" && (
+            <p className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] leading-snug text-red-200">
+              <span className="font-semibold">Shortfall</span> — this site cannot fully meet the
+              plan.
+              {selected.byResource.some((r) => r.shortfall > 1e-3) && (
+                <>
+                  {" "}
+                  Unmet:{" "}
+                  {selected.byResource
+                    .filter((r) => r.shortfall > 1e-3)
+                    .map((r) => resourceLabel(r.resource, items))
+                    .join(", ")}
+                  .
+                </>
+              )}
+              {selected.byResource.some(
+                (r) => r.resource === WATER_RESOURCE_ID && r.shortfall <= 1e-3 && r.supplied > 0,
+              ) &&
+                selected.byResource.some((r) => r.shortfall > 1e-3) && (
+                  <span className="mt-1 block text-red-100/80">
+                    Water may still show haul lines (open water is fine); another raw is the
+                    bottleneck.
+                  </span>
+                )}
+            </p>
+          )}
           {selected.capacityTag === "limited" && (
             <p className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
               <span className="font-semibold">Limited</span> — this hotspot meets your rates, but
@@ -1040,6 +1234,9 @@ export function PlannerPanel() {
             const cap = selected.capacityByResource?.find((c) => c.resource === ra.resource);
             const utilPct =
               cap && Number.isFinite(cap.utilization) ? Math.min(999, cap.utilization * 100) : null;
+            const isOpenWaterAssign = ra.nodes.some((n) => n.nodeId.startsWith("ow_"));
+            const wellOnly =
+              !miner.resourceWellsEnabled && WELL_ONLY_RESOURCE_IDS.includes(ra.resource);
             return (
               <div key={ra.resource} className="border-t border-slate-800 pt-2">
                 <div className="flex justify-between font-medium">
@@ -1051,27 +1248,44 @@ export function PlannerPanel() {
                     )}
                   </span>
                 </div>
+                {wellOnly && ra.shortfall > 0 && (
+                  <p className="mt-0.5 text-[11px] text-amber-300/90">
+                    Wells-only resource — enable Pressurized Resource Wells to supply this.
+                  </p>
+                )}
                 {cap && (
                   <p className="mt-0.5 text-[11px] text-slate-500">
-                    Nearby nodes can supply ~{formatRate(cap.localCapacity)}/min
+                    Nearby supply ~{formatRate(cap.localCapacity)}/min
                     {utilPct != null &&
                       (utilPct > 100
                         ? ` · plan needs ${utilPct.toFixed(0)}% of that`
                         : ` · plan uses ${utilPct.toFixed(0)}%`)}
                     {cap.spare > 0 && ` · spare ${formatRate(cap.spare)}/min`}
+                    {cap.localCapacity <= 1e-9 &&
+                      ra.demanded > 0 &&
+                      " · no extractors in local radius"}
                   </p>
                 )}
                 <ul className="mt-1 text-slate-500">
                   {ra.nodes.map((n) => (
                     <li key={n.nodeId}>
-                      {n.purity} · {formatRate(n.rateUsed)}/min · {(n.dist / 100).toFixed(0)} m
+                      {n.nodeId.startsWith("ow_") ? "open water" : n.purity} ·{" "}
+                      {formatRate(n.rateUsed)}/min · {(n.dist / 100).toFixed(0)} m
                       {n.caveRisk ? " · cave" : ""}
                       {selected.z != null && Math.abs(n.z - selected.z) >= 1
                         ? ` · Δz ${formatDistCm(Math.abs(n.z - selected.z))}`
                         : ""}
                     </li>
                   ))}
+                  {ra.nodes.length === 0 && ra.demanded > 0 && (
+                    <li className="text-red-400/90">no sources assigned</li>
+                  )}
                 </ul>
+                {isOpenWaterAssign && ra.shortfall <= 1e-3 && (
+                  <p className="mt-0.5 text-[10px] text-sky-500/80">
+                    Supplied from open water (not wells)
+                  </p>
+                )}
               </div>
             );
           })}

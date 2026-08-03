@@ -5,14 +5,26 @@ import {
   combineHaulCost,
   inferCapacityTag,
   normalizeScoresForDisplay,
+  openWaterToScoredNodes,
   prepareNodes,
   pureNodeExtractRate,
   relocateSiteToAssignment,
   scoreSite,
 } from "@/lib/heatmap/score";
-import type { ResourceAssignment, ResourceCapacityInfo, ResourceNode } from "@/types";
+import type {
+  OpenWaterData,
+  ResourceAssignment,
+  ResourceCapacityInfo,
+  ResourceNode,
+} from "@/types";
 
-const miner = { minerMk: 2 as const, clockPercent: 100 };
+const miner = {
+  minerMk: 2 as const,
+  clockPercent: 100,
+  waterClockPercent: 100,
+  resourceWellsEnabled: true,
+  wellClockPercent: 100,
+};
 
 function node(
   id: string,
@@ -48,7 +60,7 @@ describe("capacity-aware scoreSite", () => {
   });
 
   it("is satisfiable when enough nodes nearby under Mk3", () => {
-    const mk3 = { minerMk: 3 as const, clockPercent: 100 };
+    const mk3 = { ...miner, minerMk: 3 as const, clockPercent: 100 };
     const nodes = [
       node("a", "Desc_OreCopper_C", "pure", 0, 0),
       node("b", "Desc_OreCopper_C", "pure", 500, 0),
@@ -66,7 +78,7 @@ describe("capacity-aware scoreSite", () => {
   });
 
   it("prefers closer nodes for lower haul", () => {
-    const mk3 = { minerMk: 3 as const, clockPercent: 100 };
+    const mk3 = { ...miner, minerMk: 3 as const, clockPercent: 100 };
     const nodes = [
       node("far", "Desc_OreIron_C", "pure", 100000, 0),
       node("near", "Desc_OreIron_C", "pure", 1000, 0),
@@ -132,7 +144,7 @@ describe("capacity-aware scoreSite", () => {
   });
 
   it("centered sits more between resources than weighted", () => {
-    const mk3 = { minerMk: 3 as const, clockPercent: 100 };
+    const mk3 = { ...miner, minerMk: 3 as const, clockPercent: 100 };
     const nodes = [
       node("iron", "Desc_OreIron_C", "pure", 0, 0),
       node("sulfur", "Desc_Sulfur_C", "pure", 100_000, 0),
@@ -197,7 +209,7 @@ describe("capacity-aware scoreSite", () => {
   });
 
   it("scales demand proportionally without changing quality at a fixed site", () => {
-    const mk3 = { minerMk: 3 as const, clockPercent: 100 };
+    const mk3 = { ...miner, minerMk: 3 as const, clockPercent: 100 };
     const nodes = [node("iron", "Desc_OreIron_C", "pure", 5_000, 0)];
     const byRes = prepareNodes(nodes, mk3, new Set(["Desc_OreIron_C"]));
     const small = scoreSite(
@@ -222,7 +234,7 @@ describe("capacity-aware scoreSite", () => {
 });
 
 describe("capacity tags from local utilization", () => {
-  const mk2 = { minerMk: 2 as const, clockPercent: 250 };
+  const mk2 = { ...miner, minerMk: 2 as const, clockPercent: 250 };
 
   it("tags Limited when demand eats most of one nearby impure node", () => {
     // Impure Mk2@250% = 120 * 0.5 * 2.5 = 150/min
@@ -290,14 +302,8 @@ describe("capacity tags from local utilization", () => {
   });
 
   it("pureNodeExtractRate respects clock", () => {
-    const r100 = pureNodeExtractRate("Desc_OreIron_C", {
-      minerMk: 2,
-      clockPercent: 100,
-    });
-    const r250 = pureNodeExtractRate("Desc_OreIron_C", {
-      minerMk: 2,
-      clockPercent: 250,
-    });
+    const r100 = pureNodeExtractRate("Desc_OreIron_C", { ...miner, minerMk: 2, clockPercent: 100 });
+    const r250 = pureNodeExtractRate("Desc_OreIron_C", { ...miner, minerMk: 2, clockPercent: 250 });
     expect(r250).toBeCloseTo(r100 * 2.5, 5);
   });
 });
@@ -408,5 +414,177 @@ describe("normalizeScoresForDisplay", () => {
     expect(out[0]).toBe(0);
     expect(out[2]).toBe(0);
     expect(out[1]).toBeGreaterThan(0.9);
+  });
+});
+
+describe("open-water capacity", () => {
+  const pondData: OpenWaterData = {
+    version: 1,
+    extractorRateAt100: 120,
+    bodies: [
+      {
+        id: "ow_pond",
+        slots: 4,
+        x: -6000,
+        y: 242000,
+        samples: [[-6000, 242000]],
+        calibrationAnchor: true,
+      },
+      {
+        id: "ow_coast",
+        slots: 40,
+        x: 50000,
+        y: 242000,
+        samples: [
+          [50000, 242000],
+          [52000, 242000],
+        ],
+      },
+    ],
+  };
+
+  it("pond is 4×120/min at 100% water clock", () => {
+    const scored = openWaterToScoredNodes(pondData, {
+      ...miner,
+      minerMk: 1,
+      waterClockPercent: 100,
+    });
+    const pond = scored.filter((n) => n.id.startsWith("ow_pond"));
+    const pondRate = pond.reduce((s, n) => s + n.rate, 0);
+    expect(pondRate).toBeCloseTo(480, 5);
+  });
+
+  it("water overclock multiplies open-water rate without changing slots", () => {
+    const scored = openWaterToScoredNodes(pondData, {
+      ...miner,
+      minerMk: 1,
+      clockPercent: 100,
+      waterClockPercent: 250,
+    });
+    const pondRate = scored
+      .filter((n) => n.id.startsWith("ow_pond"))
+      .reduce((s, n) => s + n.rate, 0);
+    expect(pondRate).toBeCloseTo(1200, 5);
+  });
+
+  it("fills pond first then next water source when demand exceeds pond", () => {
+    const byRes = prepareNodes([], miner, new Set(["Desc_Water_C"]), pondData);
+    const site = scoreSite(
+      -6000,
+      242000,
+      [{ resource: "Desc_Water_C", itemsPerMinute: 600 }],
+      byRes,
+      4000,
+      "centered",
+      1.35,
+      false,
+    );
+    expect(site.satisfiable).toBe(true);
+    const water = site.byResource.find((r) => r.resource === "Desc_Water_C");
+    expect(water).toBeDefined();
+    expect(water?.shortfall).toBeLessThan(1e-3);
+    // Pond (480) + coast remainder (120) — one unit per body
+    const pondUsed = water?.nodes
+      .filter((n) => n.nodeId === "ow_pond")
+      .reduce((s, n) => s + n.rateUsed, 0);
+    const coastUsed = water?.nodes
+      .filter((n) => n.nodeId === "ow_coast")
+      .reduce((s, n) => s + n.rateUsed, 0);
+    expect(pondUsed).toBeCloseTo(480, 5);
+    expect(coastUsed).toBeCloseTo(120, 5);
+    // Coast is farther — mean haul should reflect the second leg
+    expect(water?.nodes.some((n) => n.dist > 40_000)).toBe(true);
+  });
+
+  it("stays pond-only when demand fits in 4 extractors", () => {
+    const byRes = prepareNodes([], miner, new Set(["Desc_Water_C"]), pondData);
+    const site = scoreSite(
+      -6000,
+      242000,
+      [{ resource: "Desc_Water_C", itemsPerMinute: 400 }],
+      byRes,
+      4000,
+      "centered",
+      1.35,
+      false,
+    );
+    expect(site.satisfiable).toBe(true);
+    const water = site.byResource[0];
+    expect(water.nodes.every((n) => n.nodeId === "ow_pond")).toBe(true);
+    expect(water.nodes.some((n) => n.nodeId === "ow_coast")).toBe(false);
+  });
+
+  it("pureNodeExtractRate for water is one open extractor at water clock", () => {
+    expect(
+      pureNodeExtractRate("Desc_Water_C", {
+        ...miner,
+        minerMk: 3,
+        clockPercent: 100,
+        waterClockPercent: 100,
+      }),
+    ).toBe(120);
+    expect(
+      pureNodeExtractRate("Desc_Water_C", {
+        ...miner,
+        minerMk: 3,
+        clockPercent: 100,
+        waterClockPercent: 250,
+      }),
+    ).toBe(300);
+  });
+});
+
+describe("wells off still uses open water", () => {
+  it("meets modest water demand from open water when wells disabled", () => {
+    const pondOnly: OpenWaterData = {
+      version: 1,
+      extractorRateAt100: 120,
+      bodies: [
+        {
+          id: "ow_pond",
+          slots: 4,
+          x: 0,
+          y: 0,
+          samples: [[0, 0]],
+        },
+      ],
+    };
+    const wellsOff = {
+      ...miner,
+      resourceWellsEnabled: false,
+      waterClockPercent: 100,
+    };
+    // A well satellite near the pond that must NOT be required
+    const wellSat: ResourceNode = {
+      id: "well_sat",
+      resource: "Desc_Water_C",
+      purity: "pure",
+      nodeType: "frackingSatellite",
+      x: 100,
+      y: 0,
+      z: 0,
+    };
+    const byRes = prepareNodes([wellSat], wellsOff, new Set(["Desc_Water_C"]), pondOnly);
+    const waterPool = byRes.get("Desc_Water_C") ?? [];
+    // Open water present; well rate 0 so filtered out of prepareNodes
+    expect(waterPool.some((n) => n.id === "ow_pond")).toBe(true);
+    expect(waterPool.every((n) => n.rate > 0)).toBe(true);
+    expect(waterPool.find((n) => n.id === "well_sat")).toBeUndefined();
+
+    const site = scoreSite(
+      0,
+      0,
+      [{ resource: "Desc_Water_C", itemsPerMinute: 400 }],
+      byRes,
+      4000,
+      "centered",
+      1.35,
+      false,
+    );
+    expect(site.satisfiable).toBe(true);
+    expect(site.byResource[0].shortfall).toBeLessThan(1e-3);
+    const tagged = annotateSiteCapacity(site, byRes, wellsOff);
+    expect(tagged.capacityTag).not.toBe("shortfall");
+    expect(tagged.capacityByResource?.[0]?.localCapacity).toBeGreaterThan(0);
   });
 });

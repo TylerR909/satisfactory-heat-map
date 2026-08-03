@@ -18,9 +18,30 @@ export type ResourceNode = {
 
 export type MinerMk = 1 | 2 | 3;
 
+/**
+ * Extractor hardware for heatmap capacity scoring.
+ * Miner Mk/clock → solids (+ portable share miner clock).
+ * Oil / Water each have their own clock (single rank buildings).
+ * Resource wells are Tier 8 (pressurizer clock scales all satellites).
+ */
 export type MinerSettings = {
   minerMk: MinerMk;
+  /** Miner / portable overclock % (50–250; UI soft-snaps near 50% marks). */
   clockPercent: number;
+  /** Oil Extractor overclock % on crude oil nodes (50–250). No Mk ranks. */
+  oilClockPercent: number;
+  /** Water Extractor overclock % for open water (50–250). No Mk ranks. */
+  waterClockPercent: number;
+  /**
+   * When false, Resource Well satellites contribute no capacity (Tier 8
+   * Pressurizer not unlocked / not used). Open water still scores.
+   */
+  resourceWellsEnabled: boolean;
+  /**
+   * Resource Well Pressurizer overclock % (50–250). Applies to all satellites
+   * on a well; extractors themselves are not overclockable.
+   */
+  wellClockPercent: number;
 };
 
 /**
@@ -213,6 +234,43 @@ export type HeatmapResult = {
   scoredDemand: RawDemand[];
 };
 
+/**
+ * One open-water pocket from basemap blue-pixel extract (map:generate).
+ * Not a game resource node — used only as water capacity supply units.
+ */
+export type OpenWaterBody = {
+  id: string;
+  /** Water Extractor slots @ 100% clock (rate = slots × 120 × clock/100). */
+  slots: number;
+  x: number;
+  y: number;
+  areaPx?: number;
+  /** Surface samples (game cm) for distance / capacity split on large bodies. */
+  samples?: [number, number][];
+  calibrationAnchor?: boolean;
+};
+
+/** Shipped / regenerated at map:generate → public/data/water/open-water.json */
+export type OpenWaterData = {
+  version: number;
+  extractorRateAt100: number;
+  source?: {
+    path?: string;
+    width?: number;
+    height?: number;
+    hash?: string;
+  };
+  bounds?: MapMeta["worldBounds"];
+  calibration?: {
+    anchorX: number;
+    anchorY: number;
+    anchorSlots: number;
+    k: number;
+    notes?: string;
+  };
+  bodies: OpenWaterBody[];
+};
+
 export type ScoreGridInput = {
   nodes: ResourceNode[];
   demand: RawDemand[];
@@ -225,6 +283,11 @@ export type ScoreGridInput = {
   refineTopK: number;
   refineSubdiv: number;
   caveDeltaZCm: number;
+  /**
+   * Open-water capacity from basemap extract. Merged into water supply for
+   * Desc_Water_C alongside well satellites. Omit / empty → wells only.
+   */
+  openWater?: OpenWaterData | null;
 };
 
 export const DEFAULT_SCORING_OPTIONS: ScoringOptions = {
@@ -241,9 +304,14 @@ export const DEFAULT_SCORING_OPTIONS: ScoringOptions = {
   includeElevation: true,
 };
 
-export const DEFAULT_MINER_SETTINGS = {
-  minerMk: 2 as const,
+export const DEFAULT_MINER_SETTINGS: MinerSettings = {
+  minerMk: 2,
   clockPercent: 250,
+  oilClockPercent: 250,
+  waterClockPercent: 250,
+  /** Wells included by default (toggle off for pre–Tier 8). */
+  resourceWellsEnabled: true,
+  wellClockPercent: 250,
 };
 
 /** Global ImageOverlay opacity — moderate so basemap stays readable. */

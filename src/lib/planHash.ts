@@ -1,3 +1,4 @@
+import { clampClockPercent } from "@/lib/mining";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
 import type { MapSeed } from "@/lib/seed";
@@ -16,18 +17,20 @@ import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
  * Compact binary plan hash — **computation only**.
  * Format: `v1.<base64url(bytes)>`
  *
- * Encodes: mode, demand lines, miner, Centered/Weighted, centerPower, topN, site spread,
- * includeElevation (flat-haul flag), optional world seed (has-seed flag + i32;
- * omitted when Default/null for short hashes), optional external intermediates
- * (has-external flag + ClassName tokens; Mode B off-site / imported prune).
+ * Encodes: mode, demand lines, miner Mk + miner clock, Centered/Weighted,
+ * centerPower, topN, site spread, includeElevation (flat-haul flag), optional world
+ * seed (has-seed flag + i32; omitted when Default/null for short hashes), optional
+ * external items (has-external flag + ClassName tokens — intermediates **and** Water),
+ * extractor extension when present (water clock, well pressurizer clock, wells-enabled,
+ * optional trailing oil clock).
  *
  * **Products:** ClassNames are stored inline (no product allowlist). If the Products
  * dropdown can select it, the hash can encode it. Raw resources still use the fixed
  * raw-picker table (`RAW_RESOURCE_OPTIONS`) — same set as the Raw mode dropdown.
  *
  * Does **not** encode: heat opacity, paint knobs (incl. elev dash threshold), show-nodes,
- * peak emphasis, omit-water preference, mode/purity (product policy fixes strict +
- * no_change for any numeric seed).
+ * peak emphasis, mode/purity (product policy fixes strict + no_change for any
+ * numeric seed).
  */
 export const PLAN_HASH_VERSION = 1 as const;
 
@@ -37,6 +40,12 @@ const FLAG_FLAT_HAUL = 1 << 2;
 const FLAG_HAS_SEED = 1 << 5;
 /** flags bit 6: external item list after optional seed */
 const FLAG_HAS_EXTERNAL = 1 << 6;
+/**
+ * flags bit 7: trailing extractor extension present
+ * Layout: waterClock u8, wellClock u8, wellFlags u8 (bit0 = resourceWellsEnabled),
+ * optional oilClock u8 (appended; older hashes omit → default 250%).
+ */
+const FLAG_HAS_EXTRACTOR_EXT = 1 << 7;
 
 const RAW_IDS: readonly string[] = RAW_RESOURCE_OPTIONS;
 const MAX_LINES = 15;
@@ -84,6 +93,34 @@ function clamp(n: number, lo: number, hi: number, fallback: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+/** Normalize miner/extractor settings with defaults for older snapshots. */
+export function normalizeMinerSettings(partial: Partial<MinerSettings> | undefined): MinerSettings {
+  const m = partial ?? {};
+  const minerMk = (
+    [1, 2, 3].includes(m.minerMk as number) ? m.minerMk : DEFAULT_MINER_SETTINGS.minerMk
+  ) as MinerMk;
+  return {
+    minerMk,
+    clockPercent: clampClockPercent(m.clockPercent as number, DEFAULT_MINER_SETTINGS.clockPercent),
+    oilClockPercent: clampClockPercent(
+      m.oilClockPercent as number,
+      DEFAULT_MINER_SETTINGS.oilClockPercent,
+    ),
+    waterClockPercent: clampClockPercent(
+      m.waterClockPercent as number,
+      DEFAULT_MINER_SETTINGS.waterClockPercent,
+    ),
+    resourceWellsEnabled:
+      typeof m.resourceWellsEnabled === "boolean"
+        ? m.resourceWellsEnabled
+        : DEFAULT_MINER_SETTINGS.resourceWellsEnabled,
+    wellClockPercent: clampClockPercent(
+      m.wellClockPercent as number,
+      DEFAULT_MINER_SETTINGS.wellClockPercent,
+    ),
+  };
+}
+
 function quantize(value: number, min: number, step: number, maxSteps: number): number {
   const q = Math.round((value - min) / step);
   return Math.min(maxSteps, Math.max(0, q));
@@ -128,12 +165,7 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
         productId: canonicalizeProductId(l.productId),
         itemsPerMinute: Math.min(MAX_RATE, Math.max(0, Math.round(Number(l.itemsPerMinute) || 0))),
       })),
-    miner: {
-      minerMk: ([1, 2, 3].includes(source.miner.minerMk)
-        ? source.miner.minerMk
-        : DEFAULT_MINER_SETTINGS.minerMk) as MinerMk,
-      clockPercent: clamp(source.miner.clockPercent, 1, 250, DEFAULT_MINER_SETTINGS.clockPercent),
-    },
+    miner: normalizeMinerSettings(source.miner),
     scoringMode: source.scoringMode === "weighted" ? "weighted" : "centered",
     scoringOptions: {
       centerPower: clamp(
@@ -226,7 +258,7 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
 
   const out: number[] = [];
 
-  // flags: mode | scoring | flatHaul(2) | mk(3–4) | hasSeed(5) | hasExternal(6)
+  // flags: mode | scoring | flatHaul(2) | mk(3–4) | hasSeed(5) | hasExternal(6) | extractorExt(7)
   const mkBits = Math.min(2, Math.max(0, snap.miner.minerMk - 1));
   let flags = 0;
   if (snap.mode === "product") flags |= 1;
@@ -237,9 +269,11 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   if (hasSeed) flags |= FLAG_HAS_SEED;
   const hasExternal = activeExternal.length > 0;
   if (hasExternal) flags |= FLAG_HAS_EXTERNAL;
+  // Always write extractor extension so water/well clocks round-trip
+  flags |= FLAG_HAS_EXTRACTOR_EXT;
   out.push(flags);
 
-  out.push(Math.min(250, Math.max(1, Math.round(snap.miner.clockPercent))));
+  out.push(clampClockPercent(snap.miner.clockPercent, DEFAULT_MINER_SETTINGS.clockPercent));
 
   // Computation knobs only (2 bytes):
   // centerPower 5 | topN 3 | siteSep 5  → 13 bits
@@ -290,6 +324,14 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
     }
   }
 
+  // Extractor extension: water, well pressurizer, wells-enabled, then optional oil (v2 tail)
+  out.push(
+    clampClockPercent(snap.miner.waterClockPercent, DEFAULT_MINER_SETTINGS.waterClockPercent),
+  );
+  out.push(clampClockPercent(snap.miner.wellClockPercent, DEFAULT_MINER_SETTINGS.wellClockPercent));
+  out.push(snap.miner.resourceWellsEnabled ? 1 : 0);
+  out.push(clampClockPercent(snap.miner.oilClockPercent, DEFAULT_MINER_SETTINGS.oilClockPercent));
+
   return new Uint8Array(out);
 }
 
@@ -302,7 +344,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
   const includeElevation = (flags & FLAG_FLAT_HAUL) === 0;
   const minerMk = (Math.min(2, (flags >>> 3) & 3) + 1) as MinerMk;
   const hasSeed = (flags & FLAG_HAS_SEED) !== 0;
-  const clockPercent = clamp(bytes[i++] ?? 100, 1, 250, 100);
+  const clockPercent = clampClockPercent(bytes[i++] ?? 100, DEFAULT_MINER_SETTINGS.clockPercent);
 
   const b0 = bytes[i++] ?? 0;
   const b1 = bytes[i++] ?? 0;
@@ -376,11 +418,43 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     }
   }
 
+  const hasExtractorExt = (flags & FLAG_HAS_EXTRACTOR_EXT) !== 0;
+  let waterClockPercent = DEFAULT_MINER_SETTINGS.waterClockPercent;
+  let wellClockPercent = DEFAULT_MINER_SETTINGS.wellClockPercent;
+  let oilClockPercent = DEFAULT_MINER_SETTINGS.oilClockPercent;
+  let resourceWellsEnabled = DEFAULT_MINER_SETTINGS.resourceWellsEnabled;
+  if (hasExtractorExt) {
+    if (i + 3 > bytes.length) return null;
+    waterClockPercent = clampClockPercent(
+      bytes[i++] ?? 250,
+      DEFAULT_MINER_SETTINGS.waterClockPercent,
+    );
+    wellClockPercent = clampClockPercent(
+      bytes[i++] ?? 250,
+      DEFAULT_MINER_SETTINGS.wellClockPercent,
+    );
+    resourceWellsEnabled = ((bytes[i++] ?? 0) & 1) !== 0;
+    // Optional oil clock (appended after the original 3-byte extension)
+    if (i < bytes.length) {
+      oilClockPercent = clampClockPercent(
+        bytes[i++] ?? 250,
+        DEFAULT_MINER_SETTINGS.oilClockPercent,
+      );
+    }
+  }
+
   return toSnapshot({
     mode,
     rawDemand: rawDemand.map((d, j) => ({ id: `h${j}`, ...d })),
     productTargets: productTargets.map((d, j) => ({ id: `h${j}`, ...d })),
-    miner: { minerMk, clockPercent },
+    miner: {
+      minerMk,
+      clockPercent,
+      oilClockPercent,
+      waterClockPercent,
+      wellClockPercent,
+      resourceWellsEnabled,
+    },
     scoringMode,
     scoringOptions: {
       ...DEFAULT_SCORING_OPTIONS,

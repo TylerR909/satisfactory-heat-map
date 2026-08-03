@@ -1,4 +1,4 @@
-import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
+import { RAW_RESOURCE_OPTIONS, WATER_RESOURCE_ID } from "@/lib/resources";
 import type { ItemDef, RawDemand, Recipe } from "@/types";
 
 export type ProductTarget = {
@@ -8,8 +8,10 @@ export type ProductTarget = {
 
 export type SolveOptions = {
   /**
-   * Crafted items treated as off-site / imported / recycled — expansion stops here
+   * Items treated as off-site / imported / recycled — expansion stops here
    * (their ingredient subtrees never become map raw demand).
+   * Usually crafted intermediates; **Water** is also allowed so product plans can
+   * import water without heatmap pressure.
    * Does not apply to top-level product targets (those always expand one level).
    */
   externalItems?: ReadonlySet<string> | readonly string[];
@@ -138,8 +140,11 @@ export function indexProductionRecipes(recipes: Recipe[]): Map<string, Recipe> {
  * Intermediate crafted items never appear as node demand unless they are true map raws.
  *
  * `externalItems` stops expansion at those crafted ids (import / off-site / recycled) —
- * their ingredient subtrees never become map demand. Top-level product targets always
- * expand at least one recipe level so a product row is never a no-op.
+ * their ingredient subtrees never become map demand. **Water** is the one map raw also
+ * listed in Expansion so it can be marked off-site (piped / extracted elsewhere);
+ * other ores stay heatmap-only (off-site via their ingot/intermediate instead).
+ * Top-level product targets always expand at least one recipe level so a product
+ * row is never a no-op.
  */
 export function solveProductsToRaw(
   targets: ProductTarget[],
@@ -151,6 +156,8 @@ export function solveProductsToRaw(
   const byProduct = indexProductionRecipes(recipes);
   const rawNeed = new Map<string, number>();
   const intermediates: Record<string, number> = {};
+  /** On-site map raws that also appear in Expansion (currently Water only). */
+  const expansionRaws = new Map<string, number>();
   const externalNeed = new Map<string, number>();
   const unresolvedMap = new Map<string, { rate: number; reason: string }>();
   const visiting = new Set<string>();
@@ -193,8 +200,19 @@ export function solveProductsToRaw(
   function need(itemId: string, rate: number, asTarget = false, depth = 0) {
     if (rate <= 1e-9) return;
 
-    // Map raws stop expansion (heatmap node demand) — not listed in Expansion UI
+    // Map raws stop expansion (heatmap node demand). Water is special: listed in
+    // Expansion so the user can mark it off-site without inventing a fake intermediate.
     if (isMapRawResource(itemId, items)) {
+      if (itemId === WATER_RESOURCE_ID) {
+        if (!asTarget && externalSet.has(itemId)) {
+          addExternal(itemId, rate, depth);
+          return;
+        }
+        addRaw(itemId, rate);
+        expansionRaws.set(itemId, (expansionRaws.get(itemId) ?? 0) + rate);
+        notePlace(itemId, depth);
+        return;
+      }
       addRaw(itemId, rate);
       return;
     }
@@ -252,7 +270,7 @@ export function solveProductsToRaw(
   const expansion: ExpansionEntry[] = [...place.entries()]
     .map(([itemId, { depth, seq }]) => {
       const extRate = externalNeed.get(itemId);
-      const onSite = intermediates[itemId];
+      const onSite = intermediates[itemId] ?? expansionRaws.get(itemId);
       const isExt = extRate != null && extRate > 1e-9 && !(onSite != null && onSite > 1e-9);
       const itemsPerMinute = isExt ? (extRate ?? 0) : (onSite ?? extRate ?? 0);
       return {

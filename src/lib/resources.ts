@@ -19,6 +19,15 @@ export const RESOURCE_LABELS: Record<string, string> = {
 /** Class name for liquid water (open extractors + resource wells). */
 export const WATER_RESOURCE_ID = "Desc_Water_C";
 
+/** Class name for nitrogen gas (resource wells only — no open-map extractors). */
+export const NITROGEN_RESOURCE_ID = "Desc_NitrogenGas_C";
+
+/**
+ * Raws that only exist as resource-well satellites in world data.
+ * With “Pressurized Resource Wells” off, these cannot be satisfied anywhere.
+ */
+export const WELL_ONLY_RESOURCE_IDS: readonly string[] = [NITROGEN_RESOURCE_ID];
+
 /** Resources typically placed on solid nodes for Mode A picker. */
 export const RAW_RESOURCE_OPTIONS = [
   "Desc_OreIron_C",

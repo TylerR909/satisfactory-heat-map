@@ -1,24 +1,24 @@
 # Implementation status (handoff)
 
-**Last true-up:** 2026-07-27 — dual-mode live heatmap SPA, multi-plan hash shelf, Docker/GHCR, CI, Cloudflare Workers static assets; basemap via committed `map-tiles/v1.tar.gz` + `map:ensure` on build.
+**Last true-up:** 2026-08-02 — open-water capacity + extractor clocks + Mode B Water off-site; dual-mode SPA, multi-plan hash shelf, Docker/GHCR, CF static assets.
 
 ## Repo layout
 
 ```
-adelaide/
+satisfactory-heat-map/
 ├── docs/                 PRODUCT, ARCHITECTURE, TOOLING, DATA, DEPLOY, ROADMAP, STATUS
 ├── deploy/nginx.conf
 ├── docker-compose.yml
-├── Dockerfile
-├── scripts/              dev-start, clean, wasm-build
+├── Dockerfile            # GDAL tiles → Node/sharp open-water → Vite → nginx
+├── scripts/              map-generate, map-extract-water, parse-docs, dev-start, …
 ├── public/_headers       Cloudflare static-asset cache/security
-├── public/data/          nodes, recipes, meta
+├── public/data/          nodes, recipes, meta, water/open-water.json
 ├── public/map/v1/        basemap README (+ gitignored WebPs)
 ├── map-tiles/            committed v1.tar.gz pack for CF / npm build
 ├── src/
 │   ├── components/map|planner
 │   ├── hooks/            useAutoHeatmap, useHeatmapWorker
-│   ├── lib/coords|mining|production|heatmap|engine
+│   ├── lib/coords|mining|production|heatmap|engine|seed
 │   ├── workers/heatmap.worker.ts
 │   ├── store/useAppStore.ts
 │   └── types/
@@ -27,36 +27,37 @@ adelaide/
 
 ## Working design decisions encoded in code
 
-1. **Dual modes** share `activeDemand` in Zustand; Mode B supports **multiple product targets** with stacked intermediates (`solveProductsToRaw`).
+1. **Dual modes** share `activeDemand` in Zustand; Mode B multi-product + Expansion off-site prune (`solveProductsToRaw`).
 2. **Live heatmap** via `useAutoHeatmap` → worker → `HeatmapResult`.
-3. **Scoring** is capacity-first (`score.ts`) with rate-invariant haul quality; hierarchical multi-pass + diverse top-N (`hierarchical.ts`).
-4. **Site preference:** Centered vs Weighted. **Capacity tags** on top sites from local utilization (Limited / Abundant / OK / shortfall).
-5. **Extractor model** distinguishes miner Mk (solids), oil extractors, water, wells, deposits (`mining.ts`).
-6. **Engine façade** (`createEngine`) isolates future WASM.
-7. **Leaflet CRS.Simple** rockfactory-compatible coords; heat is `ImageOverlay` PNG (no rescore on pan/zoom).
-8. **Basemap:** self-hosted `/map/v1/` WebP pyramid. Committed pack `map-tiles/v1.tar.gz`; `npm run build` unpacks via `map:ensure`. Docker image still GDAL-generates. Same-origin in dev and prod.
-9. **Nodes** bootstrapped from rockfactory MIT JSON (**626** entries).
-10. **Recipes** are a minimal hand set — Mode B is intentionally thin.
-11. **Persist** `sf-heatmap-v5`; reset-all keeps products/inputs.
+3. **Scoring** is capacity-first (`score.ts`) with rate-invariant haul quality; hierarchical multi-pass + diverse top-N.
+4. **Capacity tags** inferred per top site (Limited / OK / Abundant / shortfall).
+5. **Extractors:** miner Mk + independent clocks for miner / oil / water / well pressurizer; wells toggle (forced on if plan needs Nitrogen).
+6. **Water supply** = basemap open-water bodies (`open-water.json`) ∪ well satellites when wells enabled.
+7. **Mode B Water** can be marked off-site in Expansion (only map raw treated that way).
+8. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
+9. **Nodes** rockfactory MIT bootstrap (~626); **recipes** Docs compact extract.
+10. **Persist** `sf-heatmap-v9` (plan shelf + extractors; display knobs local).
 
 ## Verified
 
 ```bash
-npm test          # 28 tests (unit + hierarchical + integration on real nodes)
+npm test          # 100+ tests (unit + hierarchical + integration + open-water)
 npm run lint      # Biome clean
-npm run build     # tsc + Vite + PWA
-npm start         # Vite HMR (no crates → TS engine)
+npm run typecheck
+npm run build     # map:ensure + tsc + Vite + PWA (needs map-tiles pack or generated tiles)
+npm start         # Vite HMR
 ```
 
 ## Known limits
 
-- Individual basemap WebPs are not in git; CF relies on committed **`map-tiles/v1.tar.gz`** + `map:ensure` (see `docs/DEPLOY.md`).
-- Mode B alternate-recipe toggles still incomplete in UI (alts in data; Expansion rows ready for recipe pickers later).
+- Open water is **basemap-approximated** (not game depth); shallow rivers may over-count.
+- Individual basemap WebPs are not in git; CF uses **`map-tiles/v1.tar.gz`** + `map:ensure`.
+- Mode B alternate-recipe toggles still incomplete in UI (alts in data).
 - Cave/elevation is soft notes only (no navmesh).
-- Peak emphasis / heat knobs are **display-only**; they do not invent new top sites.
+- Peak emphasis / heat knobs are **display-only**.
 
 ## Sensible next coding priorities
 
-1. Optional Mode B alternate recipe toggles on Expansion rows (alts already in data).
+1. Optional Mode B alternate recipe toggles on Expansion rows.
 2. Own FModel node extract when desired (`extract-world-nodes`).
-3. Basemap v2 ~8k FModel extract (board: Ready) — `public/map/v1/README.md`.
+3. Basemap v2 ~8k FModel extract — `public/map/v1/README.md`.

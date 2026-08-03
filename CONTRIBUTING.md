@@ -89,7 +89,8 @@ docker compose up -d
 | Resource nodes | [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT `WorldResourceNodes.json` |
 | Recipes & items | Compact extract from Coffee Stain `CommunityResources/Docs/en-US.json` via `npm run parse-docs` (full Docs **not** shipped) |
 | Basemap tiles | Self-hosted `/map/v1/` WebPs. Commit pack `map-tiles/v1.tar.gz`; worktree: `npm run map:ensure` or `map:generate`. Map art © Coffee Stain. See `public/map/v1/README.md` |
-| Extractor rates | Project tables in `src/lib/mining.ts` |
+| Open water | `public/data/water/open-water.json` from the same `map:generate` pass (Node/sharp blue-pixel extract). Commit when map art/thresholds change. See [docs/DATA.md](docs/DATA.md). |
+| Extractor rates | Project tables in `src/lib/mining.ts` (miner / oil / water / well clocks) |
 
 Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 

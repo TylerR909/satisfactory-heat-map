@@ -1,6 +1,6 @@
 {
   "gameVersion": "1.0+",
-  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). Basemap: wiki-derived WebPs via map-tiles/v1.tar.gz (map:ensure) or map:generate. See docs/DATA.md.",
+  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). Basemap: wiki-derived WebPs via map-tiles/v1.tar.gz (map:ensure) or map:generate. Open water: public/data/water/open-water.json from the same map:generate pass. See docs/DATA.md.",
   "worldBounds": {
     "minX": -324700,
     "maxX": 425300,
@@ -17,7 +17,7 @@
     "tilesUrl": "/map/v1/{z}/{x}/{y}.webp",
     "attribution": "Map art © Coffee Stain Studios",
     "source": "wiki-map-build",
-    "notes": "WebP pyramid from wiki Map.jpg. CF/npm build: map:ensure unpacks map-tiles/v1.tar.gz. Docker: GDAL map:generate. Same-origin /map/v1; see public/map/v1/README.md."
+    "notes": "WebP pyramid from wiki Map.jpg. CF/npm build: map:ensure unpacks map-tiles/v1.tar.gz. Docker: GDAL map:generate (also emits open-water.json). Same-origin /map/v1; see public/map/v1/README.md."
   },
   "heatmapDefaults": {
     "coarseCols": 64,

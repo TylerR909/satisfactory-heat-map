@@ -1,8 +1,11 @@
-import { haulDist, median } from "@/lib/coords";
-import { nodeExtractRate } from "@/lib/mining";
+import { haulDist, median, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "@/lib/coords";
+import { nodeExtractRate, WATER_EXTRACTOR_BASE } from "@/lib/mining";
+import { WATER_RESOURCE_ID } from "@/lib/resources";
 import type {
   CapacityTag,
   MinerSettings,
+  NodeAssignment,
+  OpenWaterData,
   RawDemand,
   ResourceAssignment,
   ResourceCapacityInfo,
@@ -11,10 +14,30 @@ import type {
   SiteScore,
 } from "@/types";
 
-export type ScoredNode = ResourceNode & { rate: number };
+export type ScoredNode = ResourceNode & {
+  rate: number;
+  /**
+   * Optional multi-point surface (open-water bodies). Distance to the node is
+   * min distance to any sample; assignment uses the nearest sample as (x,y).
+   */
+  samples?: [number, number][];
+};
 
 /** Characteristic length (cm) for rate-invariant quality → heat. ~1 km. */
 export const HAUL_REF_CM = 100_000;
+
+/** World diagonal — upper bound for plan-view haul (cm). */
+const MAP_DIAG_CM = Math.hypot(WORLD_X_MAX - WORLD_X_MIN, WORLD_Y_MAX - WORLD_Y_MIN);
+
+/**
+ * Distance buckets for large supply pools (open water). All of bucket i is
+ * closer than bucket i+1, so we only sort within each small bucket — O(N)
+ * overall instead of O(N log N) full sorts on every grid cell.
+ */
+const ASSIGN_DIST_BUCKETS = 96;
+
+/** Below this pool size, a plain sort is cheaper than bucketing. */
+const ASSIGN_SORT_DIRECT_MAX = 48;
 
 /**
  * Nodes within this radius of a candidate site count as "local" supply for
@@ -30,8 +53,13 @@ export const UTIL_ABUNDANT = 0.3;
 
 /**
  * Continuous rate of one pure permanent node for this resource under miner/clock.
+ * Water uses a single open Water Extractor (120 @ 100%), not a pure well satellite.
  */
 export function pureNodeExtractRate(resource: string, miner: MinerSettings): number {
+  if (resource === WATER_RESOURCE_ID) {
+    const clock = miner.waterClockPercent ?? miner.clockPercent;
+    return WATER_EXTRACTOR_BASE * (clock / 100);
+  }
   const probe: ResourceNode = {
     id: `pure-probe-${resource}`,
     resource,
@@ -44,10 +72,175 @@ export function pureNodeExtractRate(resource: string, miner: MinerSettings): num
   return nodeExtractRate(probe, miner);
 }
 
+/**
+ * Nearest surface point on a scored supply unit (open-water samples or node xy).
+ */
+export function nearestPointOnNode(
+  x: number,
+  y: number,
+  n: ScoredNode,
+): { x: number; y: number; d2: number } {
+  if (n.samples && n.samples.length > 0) {
+    let bestX = n.samples[0][0];
+    let bestY = n.samples[0][1];
+    let bestD2 = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < n.samples.length; i++) {
+      const sx = n.samples[i][0];
+      const sy = n.samples[i][1];
+      const dx = sx - x;
+      const dy = sy - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestX = sx;
+        bestY = sy;
+      }
+    }
+    return { x: bestX, y: bestY, d2: bestD2 };
+  }
+  const dx = n.x - x;
+  const dy = n.y - y;
+  return { x: n.x, y: n.y, d2: dx * dx + dy * dy };
+}
+
+/**
+ * Turn open-water bodies into synthetic scored supply units for Desc_Water_C.
+ * One unit per body (finite slots); samples stay on the node for near-shore distance.
+ * Pond of 4 slots → 480/min @ 100%.
+ */
+export function openWaterToScoredNodes(
+  openWater: OpenWaterData | null | undefined,
+  miner: MinerSettings,
+): ScoredNode[] {
+  if (!openWater?.bodies?.length) return [];
+  const base =
+    openWater.extractorRateAt100 > 0 ? openWater.extractorRateAt100 : WATER_EXTRACTOR_BASE;
+  const clock = (miner.waterClockPercent ?? miner.clockPercent) / 100;
+  const out: ScoredNode[] = [];
+
+  for (const body of openWater.bodies) {
+    if (body.slots <= 0) continue;
+    const totalRate = body.slots * base * clock;
+    if (totalRate <= 1e-9) continue;
+
+    const samples =
+      body.samples && body.samples.length > 0
+        ? body.samples
+        : ([[body.x, body.y]] as [number, number][]);
+
+    out.push({
+      id: body.id,
+      resource: WATER_RESOURCE_ID,
+      purity: "normal",
+      nodeType: "node",
+      displayName: "Open water",
+      x: body.x,
+      y: body.y,
+      z: 0,
+      rate: totalRate,
+      // Keep multi-sample only when it changes distance (large coasts/lakes)
+      ...(samples.length > 1 ? { samples } : {}),
+    });
+  }
+  return out;
+}
+
+type RankedSupply = {
+  node: ScoredNode;
+  d2: number;
+  px: number;
+  py: number;
+};
+
+function pushAssignment(
+  assigned: NodeAssignment[],
+  assignedZ: number[],
+  item: RankedSupply,
+  use: number,
+): void {
+  const n = item.node;
+  assigned.push({
+    nodeId: n.id,
+    rateUsed: use,
+    dist: Math.sqrt(item.d2),
+    x: item.px,
+    y: item.py,
+    z: n.z,
+    purity: n.purity,
+    caveRisk: Boolean(n.flags?.cave),
+  });
+  assignedZ.push(n.z);
+}
+
+/**
+ * Greedy nearest-capacity assignment.
+ *
+ * Small pools: full sort. Large pools (open water): distance-bucket in O(N),
+ * sort only near buckets, stop once demand is met — avoids O(N log N) per cell.
+ */
+export function assignNearestCapacity(
+  x: number,
+  y: number,
+  pool: ScoredNode[],
+  demandRate: number,
+): { assigned: NodeAssignment[]; remaining: number; assignedZ: number[] } {
+  const assigned: NodeAssignment[] = [];
+  const assignedZ: number[] = [];
+  let remaining = demandRate;
+  if (pool.length === 0 || remaining <= 1e-6) {
+    return { assigned, remaining: Math.max(0, remaining), assignedZ };
+  }
+
+  if (pool.length <= ASSIGN_SORT_DIRECT_MAX) {
+    const ranked: RankedSupply[] = new Array(pool.length);
+    for (let i = 0; i < pool.length; i++) {
+      const node = pool[i];
+      const p = nearestPointOnNode(x, y, node);
+      ranked[i] = { node, d2: p.d2, px: p.x, py: p.y };
+    }
+    if (ranked.length > 1) ranked.sort((a, b) => a.d2 - b.d2);
+    for (let i = 0; i < ranked.length && remaining > 1e-6; i++) {
+      const use = Math.min(ranked[i].node.rate, remaining);
+      pushAssignment(assigned, assignedZ, ranked[i], use);
+      remaining -= use;
+    }
+    return { assigned, remaining: Math.max(0, remaining), assignedZ };
+  }
+
+  const buckets: RankedSupply[][] = new Array(ASSIGN_DIST_BUCKETS);
+  for (let i = 0; i < ASSIGN_DIST_BUCKETS; i++) buckets[i] = [];
+  // Bucket by d² so we skip sqrt; order is still nearest-first across buckets.
+  const maxD2 = MAP_DIAG_CM * MAP_DIAG_CM;
+  const inv = ASSIGN_DIST_BUCKETS / maxD2;
+
+  for (let i = 0; i < pool.length; i++) {
+    const node = pool[i];
+    const p = nearestPointOnNode(x, y, node);
+    let b = (p.d2 * inv) | 0;
+    if (b >= ASSIGN_DIST_BUCKETS) b = ASSIGN_DIST_BUCKETS - 1;
+    if (b < 0) b = 0;
+    buckets[b].push({ node, d2: p.d2, px: p.x, py: p.y });
+  }
+
+  for (let b = 0; b < ASSIGN_DIST_BUCKETS && remaining > 1e-6; b++) {
+    const bucket = buckets[b];
+    if (bucket.length === 0) continue;
+    if (bucket.length > 1) bucket.sort((a, c) => a.d2 - c.d2);
+    for (let i = 0; i < bucket.length && remaining > 1e-6; i++) {
+      const use = Math.min(bucket[i].node.rate, remaining);
+      pushAssignment(assigned, assignedZ, bucket[i], use);
+      remaining -= use;
+    }
+  }
+
+  return { assigned, remaining: Math.max(0, remaining), assignedZ };
+}
+
 export function prepareNodes(
   nodes: ResourceNode[],
   miner: MinerSettings,
   demandResources: Set<string>,
+  openWater?: OpenWaterData | null,
 ): Map<string, ScoredNode[]> {
   const byRes = new Map<string, ScoredNode[]>();
   for (const n of nodes) {
@@ -58,11 +251,22 @@ export function prepareNodes(
     list.push({ ...n, rate });
     byRes.set(n.resource, list);
   }
+
+  if (demandResources.has(WATER_RESOURCE_ID)) {
+    const open = openWaterToScoredNodes(openWater, miner);
+    if (open.length > 0) {
+      const list = byRes.get(WATER_RESOURCE_ID) ?? [];
+      list.push(...open);
+      byRes.set(WATER_RESOURCE_ID, list);
+    }
+  }
+
   return byRes;
 }
 
 /**
  * Sum extract rates of scored nodes for `resource` within radius of (x, y).
+ * Open-water multi-sample bodies count if any sample (nearest surface) is in range.
  */
 export function localCapacityForResource(
   x: number,
@@ -75,9 +279,8 @@ export function localCapacityForResource(
   const r2 = radiusCm * radiusCm;
   let sum = 0;
   for (const n of pool) {
-    const dx = n.x - x;
-    const dy = n.y - y;
-    if (dx * dx + dy * dy <= r2) sum += n.rate;
+    const { d2 } = nearestPointOnNode(x, y, n);
+    if (d2 <= r2) sum += n.rate;
   }
   return sum;
 }
@@ -239,11 +442,10 @@ export function haulDistanceToScore(effectiveDistCm: number): number {
 /**
  * Greedy nearest-capacity assignment at factory (x, y).
  *
- * Always ranks nodes by **plan-view (XY)** distance (one sort per resource — same cost
- * as pre-elevation). When `includeElevation`, factory Z is the median of assigned
- * node elevations and each haul `dist` is rewritten as 3D from that hub height.
- * That applies cliff cost without a second full sort/assign of the entire node pool
- * (which was ~3× slower at 64×64).
+ * Ranks supply by **plan-view (XY)** distance. Large pools (open water) use
+ * distance bucketing so each cell is ~O(N) rather than O(N log N) full sorts.
+ * When `includeElevation`, factory Z is the median of assigned elevations and
+ * each haul `dist` is rewritten as 3D from that hub height.
  *
  * `caveDeltaZCm` is retained for API compatibility; it no longer affects score.
  */
@@ -265,47 +467,22 @@ export function scoreSite(
   for (const d of demand) {
     if (d.itemsPerMinute <= 0) continue;
     const pool = nodesByResource.get(d.resource) ?? [];
-    // Sort a shallow copy only — never mutate the shared pool arrays.
-    const ordered =
-      pool.length > 1
-        ? pool.slice().sort((a, b) => {
-            const da = (a.x - x) * (a.x - x) + (a.y - y) * (a.y - y);
-            const db = (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y);
-            return da - db;
-          })
-        : pool;
-
-    let remaining = d.itemsPerMinute;
-    const assigned: ResourceAssignment["nodes"] = [];
-
-    for (const n of ordered) {
-      if (remaining <= 1e-6) break;
-      const use = Math.min(n.rate, remaining);
-      // Provisional XY dist; rewritten below if elevation is on
-      const dx = n.x - x;
-      const dy = n.y - y;
-      const dist = Math.hypot(dx, dy);
-      const caveRisk = Boolean(n.flags?.cave);
-
-      assigned.push({
-        nodeId: n.id,
-        rateUsed: use,
-        dist,
-        x: n.x,
-        y: n.y,
-        z: n.z,
-        purity: n.purity,
-        caveRisk,
-      });
-      assignedZ.push(n.z);
-      if (caveRisk) {
-        caveRiskNotes.push(`${d.resource}: node ${n.id.slice(0, 24)}… cave (z=${Math.round(n.z)})`);
+    const {
+      assigned,
+      remaining,
+      assignedZ: zFromRes,
+    } = assignNearestCapacity(x, y, pool, d.itemsPerMinute);
+    for (const z of zFromRes) assignedZ.push(z);
+    for (const n of assigned) {
+      if (n.caveRisk) {
+        caveRiskNotes.push(
+          `${d.resource}: node ${n.nodeId.slice(0, 24)}… cave (z=${Math.round(n.z)})`,
+        );
       }
-      remaining -= use;
     }
 
-    const supplied = d.itemsPerMinute - Math.max(0, remaining);
-    const shortfall = Math.max(0, remaining);
+    const supplied = d.itemsPerMinute - remaining;
+    const shortfall = remaining;
     if (shortfall > 1e-3) {
       satisfiable = false;
     }

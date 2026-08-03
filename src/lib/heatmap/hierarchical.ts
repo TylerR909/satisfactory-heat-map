@@ -70,7 +70,7 @@ export function computeHierarchicalHeatmap(input: ScoreGridInput): HeatmapResult
   const demand = input.demand;
 
   const demandRes = new Set(demand.map((d) => d.resource));
-  const nodesByResource = prepareNodes(input.nodes, input.miner, demandRes);
+  const nodesByResource = prepareNodes(input.nodes, input.miner, demandRes, input.openWater);
 
   const grid = emptyGrid(input.bounds, input.coarseCols, input.coarseRows);
   const mapSpan = Math.hypot(

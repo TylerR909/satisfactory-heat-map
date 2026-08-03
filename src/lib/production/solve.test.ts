@@ -694,6 +694,58 @@ describe("externalItems (import / off-site prune)", () => {
     // Target still last
     expect(expansion[expansion.length - 1]?.itemId).toBe("Desc_Fuel_C");
   });
+
+  it("lists Water in Expansion and can mark it off-site (drop from heatmap demand)", () => {
+    const wetItems: Record<string, ItemDef> = {
+      ...items,
+      Desc_OreBauxite_C: { id: "Desc_OreBauxite_C", name: "Bauxite", raw: true },
+      Desc_AluminaSolution_C: {
+        id: "Desc_AluminaSolution_C",
+        name: "Alumina Solution",
+        raw: false,
+      },
+    };
+    const wetRecipes: Recipe[] = [
+      {
+        id: "Recipe_AluminaSolution_C",
+        name: "Alumina Solution",
+        durationSec: 6,
+        ingredients: [
+          { item: "Desc_OreBauxite_C", amount: 12 },
+          { item: "Desc_Water_C", amount: 18 },
+        ],
+        products: [{ item: "Desc_AluminaSolution_C", amount: 12 }],
+        alternate: false,
+      },
+    ];
+    const onSite = solveProductsToRaw(
+      [{ productId: "Desc_AluminaSolution_C", itemsPerMinute: 120 }],
+      wetRecipes,
+      wetItems,
+    );
+    expect(onSite.demand.find((d) => d.resource === "Desc_Water_C")?.itemsPerMinute).toBeCloseTo(
+      180,
+      5,
+    );
+    const waterRow = onSite.expansion.find((e) => e.itemId === "Desc_Water_C");
+    expect(waterRow?.external).toBe(false);
+    expect(waterRow?.itemsPerMinute).toBeCloseTo(180, 5);
+
+    const offSite = solveProductsToRaw(
+      [{ productId: "Desc_AluminaSolution_C", itemsPerMinute: 120 }],
+      wetRecipes,
+      wetItems,
+      { externalItems: ["Desc_Water_C"] },
+    );
+    expect(offSite.demand.find((d) => d.resource === "Desc_Water_C")).toBeUndefined();
+    expect(
+      offSite.demand.find((d) => d.resource === "Desc_OreBauxite_C")?.itemsPerMinute,
+    ).toBeCloseTo(120, 5);
+    const waterExt = offSite.expansion.find((e) => e.itemId === "Desc_Water_C");
+    expect(waterExt?.external).toBe(true);
+    expect(waterExt?.itemsPerMinute).toBeCloseTo(180, 5);
+    expect(offSite.external.Desc_Water_C).toBeCloseTo(180, 5);
+  });
 });
 
 describe("expansion order (live Docs — plutonium fuel rod)", () => {

@@ -32,7 +32,7 @@ Both share extractors, site preference, capacity intent, heatmap engine, map, an
 
 Mode A is **not** a secondary escape hatch — power users who already solved ratios live there permanently. Mode B can **Send to Raw** to hand-tune the expanded rates.
 
-Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. This is *not* a full recipe planner — only “what pulls into site selection.”
+Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. **Water** is the one map raw also listed in Expansion so it can be imported off-site (piped extractors); other ores stay heatmap-only (off-site via their intermediate, e.g. Ingots). This is *not* a full recipe planner — only “what pulls into site selection.”
 
 In Raw mode the “Active raw demand” summary is omitted (the editor *is* the demand). In Products mode it shows the expanded raw list.
 
@@ -62,7 +62,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 
 ## What we optimize for
 
-- **Proximity + aggregate extract capacity** under user miner Mk + clock % (and correct oil/water/well buildings).
+- **Proximity + aggregate extract capacity** under extractor settings (miner Mk + miner/oil/water/well clocks; open water + optional resource wells).
 - **Rate-invariant haul quality** so a small factory and a large one that use the same nearby nodes paint similarly; capacity shortfall still matters.
 - Clear **shortfall** when the region cannot supply demand.
 - Diverse **top-N** candidate sites with per-resource node assignment and haul cost.

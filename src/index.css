@@ -215,3 +215,67 @@ body {
 .leaflet-tooltip.sf-hotspot-rank::before {
   display: none;
 }
+
+/*
+ * Clock overclock range: native <input type="range"> needs explicit track/thumb
+ * metrics so the 16px handle is vertically centered on the 8px bar (WebKit
+ * defaults leave the thumb sitting above the track).
+ */
+.sf-clock-range {
+  --sf-clock-track: 8px;
+  --sf-clock-thumb: 16px;
+  display: block;
+  width: 100%;
+  height: var(--sf-clock-thumb);
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+  accent-color: #38bdf8;
+}
+
+.sf-clock-range:focus {
+  outline: none;
+}
+
+.sf-clock-range:focus-visible {
+  outline: 2px solid rgb(56 189 248 / 0.45);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+/* WebKit / Blink */
+.sf-clock-range::-webkit-slider-runnable-track {
+  height: var(--sf-clock-track);
+  border-radius: 999px;
+  background: #334155;
+}
+
+.sf-clock-range::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--sf-clock-thumb);
+  height: var(--sf-clock-thumb);
+  margin-top: calc((var(--sf-clock-track) - var(--sf-clock-thumb)) / 2);
+  border: 0;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.35);
+}
+
+/* Firefox */
+.sf-clock-range::-moz-range-track {
+  height: var(--sf-clock-track);
+  border: 0;
+  border-radius: 999px;
+  background: #334155;
+}
+
+.sf-clock-range::-moz-range-thumb {
+  width: var(--sf-clock-thumb);
+  height: var(--sf-clock-thumb);
+  border: 0;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.35);
+}

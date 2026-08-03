@@ -76,14 +76,17 @@ Individual WebPs under `public/map/v1/` are **gitignored**. Cloudflare Git VMs h
 2. `npm run build` always runs `map:ensure` first — unpacks the pack into `public/map/v1/` when WebPs are missing, then Vite copies them into `dist/`.
 3. CF dashboard build stays: `npm run build` → `npx wrangler deploy`.
 
-Refresh the pack only when the basemap source changes (once per change, from a machine with Docker):
+Refresh tiles + open-water only when the basemap source (or water thresholds) change (from a machine with Docker):
 
 ```bash
-npm run map:generate   # wiki → public/map/v1 WebPs
+npm run map:generate   # wiki → public/map/v1 WebPs + public/data/water/open-water.json
 npm run map:pack       # → map-tiles/v1.tar.gz
-git add map-tiles/v1.tar.gz && git commit -m "Update basemap tile pack"
-# merge to main → CF rebuilds with new tiles
+git add map-tiles/v1.tar.gz public/data/water/open-water.json
+git commit -m "Update basemap tile pack and open-water extract"
+# merge to main → CF rebuilds with new tiles + water
 ```
+
+Open water is a normal committed JSON under `public/data/water/` (not the tile pack). CF Git does not need Docker for it.
 
 After deploy, confirm real WebPs (not SPA HTML):
 

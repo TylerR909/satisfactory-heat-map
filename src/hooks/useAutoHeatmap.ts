@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useHeatmapWorker } from "@/hooks/useHeatmapWorker";
-import { WATER_RESOURCE_ID } from "@/lib/resources";
+import { WELL_ONLY_RESOURCE_IDS } from "@/lib/resources";
 import { useAppStore } from "@/store/useAppStore";
 
 /**
@@ -14,8 +14,8 @@ export function useAutoHeatmap(debounceMs = 180) {
   const dataReady = useAppStore((s) => s.dataReady);
   const meta = useAppStore((s) => s.meta);
   const nodes = useAppStore((s) => s.nodes);
+  const openWater = useAppStore((s) => s.openWater);
   const activeDemand = useAppStore((s) => s.activeDemand);
-  const omitWaterFromScoring = useAppStore((s) => s.omitWaterFromScoring);
   const miner = useAppStore((s) => s.miner);
   const scoringMode = useAppStore((s) => s.scoringMode);
   const scoringOptions = useAppStore((s) => s.scoringOptions);
@@ -23,15 +23,23 @@ export function useAutoHeatmap(debounceMs = 180) {
   const setComputing = useAppStore((s) => s.setComputing);
   const setError = useAppStore((s) => s.setError);
 
-  /** Demand actually scored — may drop water when open extractors aren't mapped. */
-  const scoringDemand = useMemo(() => {
-    if (!omitWaterFromScoring) return activeDemand;
-    return activeDemand.filter((d) => d.resource !== WATER_RESOURCE_ID);
-  }, [activeDemand, omitWaterFromScoring]);
+  /**
+   * Nitrogen (etc.) only exists on resource wells — force wells on for scoring
+   * even if the user preference is still flipping via the store effect.
+   */
+  const scoringMiner = useMemo(() => {
+    const needsWells = activeDemand.some(
+      (d) => d.itemsPerMinute > 0 && WELL_ONLY_RESOURCE_IDS.includes(d.resource),
+    );
+    if (needsWells && !miner.resourceWellsEnabled) {
+      return { ...miner, resourceWellsEnabled: true };
+    }
+    return miner;
+  }, [miner, activeDemand]);
 
   useEffect(() => {
     if (!dataReady || !meta) return;
-    if (scoringDemand.length === 0) {
+    if (activeDemand.length === 0) {
       // Invalidate any in-flight worker so a late result can't revive a cleared map
       gen.current += 1;
       if (timer.current) clearTimeout(timer.current);
@@ -47,8 +55,9 @@ export function useAutoHeatmap(debounceMs = 180) {
       const myGen = ++gen.current;
       void score({
         nodes,
-        demand: scoringDemand,
-        miner,
+        openWater,
+        demand: activeDemand,
+        miner: scoringMiner,
         scoringMode,
         options: scoringOptions,
         bounds: meta.worldBounds,
@@ -79,8 +88,9 @@ export function useAutoHeatmap(debounceMs = 180) {
     dataReady,
     meta,
     nodes,
-    scoringDemand,
-    miner,
+    openWater,
+    activeDemand,
+    scoringMiner,
     scoringMode,
     scoringOptions,
     score,

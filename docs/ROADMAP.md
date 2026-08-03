@@ -16,13 +16,14 @@
 - [x] Inferred capacity tags (Limited / OK / Abundant / shortfall) from local utilization — no capacity mode toggle
 - [x] Multi-product Mode B with intermediate stacking + **Send to Raw**
 - [x] Live debounced recompute (no manual compute button)
-- [x] Extractor model: miner Mk/clock (solids only, clock max 250%); oil / water / wells
+- [x] Extractor model: miner Mk + separate clocks for miner / oil / water / well pressurizer (50–250%)
 - [x] Web Worker engine façade
 - [x] Planner knobs: Clustering (above Heat settings), Heat settings, Extractors; resets
 - [x] Map: community-calibrated CRS, self-hosted basemap tiles, heat overlay, nodes, pins, assignment lines, correct panes
 - [x] **Hash settings into the URL** (compact `#v1.<binary>` — mode, active demand, extractors, scoring, knobs)
 - [x] **Save & swap heatmaps** (abbrev chips; localStorage + plan hash; import paste hash; copy hash)
-- [x] Water caveat banner + omit-from-scoring toggle + Active raw demand strikethrough
+- [x] Open-water capacity (basemap blue → bodies) + wells toggle (N₂ forces wells on) + blue water haul lines
+- [x] Mode B: **Water** listed in Expansion for off-site import (other ores stay via intermediates)
 - [x] Site spread: strict separation, wider range (4–40% diag)
 - [x] **Attributions** footer control (viewport-clamped tooltip) + Leaflet basemap ©
 - [x] Lint / test / build green end-to-end (lint may still have pre-existing format noise)
@@ -37,12 +38,12 @@
 
 ## Phase 2 — Depth without becoming a calculator
 
-- [x] Mode B **Resource Toggle** — mark intermediates off-site / imported (stop expand); Empty Canister + Empty Fluid Tank default off-site; share-hash + Expansion UI
+- [x] Mode B **Resource Toggle** — mark intermediates off-site / imported (stop expand); Empty Canister + Empty Fluid Tank default off-site; **Water** also off-site-able; share-hash + Expansion UI
 - [ ] Mode B **alternate recipe toggles** (alts in data; UI still default-only — same Expansion rows later)
 - [ ] **Blueprint paste** — paste a Satisfactory blueprint string; derive raw demand (and/or product targets) for the heatmap without becoming a full planner
 - [ ] “These alts unlock hotter regions” comparison (nice-to-have)
 - [ ] Cave node flags / better elevation heuristics
-- [ ] Resource-colored haul lines + clearer per-resource breakdown (smell-test / trust)
+- [ ] Clearer per-resource breakdown (smell-test / trust) — water haul lines already colored
 
 ## Phase 3 — Data maturity & ship
 
@@ -83,7 +84,6 @@ Full notes: [docs/SEO.md](SEO.md). Code owns crawl files + meta; CF owns bot pol
 
 - [ ] Save-file upload (actual world extraction)
 - [ ] Dense interactive brush scoring (WASM scorer if needed)
-- [ ] Open-water capacity model (wells-only is honest for now)
 - [ ] CI: scheduled node refresh from MIT source
 - [ ] Stronger hierarchical seed diversity if users want more “new” pin regions under fixed demand
 

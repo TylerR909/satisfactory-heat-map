@@ -89,36 +89,94 @@ function withPurity(normalBase: number, purity: Purity): number {
   return normalBase * PURITY_MULT[purity];
 }
 
+/** UI / scoring overclock range. */
+export const CLOCK_PERCENT_MIN = 50;
+export const CLOCK_PERCENT_MAX = 250;
+/** Preferred marks — soft-snap magnets while dragging (not hard steps). */
+export const CLOCK_PERCENT_MARKS = [50, 100, 150, 200, 250] as const;
+/** How close (in percentage points) before a drag latches onto a mark. */
+export const CLOCK_PERCENT_SNAP_RADIUS = 3;
+
+/** Clamp overclock percent to 50–250% (integer). No forced 50% steps. */
+export function clampClockPercent(n: number, fallback: number): number {
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(Math.min(CLOCK_PERCENT_MAX, Math.max(CLOCK_PERCENT_MIN, n)));
+}
+
+/**
+ * Soft magnetic snap: free values along 50–250, but pull to 50% marks when close.
+ */
+export function softSnapClockPercent(n: number, fallback: number = 100): number {
+  const v = clampClockPercent(n, fallback);
+  for (const mark of CLOCK_PERCENT_MARKS) {
+    if (Math.abs(v - mark) <= CLOCK_PERCENT_SNAP_RADIUS) return mark;
+  }
+  return v;
+}
+
 /**
  * Continuous extract rate (items or m³ per minute) for heatmap capacity scoring.
  *
- * - Solids → Miner Mk.1–3 (user setting) × purity × clock
- * - Oil nodes → Oil Extractor only (Mk ignored) × purity × clock
- * - Water (open) → Water Extractor (Mk ignored) × clock, no purity
- * - Well satellites → Resource Well Extractor (Mk ignored) × purity × clock
- * - Deposits → portable-miner approximation (not permanent factory supply)
+ * - Solids → Miner Mk.1–3 (user setting) × purity × miner clock
+ * - Oil nodes → Oil Extractor × purity × oil clock
+ * - Water (open / rare standalone) → Water Extractor × water clock, no purity
+ * - Well satellites → Resource Well Extractor × purity × pressurizer clock
+ *   (0 when resource wells disabled)
+ * - Deposits → portable-miner approximation × miner clock
  * - Well cores / geysers → 0
  */
 export function nodeExtractRate(node: ResourceNode, settings: MinerSettings): number {
-  const clock = settings.clockPercent;
+  const minerClock = settings.clockPercent;
   const kind = extractorKindFor(node);
 
   switch (kind) {
     case "none":
       return 0;
     case "miner":
-      return withClock(withPurity(MINER_BASE[settings.minerMk], node.purity), clock);
+      return withClock(withPurity(MINER_BASE[settings.minerMk], node.purity), minerClock);
     case "oil_extractor":
-      return withClock(withPurity(OIL_EXTRACTOR_NORMAL_BASE, node.purity), clock);
+      return withClock(
+        withPurity(OIL_EXTRACTOR_NORMAL_BASE, node.purity),
+        settings.oilClockPercent ?? minerClock,
+      );
     case "water_extractor":
-      return withClock(WATER_EXTRACTOR_BASE, clock);
+      return withClock(WATER_EXTRACTOR_BASE, settings.waterClockPercent ?? minerClock);
     case "resource_well":
-      return withClock(withPurity(WELL_EXTRACTOR_NORMAL_BASE, node.purity), clock);
+      if (settings.resourceWellsEnabled === false) return 0;
+      return withClock(
+        withPurity(WELL_EXTRACTOR_NORMAL_BASE, node.purity),
+        settings.wellClockPercent ?? minerClock,
+      );
     case "portable_miner":
-      return withClock(withPurity(PORTABLE_MINER_NORMAL_BASE, node.purity), clock);
+      return withClock(withPurity(PORTABLE_MINER_NORMAL_BASE, node.purity), minerClock);
     default:
       return 0;
   }
+}
+
+/** Impure / normal / pure rates at the given clock (for slider readout). */
+export function purityRateTriplet(normalBaseAt100: number, clockPercent: number): string {
+  const c = clockPercent / 100;
+  const impure = formatRate(normalBaseAt100 * PURITY_MULT.impure * c);
+  const normal = formatRate(normalBaseAt100 * PURITY_MULT.normal * c);
+  const pure = formatRate(normalBaseAt100 * PURITY_MULT.pure * c);
+  return `${impure}/${normal}/${pure}/min`;
+}
+
+export function minerClockRateLabel(minerMk: MinerMk, clockPercent: number): string {
+  return purityRateTriplet(MINER_BASE[minerMk], clockPercent);
+}
+
+export function oilClockRateLabel(clockPercent: number): string {
+  return purityRateTriplet(OIL_EXTRACTOR_NORMAL_BASE, clockPercent);
+}
+
+export function waterClockRateLabel(clockPercent: number): string {
+  return `${formatRate(WATER_EXTRACTOR_BASE * (clockPercent / 100))}/min`;
+}
+
+export function wellClockRateLabel(clockPercent: number): string {
+  return purityRateTriplet(WELL_EXTRACTOR_NORMAL_BASE, clockPercent);
 }
 
 /**
