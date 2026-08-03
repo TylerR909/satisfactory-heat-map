@@ -2,6 +2,7 @@ import { CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { ensureMapPanes } from "@/components/map/MapPanes";
 import { worldToLeaflet } from "@/lib/coords";
 import { elevOffsetShouldDash } from "@/lib/heatmap/heatRender";
+import { RESOURCE_COLORS, WATER_RESOURCE_ID } from "@/lib/resources";
 import type { CapacityTag, MapMeta, SiteScore } from "@/types";
 
 type Props = {
@@ -19,6 +20,8 @@ type Props = {
 /** Non-solid stroke for elevation offset or cave-flagged nodes. */
 const HAUL_DASH = "10 8";
 
+const WATER_LINE = RESOURCE_COLORS[WATER_RESOURCE_ID] ?? "#38bdf8";
+
 /** Color encodes capacity tag; labels stay off the map (list/breakdown only). */
 function pinColors(
   tag: CapacityTag | undefined,
@@ -35,6 +38,13 @@ function pinColors(
     default:
       return { color: "#f8fafc", fill: "#22c55e" }; // green OK
   }
+}
+
+function haulLineColor(resource: string, caveRisk: boolean, elevOff: boolean): string {
+  if (resource === WATER_RESOURCE_ID) return WATER_LINE;
+  if (caveRisk) return "#e9d5ff";
+  if (elevOff) return "#fde68a";
+  return "#ffffff";
 }
 
 export function TopSitesLayer({
@@ -61,14 +71,14 @@ export function TopSitesLayer({
           const dashed = n.caveRisk || elevOff;
           return (
             <Polyline
-              key={`line-${selectedIndex}-${n.nodeId}`}
+              key={`line-${selectedIndex}-${ra.resource}-${n.nodeId}`}
               positions={[
                 worldToLeaflet(selected.x, selected.y, meta),
                 worldToLeaflet(n.x, n.y, meta),
               ]}
               pane="haulLinePane"
               pathOptions={{
-                color: n.caveRisk ? "#e9d5ff" : elevOff ? "#fde68a" : "#ffffff",
+                color: haulLineColor(ra.resource, n.caveRisk, elevOff),
                 weight: 4,
                 opacity: 1,
                 lineCap: "round",
@@ -79,6 +89,26 @@ export function TopSitesLayer({
           );
         }),
       )}
+
+      {/* Water source dots at the far end of water haul lines */}
+      {selected?.byResource.flatMap((ra) => {
+        if (ra.resource !== WATER_RESOURCE_ID) return [];
+        return ra.nodes.map((n) => (
+          <CircleMarker
+            key={`water-src-${selectedIndex}-${n.nodeId}`}
+            center={worldToLeaflet(n.x, n.y, meta)}
+            radius={6}
+            pane="haulLinePane"
+            pathOptions={{
+              color: "#e0f2fe",
+              fillColor: WATER_LINE,
+              fillOpacity: 1,
+              weight: 2,
+              opacity: 1,
+            }}
+          />
+        ));
+      })}
 
       {sites.map((site, i) => {
         const isSel = i === selectedIndex;

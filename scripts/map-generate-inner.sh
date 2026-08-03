@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Runs *inside* the osgeo/gdal container (cwd = repo root mounted at /work).
 # Downloads wiki Map.jpg → resizes → XYZ WebP pyramid → public/map/v1/
+# Leaves map-source/Map-{SIZE}.png for the open-water extract step (Node).
+#
+# MAP_SKIP_TILES=1 → only ensure the resized PNG (faster water re-extract).
 set -euo pipefail
 
 SOURCE_URL="${MAP_SOURCE_URL:-https://satisfactory.wiki.gg/images/Map.jpg}"
@@ -10,6 +13,7 @@ WEBP_QUALITY="${MAP_WEBP_QUALITY:-80}"
 OUT_DIR="${MAP_OUT_DIR:-public/map/v1}"
 WORK_DIR="${MAP_WORK_DIR:-map-source}"
 TILES_TMP="${MAP_TILES_TMP:-dist-map-tiles}"
+SKIP_TILES="${MAP_SKIP_TILES:-0}"
 
 # Optional local override (host path mounted into /work)
 INPUT_OVERRIDE="${MAP_INPUT:-}"
@@ -36,6 +40,17 @@ else
   echo "Resizing to ${TARGET_SIZE}×${TARGET_SIZE} …"
   gdal_translate -q -of PNG -outsize "$TARGET_SIZE" "$TARGET_SIZE" -r lanczos \
     "$SOURCE_JPG" "$SOURCE_PNG"
+fi
+
+if [[ ! -f "$SOURCE_PNG" ]]; then
+  echo "error: expected source PNG at $SOURCE_PNG" >&2
+  exit 1
+fi
+echo "Source map ready: $SOURCE_PNG"
+
+if [[ "$SKIP_TILES" == "1" ]]; then
+  echo "MAP_SKIP_TILES=1 — skipping WebP pyramid (PNG kept for water extract)"
+  exit 0
 fi
 
 echo "Generating WebP XYZ tiles z0–${MAX_ZOOM} …"

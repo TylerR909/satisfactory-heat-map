@@ -57,7 +57,7 @@ OSS notices for redistributed or ported material live under [`third_party/`](thi
 - **Centered** — centers the factory at the midpoint between sufficient nodes
 - **Weighted** — tugs the midpoint towards heaviest supply nodes (1200/min iron + 100/min copper would shift the factory much closer to the iron nodes)
 
-**Water:** Open Water Extractors aren’t discrete map nodes in our data — only resource wells are. If your plan needs water, use the in-app caveat and “omit water from scoring” when you plan extractors yourself on coasts/lakes.
+**Water:** Open extractors aren’t game “nodes,” but the heatmap models them from basemap open-water pockets (plus optional Tier 8 resource wells). In Products mode, mark **Water** off-site in Expansion if you pipe it from elsewhere.
 
 **Share & shelf plans.** Copy the plan hash from the Products/Raw header, paste to import, or use the heatmap chips to save/switch builds. The URL hash is the same compact computation payload (display knobs stay local).
 

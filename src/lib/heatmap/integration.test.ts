@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createEngine } from "@/lib/engine";
 import { solveProductToRaw } from "@/lib/production/solve";
-import type { ItemDef, MapMeta, Recipe, ResourceNode } from "@/types";
-import { DEFAULT_SCORING_OPTIONS } from "@/types";
+import type { ItemDef, MapMeta, OpenWaterData, Recipe, ResourceNode } from "@/types";
+import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
 
 const root = resolve(import.meta.dirname, "../../..");
 
@@ -17,6 +17,7 @@ describe("integration with shipped data", () => {
   const items = loadJson<Record<string, ItemDef>>("public/data/recipes/items.json");
   const recipes = loadJson<Recipe[]>("public/data/recipes/recipes.json");
   const meta = loadJson<MapMeta>("public/data/meta.json");
+  const openWater = loadJson<OpenWaterData>("public/data/water/open-water.json");
   const engine = createEngine();
 
   it("loads hundreds of nodes", () => {
@@ -31,7 +32,7 @@ describe("integration with shipped data", () => {
         { resource: "Desc_Coal_C", itemsPerMinute: 300 },
         { resource: "Desc_Sulfur_C", itemsPerMinute: 200 },
       ],
-      miner: { minerMk: 2, clockPercent: 250 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 2, clockPercent: 250 },
       scoringMode: "centered",
       options: { ...DEFAULT_SCORING_OPTIONS, topN: 5, heatContrast: 1.75 },
       bounds: meta.worldBounds,
@@ -56,7 +57,7 @@ describe("integration with shipped data", () => {
     const result = engine.scoreGrid({
       nodes,
       demand,
-      miner: { minerMk: 3, clockPercent: 100 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 3, clockPercent: 100 },
       scoringMode: "weighted",
       options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
       bounds: meta.worldBounds,
@@ -74,7 +75,7 @@ describe("integration with shipped data", () => {
     const result = engine.scoreGrid({
       nodes,
       demand: [{ resource: "Desc_Stone_C", itemsPerMinute: 60 }],
-      miner: { minerMk: 2, clockPercent: 250 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 2, clockPercent: 250 },
       scoringMode: "centered",
       options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
       bounds: meta.worldBounds,
@@ -102,7 +103,7 @@ describe("integration with shipped data", () => {
         { resource: "Desc_Sulfur_C", itemsPerMinute: 200 },
         { resource: "Desc_RawQuartz_C", itemsPerMinute: 100 },
       ],
-      miner: { minerMk: 2, clockPercent: 250 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 2, clockPercent: 250 },
       scoringMode: "centered",
       options: {
         ...DEFAULT_SCORING_OPTIONS,
@@ -141,5 +142,87 @@ describe("integration with shipped data", () => {
       expect(offset).toBeLessThan(80_000); // 800 m
       expect(minDist).toBeLessThan(90_000); // 900 m to nearest assigned node
     }
+  });
+
+  it("ships calibrated open-water bodies and scores pond-scale water demand", () => {
+    expect(openWater.bodies.length).toBeGreaterThan(100);
+    const anchor = openWater.bodies.find((b) => b.calibrationAnchor);
+    expect(anchor?.slots).toBe(4);
+
+    const result = engine.scoreGrid({
+      nodes,
+      openWater,
+      demand: [{ resource: "Desc_Water_C", itemsPerMinute: 480 }],
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 1, clockPercent: 100 },
+      scoringMode: "centered",
+      options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
+      bounds: meta.worldBounds,
+      coarseCols: 32,
+      coarseRows: 32,
+      refineTopK: 8,
+      refineSubdiv: 4,
+      caveDeltaZCm: meta.heatmapDefaults.caveDeltaZCm,
+    });
+    expect(result.topSites.some((s) => s.satisfiable)).toBe(true);
+    // Prefer open water / coasts over the handful of wells alone
+    const best = result.topSites[0];
+    expect(best.byResource[0]?.nodes.length).toBeGreaterThan(0);
+  });
+
+  it("still finds satisfiable water sites when resource wells are disabled", () => {
+    const result = engine.scoreGrid({
+      nodes,
+      openWater,
+      demand: [{ resource: "Desc_Water_C", itemsPerMinute: 480 }],
+      miner: {
+        ...DEFAULT_MINER_SETTINGS,
+        resourceWellsEnabled: false,
+        waterClockPercent: 250,
+      },
+      scoringMode: "centered",
+      options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
+      bounds: meta.worldBounds,
+      coarseCols: 32,
+      coarseRows: 32,
+      refineTopK: 8,
+      refineSubdiv: 4,
+      caveDeltaZCm: meta.heatmapDefaults.caveDeltaZCm,
+    });
+    expect(result.topSites.some((s) => s.satisfiable)).toBe(true);
+    expect(result.topSites.every((s) => s.capacityTag === "shortfall")).toBe(false);
+    const best = result.topSites.find((s) => s.satisfiable);
+    expect(best?.capacityByResource?.[0]?.localCapacity).toBeGreaterThan(0);
+    // Assigned open-water (or residual wells shouldn't appear with rate)
+    const water = best?.byResource.find((r) => r.resource === "Desc_Water_C");
+    expect(water?.nodes.some((n) => n.nodeId.startsWith("ow_"))).toBe(true);
+  });
+
+  it("scores water-heavy plans near solid-resource latency (full 64×64 grid)", () => {
+    // Biochemical Sculptor–scale water + a few ores; must stay interactive.
+    const t0 = performance.now();
+    const result = engine.scoreGrid({
+      nodes,
+      openWater,
+      demand: [
+        { resource: "Desc_Water_C", itemsPerMinute: 1200 },
+        { resource: "Desc_OreIron_C", itemsPerMinute: 480 },
+        { resource: "Desc_OreCopper_C", itemsPerMinute: 240 },
+        { resource: "Desc_RawQuartz_C", itemsPerMinute: 120 },
+      ],
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 3, clockPercent: 100 },
+      scoringMode: "centered",
+      options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
+      bounds: meta.worldBounds,
+      coarseCols: meta.heatmapDefaults.coarseCols,
+      coarseRows: meta.heatmapDefaults.coarseRows,
+      refineTopK: meta.heatmapDefaults.refineTopK,
+      refineSubdiv: meta.heatmapDefaults.refineSubdiv,
+      caveDeltaZCm: meta.heatmapDefaults.caveDeltaZCm,
+    });
+    const ms = performance.now() - t0;
+    expect(result.topSites.length).toBeGreaterThan(0);
+    // Pre-fix was multi-second; keep well under 1s on CI-class machines.
+    expect(ms).toBeLessThan(1200);
+    expect(result.elapsedMs).toBeLessThan(1200);
   });
 });

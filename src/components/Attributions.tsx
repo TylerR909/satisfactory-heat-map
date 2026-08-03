@@ -74,6 +74,12 @@ const ATTRIBUTION_BODY = (
         <span className="font-mono text-slate-400">public/map/v1/README.md</span>.
       </li>
       <li>
+        <span className="text-slate-100">Open water</span> — capacity pockets derived from the same
+        basemap (blue-pixel extract at{" "}
+        <span className="font-mono text-slate-400">map:generate</span>; not discrete game nodes).
+        See <span className="font-mono text-slate-400">public/data/water/</span>.
+      </li>
+      <li>
         <span className="text-slate-100">Extractor rates</span> — project-maintained tables (not
         Docs).
       </li>

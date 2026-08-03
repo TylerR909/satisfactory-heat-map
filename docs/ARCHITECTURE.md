@@ -28,6 +28,7 @@
 |------|------|
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
 | `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables |
+| `lib/heatmap/score.ts` | Capacity assignment; open-water bodies merge into `Desc_Water_C` supply |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
 | `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (default recipes + optional externalItems prune) |
 | `lib/heatmap/score.ts` | Capacity greedy assignment, haul combine, adaptive scale, display norm |
@@ -118,7 +119,7 @@ User knobs (`ScoringOptions`): `centerPower`, `heatContrast`, `topN`, `siteSepFr
 
 ### Extractor rates
 
-See `src/lib/mining.ts` and `docs/DATA.md`. **Miner Mk only affects solid ores**; oil extractors, water extractors, and well satellites have their own purity/base tables. Clock % multiplies continuous extractors.
+See `src/lib/mining.ts` and `docs/DATA.md`. **Miner Mk only affects solid ores**. Independent clocks (50–250%): miner, oil extractor, water extractor, well pressurizer. Open water is not in the node file: `prepareNodes` merges basemap `openWater` bodies into the `Desc_Water_C` supply pool (finite slots × 120 × water clock). Mode B can mark Water off-site in Expansion.
 
 ## Map rendering
 

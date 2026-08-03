@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeHierarchicalHeatmap, pickDiverseSites } from "@/lib/heatmap/hierarchical";
 import type { ResourceNode, SiteScore } from "@/types";
-import { DEFAULT_SCORING_OPTIONS } from "@/types";
+import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
 
 function ore(
   id: string,
@@ -30,7 +30,7 @@ describe("computeHierarchicalHeatmap", () => {
         { resource: "Desc_OreIron_C", itemsPerMinute: 400 },
         { resource: "Desc_OreCopper_C", itemsPerMinute: 200 },
       ],
-      miner: { minerMk: 3, clockPercent: 100 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 3, clockPercent: 100 },
       scoringMode: "centered",
       options: { ...DEFAULT_SCORING_OPTIONS, topN: 5 },
       bounds: { minX: -5000, maxX: 5000, minY: -5000, maxY: 5000 },
@@ -60,7 +60,7 @@ describe("computeHierarchicalHeatmap", () => {
     const result = computeHierarchicalHeatmap({
       nodes,
       demand: [{ resource: "Desc_Stone_C", itemsPerMinute: 120 }],
-      miner: { minerMk: 2, clockPercent: 250 },
+      miner: { ...DEFAULT_MINER_SETTINGS, minerMk: 2, clockPercent: 250 },
       scoringMode: "centered",
       options: { ...DEFAULT_SCORING_OPTIONS, topN: 5, siteSepFraction: 0.08 },
       bounds: { minX: -5_000, maxX: 120_000, minY: -20_000, maxY: 20_000 },

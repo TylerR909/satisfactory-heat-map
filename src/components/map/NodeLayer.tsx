@@ -20,8 +20,14 @@ export function NodeLayer({ nodes, meta, demand, miner, show }: Props) {
   if (!map.getPane("nodePane")) return null;
 
   const wanted = new Set(demand.map((d) => d.resource));
+  const wellsOn = miner.resourceWellsEnabled !== false;
   const visible = wanted.size
-    ? nodes.filter((n) => wanted.has(n.resource) && n.nodeType !== "frackingCore")
+    ? nodes.filter((n) => {
+        if (!wanted.has(n.resource)) return false;
+        if (n.nodeType === "frackingCore") return false;
+        if (!wellsOn && n.nodeType === "frackingSatellite") return false;
+        return true;
+      })
     : nodes.filter((n) => n.nodeType === "node").slice(0, 200);
 
   return (

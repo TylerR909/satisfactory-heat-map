@@ -40,7 +40,15 @@ describe("planHash compact v1 (computation only)", () => {
     const src = sample({
       mode: "product",
       scoringMode: "weighted",
-      miner: { minerMk: 3, clockPercent: 150 },
+      miner: {
+        ...DEFAULT_MINER_SETTINGS,
+        minerMk: 3,
+        clockPercent: 150,
+        oilClockPercent: 100,
+        waterClockPercent: 200,
+        resourceWellsEnabled: true,
+        wellClockPercent: 250,
+      },
       scoringOptions: {
         centerPower: 1.8,
         heatContrast: 2.1, // display-only; not in hash
@@ -53,7 +61,14 @@ describe("planHash compact v1 (computation only)", () => {
     if (!decoded) return;
     expect(decoded.mode).toBe("product");
     expect(decoded.scoringMode).toBe("weighted");
-    expect(decoded.miner).toEqual({ minerMk: 3, clockPercent: 150 });
+    expect(decoded.miner).toEqual({
+      minerMk: 3,
+      clockPercent: 150,
+      oilClockPercent: 100,
+      waterClockPercent: 200,
+      resourceWellsEnabled: true,
+      wellClockPercent: 250,
+    });
     expect(decoded.scoringOptions.topN).toBe(7);
     expect(decoded.scoringOptions.centerPower).toBeCloseTo(1.8, 1);
     expect(decoded.scoringOptions.siteSepFraction).toBeCloseTo(0.12, 2);
@@ -62,6 +77,18 @@ describe("planHash compact v1 (computation only)", () => {
     expect(decoded.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
     expect(decoded.productTargets[0]?.itemsPerMinute).toBe(10);
     expect(decoded.rawDemand).toHaveLength(0);
+  });
+
+  it("round-trips off-site Water in externalItems (Mode B)", () => {
+    const src = sample({
+      mode: "product",
+      externalItems: ["Desc_Water_C", "Desc_FluidCanister_C"],
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.externalItems).toEqual(
+      expect.arrayContaining(["Desc_Water_C", "Desc_FluidCanister_C"]),
+    );
+    expect(decoded?.externalItems).toHaveLength(2);
   });
 
   it("round-trips includeElevation=false (flat haul flag)", () => {

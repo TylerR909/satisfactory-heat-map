@@ -16,6 +16,7 @@ import type {
   ItemDef,
   MapMeta,
   MinerSettings,
+  OpenWaterData,
   ProductTargetLine,
   RawDemand,
   RawDemandLine,
@@ -47,8 +48,8 @@ export type AppState = {
   /** Mode B: one or more co-located product targets (rates stack). */
   productTargets: ProductTargetLine[];
   /**
-   * Mode B: crafted item ids treated as off-site (stop expand). Share-hash + plan
-   * intent — unlike omitWater (local data preference).
+   * Mode B: item ids treated as off-site (stop expand / omit from heatmap).
+   * Crafted intermediates + Water. Share-hash + plan intent.
    */
   externalItems: string[];
   miner: MinerSettings;
@@ -63,11 +64,6 @@ export type AppState = {
   expansionOpen: boolean;
   heatOpacity: number;
   showNodes: boolean;
-  /**
-   * When true, water is dropped from heatmap scoring (open extractors have no
-   * map nodes). Preference only — not in URL hash.
-   */
-  omitWaterFromScoring: boolean;
   selectedSiteIndex: number | null;
   activeDemand: RawDemand[];
   /**
@@ -84,6 +80,8 @@ export type AppState = {
   seed: MapSeed;
   /** Effective nodes for map + heatmap (cached from baseSlots + seed). */
   nodes: ResourceNode[];
+  /** Basemap open-water bodies (map:generate); null until load. */
+  openWater: OpenWaterData | null;
   items: Record<string, ItemDef>;
   recipes: Recipe[];
   meta: MapMeta | null;
@@ -97,7 +95,7 @@ export type AppState = {
   updateProductLine: (id: string, patch: Partial<Omit<ProductTargetLine, "id">>) => void;
   addProductLine: () => void;
   removeProductLine: (id: string) => void;
-  /** Mark / unmark a crafted item as off-site for Mode B expand. */
+  /** Mark / unmark an Expansion item as off-site for Mode B expand (incl. Water). */
   setItemExternal: (itemId: string, external: boolean) => void;
   setMiner: (m: Partial<MinerSettings>) => void;
   setScoringMode: (mode: ScoringMode) => void;
@@ -109,7 +107,6 @@ export type AppState = {
   setExpansionOpen: (v: boolean) => void;
   setHeatOpacity: (n: number) => void;
   setShowNodes: (v: boolean) => void;
-  setOmitWaterFromScoring: (v: boolean) => void;
   setSelectedSiteIndex: (i: number | null) => void;
   setHeatmap: (h: HeatmapResult | null) => void;
   setComputing: (v: boolean) => void;
@@ -195,7 +192,6 @@ export const useAppStore = create<AppState>()(
       expansionOpen: false,
       heatOpacity: DEFAULT_HEAT_OPACITY,
       showNodes: true,
-      omitWaterFromScoring: false,
       selectedSiteIndex: null,
       activeDemand: [],
       expansionRows: [],
@@ -205,6 +201,7 @@ export const useAppStore = create<AppState>()(
       baseSlots: [],
       seed: null,
       nodes: [],
+      openWater: null,
       items: {},
       recipes: [],
       meta: null,
@@ -283,12 +280,41 @@ export const useAppStore = create<AppState>()(
         get().recomputeActiveDemand();
       },
       setMiner: (m) => {
-        const next = { ...get().miner, ...m };
-        // In-game overclock max is 250%
-        if (typeof next.clockPercent === "number" && Number.isFinite(next.clockPercent)) {
-          next.clockPercent = Math.min(250, Math.max(1, Math.round(next.clockPercent)));
-        } else {
-          next.clockPercent = DEFAULT_MINER_SETTINGS.clockPercent;
+        const prev = get().miner;
+        const next = { ...prev, ...m };
+        // Overclock UI: 50–250% continuous (soft snap applied in the slider)
+        const clampClock = (n: unknown, fallback: number) => {
+          if (typeof n === "number" && Number.isFinite(n)) {
+            return Math.round(Math.min(250, Math.max(50, n)));
+          }
+          return fallback;
+        };
+        next.clockPercent = clampClock(next.clockPercent, DEFAULT_MINER_SETTINGS.clockPercent);
+        next.oilClockPercent = clampClock(
+          next.oilClockPercent,
+          DEFAULT_MINER_SETTINGS.oilClockPercent,
+        );
+        next.waterClockPercent = clampClock(
+          next.waterClockPercent,
+          DEFAULT_MINER_SETTINGS.waterClockPercent,
+        );
+        next.wellClockPercent = clampClock(
+          next.wellClockPercent,
+          DEFAULT_MINER_SETTINGS.wellClockPercent,
+        );
+        if (typeof next.resourceWellsEnabled !== "boolean") {
+          next.resourceWellsEnabled = DEFAULT_MINER_SETTINGS.resourceWellsEnabled;
+        }
+        // Skip no-op writes (avoids heatmap thrash when slider re-commits same value)
+        if (
+          next.minerMk === prev.minerMk &&
+          next.clockPercent === prev.clockPercent &&
+          next.oilClockPercent === prev.oilClockPercent &&
+          next.waterClockPercent === prev.waterClockPercent &&
+          next.wellClockPercent === prev.wellClockPercent &&
+          next.resourceWellsEnabled === prev.resourceWellsEnabled
+        ) {
+          return;
         }
         set({ miner: next });
       },
@@ -302,7 +328,6 @@ export const useAppStore = create<AppState>()(
       setExpansionOpen: (expansionOpen) => set({ expansionOpen }),
       setHeatOpacity: (heatOpacity) => set({ heatOpacity }),
       setShowNodes: (showNodes) => set({ showNodes }),
-      setOmitWaterFromScoring: (omitWaterFromScoring) => set({ omitWaterFromScoring }),
       setSelectedSiteIndex: (selectedSiteIndex) => set({ selectedSiteIndex }),
       setHeatmap: (heatmap) =>
         set({ heatmap, selectedSiteIndex: heatmap?.topSites.length ? 0 : null }),
@@ -327,7 +352,6 @@ export const useAppStore = create<AppState>()(
           heatPaintOpen: false,
           heatOpacity: DEFAULT_HEAT_OPACITY,
           showNodes: true,
-          omitWaterFromScoring: false,
           selectedSiteIndex: null,
           heatmap: null,
           error: null,
@@ -405,7 +429,10 @@ export const useAppStore = create<AppState>()(
           rawDemand,
           productTargets,
           externalItems,
-          miner: { ...snap.miner },
+          miner: {
+            ...DEFAULT_MINER_SETTINGS,
+            ...snap.miner,
+          },
           scoringMode: snap.scoringMode,
           // Hash is computation-only — keep local display knobs (opacity, paint, peak emphasis)
           scoringOptions: {
@@ -443,11 +470,12 @@ export const useAppStore = create<AppState>()(
       },
       loadGameData: async () => {
         try {
-          const [nodesRes, itemsRes, recipesRes, metaRes] = await Promise.all([
+          const [nodesRes, itemsRes, recipesRes, metaRes, waterRes] = await Promise.all([
             fetch("/data/nodes/default-nodes.json"),
             fetch("/data/recipes/items.json"),
             fetch("/data/recipes/recipes.json"),
             fetch("/data/meta.json"),
+            fetch("/data/water/open-water.json"),
           ]);
           if (!nodesRes.ok || !itemsRes.ok || !recipesRes.ok || !metaRes.ok) {
             throw new Error("Failed to load game data JSON");
@@ -456,10 +484,24 @@ export const useAppStore = create<AppState>()(
           const items = (await itemsRes.json()) as Record<string, ItemDef>;
           const recipes = (await recipesRes.json()) as Recipe[];
           const meta = (await metaRes.json()) as MapMeta;
+          // Open water is optional for older deploys; empty bodies → wells only
+          let openWater: OpenWaterData | null = null;
+          if (waterRes.ok) {
+            openWater = (await waterRes.json()) as OpenWaterData;
+          }
           clearNodeSeedCache();
           const seed = get().seed;
           const nodes = getNodesForSeed(baseSlots, seed);
-          set({ baseSlots, nodes, items, recipes, meta, dataReady: true, error: null });
+          set({
+            baseSlots,
+            nodes,
+            openWater,
+            items,
+            recipes,
+            meta,
+            dataReady: true,
+            error: null,
+          });
           get().recomputeActiveDemand();
         } catch (e) {
           set({
@@ -487,7 +529,6 @@ export const useAppStore = create<AppState>()(
         expansionOpen: s.expansionOpen,
         heatOpacity: s.heatOpacity,
         showNodes: s.showNodes,
-        omitWaterFromScoring: s.omitWaterFromScoring,
         seed: s.seed,
       }),
       merge: (persisted, current) => {
@@ -542,19 +583,30 @@ export const useAppStore = create<AppState>()(
           ...p.heatRender,
         });
         const minerIn = p.miner ?? current.miner;
+        const clampClock = (n: unknown, fallback: number) => {
+          const raw = typeof n === "number" && Number.isFinite(n) ? n : fallback;
+          return Math.round(Math.min(250, Math.max(50, raw)));
+        };
         const miner = {
+          ...DEFAULT_MINER_SETTINGS,
           ...minerIn,
-          clockPercent: Math.min(
-            250,
-            Math.max(
-              1,
-              Math.round(
-                typeof minerIn.clockPercent === "number" && Number.isFinite(minerIn.clockPercent)
-                  ? minerIn.clockPercent
-                  : DEFAULT_MINER_SETTINGS.clockPercent,
-              ),
-            ),
+          clockPercent: clampClock(minerIn.clockPercent, DEFAULT_MINER_SETTINGS.clockPercent),
+          oilClockPercent: clampClock(
+            minerIn.oilClockPercent,
+            DEFAULT_MINER_SETTINGS.oilClockPercent,
           ),
+          waterClockPercent: clampClock(
+            minerIn.waterClockPercent,
+            DEFAULT_MINER_SETTINGS.waterClockPercent,
+          ),
+          wellClockPercent: clampClock(
+            minerIn.wellClockPercent,
+            DEFAULT_MINER_SETTINGS.wellClockPercent,
+          ),
+          resourceWellsEnabled:
+            typeof minerIn.resourceWellsEnabled === "boolean"
+              ? minerIn.resourceWellsEnabled
+              : DEFAULT_MINER_SETTINGS.resourceWellsEnabled,
         };
         const rawSeed = (p as { seed?: MapSeed }).seed;
         const seed: MapSeed =
