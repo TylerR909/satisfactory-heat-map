@@ -17,7 +17,7 @@
 3. **Honest data.** Bootstrap labeled; regenerate path in `docs/DATA.md`. Never treat satisfactory-calculator.com assets as ours.
 4. **Static-first + Docker.** Same `vite build` → Cloudflare Workers static assets *and* home-lab Compose (nginx).
 5. **Offline-capable PWA.** No accounts; localStorage / export plan JSON / **shareable URL hash** (full plan + knobs).
-6. **Host tools = Node/npm only.** Optional Rust/WASM only inside Docker — never install Rust on the laptop.
+6. **Host tools = Node/npm only.** Rust/WASM toolchain only in Dev Container, Docker builds, or CI/CF VMs — never install rustc on the laptop.
 7. **React Compiler by default.** Minimal hand `useMemo` / `useCallback`.
 8. **Live recompute.** Changing demand, extractors, or knobs updates the heat without a separate “Compute” click.
 

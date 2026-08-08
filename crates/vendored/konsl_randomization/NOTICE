@@ -1,0 +1,7 @@
+Konsl / satisfactory-world-generator randomization algorithm
+Copyright (c) 2026 Konsl
+Licensed under the MIT License — see third_party/konsl-satisfactory-world-generator.LICENSE
+and docs in third_party/konsl-satisfactory-world-generator.md
+
+Only the MIT-licensed algorithm sources are vendored here.
+The GPL web viewer (src/app/*) is not included.

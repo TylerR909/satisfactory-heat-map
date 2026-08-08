@@ -29,7 +29,7 @@ import {
   WELL_ONLY_RESOURCE_IDS,
 } from "@/lib/resources";
 import { useAppStore } from "@/store/useAppStore";
-import type { CapacityTag, MinerMk, ScoringMode, SiteScore } from "@/types";
+import type { CapacityTag, HeatmapResult, MinerMk, ScoringMode, SiteScore } from "@/types";
 import { DEFAULT_HEAT_OPACITY } from "@/types";
 
 /**
@@ -310,6 +310,7 @@ export function PlannerPanel() {
     computing,
     error,
     heatmap,
+    lastRasterizeMs,
     heatOpacity,
     setHeatOpacity,
     showNodes,
@@ -379,9 +380,7 @@ export function PlannerPanel() {
             </span>
           )}
           {!computing && heatmap && (
-            <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-              {heatmap.elapsedMs.toFixed(0)} ms
-            </span>
+            <HeatmapTimingBadge heatmap={heatmap} rasterizeMs={lastRasterizeMs} />
           )}
         </div>
         <p className="mt-1 text-xs text-slate-400">
@@ -1378,6 +1377,71 @@ function CopyHashButton({
 
 const TIP_WIDTH = 224; // w-56
 const TIP_PAD = 8;
+
+function fmtMs(ms: number): string {
+  return ms < 10 ? ms.toFixed(1) : ms.toFixed(0);
+}
+
+/**
+ * Score wall-time badge (worker hierarchical total). Hover shows stage breakdown
+ * plus main-thread rasterize (not included in the badge sum).
+ */
+function HeatmapTimingBadge({
+  heatmap,
+  rasterizeMs,
+}: {
+  heatmap: HeatmapResult;
+  rasterizeMs: number | null;
+}) {
+  const { elapsedMs, timings } = heatmap;
+  const t = timings;
+  return (
+    <span className="group relative shrink-0">
+      <span className="cursor-default rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+        {elapsedMs.toFixed(0)} ms
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 hidden w-[11.5rem] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-[10px] font-normal text-slate-300 shadow-lg group-hover:block"
+      >
+        <div className="mb-1.5 flex justify-between gap-3 font-medium text-emerald-300">
+          <span>Score</span>
+          <span className="tabular-nums">{fmtMs(elapsedMs)} ms</span>
+        </div>
+        <ul className="space-y-0.5 text-slate-400">
+          <li className="flex justify-between gap-3">
+            <span>Prepare</span>
+            <span className="tabular-nums text-slate-300">{fmtMs(t.prepareMs)}</span>
+          </li>
+          <li className="flex justify-between gap-3">
+            <span>Coarse grid</span>
+            <span className="tabular-nums text-slate-300">{fmtMs(t.coarseMs)}</span>
+          </li>
+          <li className="flex justify-between gap-3">
+            <span>Refine</span>
+            <span className="tabular-nums text-slate-300">{fmtMs(t.refineMs)}</span>
+          </li>
+          <li className="flex justify-between gap-3">
+            <span>Top sites</span>
+            <span className="tabular-nums text-slate-300">{fmtMs(t.topSitesMs)}</span>
+          </li>
+        </ul>
+        {rasterizeMs != null && (
+          <>
+            <div className="my-1.5 border-t border-slate-700" />
+            <div className="flex justify-between gap-3 text-slate-500">
+              <span>Rasterize</span>
+              <span className="tabular-nums">{fmtMs(rasterizeMs)} ms</span>
+            </div>
+            <p className="mt-1 text-[9px] leading-snug text-slate-600">
+              Rasterize is main-thread paint, not in the badge total.
+            </p>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
 
 type TipPos = { left: number; top: number; place: "above" | "below" };
 

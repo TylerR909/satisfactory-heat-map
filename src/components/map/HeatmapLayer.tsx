@@ -5,6 +5,7 @@ import { worldToLeaflet } from "@/lib/coords";
 import type { HeatRenderOptions } from "@/lib/heatmap/heatRender";
 import { DEFAULT_HEAT_RENDER } from "@/lib/heatmap/heatRender";
 import { rasterizeHeatmapGrid } from "@/lib/heatmap/rasterize";
+import { useAppStore } from "@/store/useAppStore";
 import type { HeatmapResult, MapMeta } from "@/types";
 
 type Props = {
@@ -22,6 +23,7 @@ export function HeatmapLayer({ result, meta, opacity, heatRender = DEFAULT_HEAT_
   const map = useMap();
   ensureMapPanes(map);
   const [url, setUrl] = useState<string | null>(null);
+  const setLastRasterizeMs = useAppStore((s) => s.setLastRasterizeMs);
 
   const imageBounds = useMemo(() => {
     if (!result) return null;
@@ -45,13 +47,17 @@ export function HeatmapLayer({ result, meta, opacity, heatRender = DEFAULT_HEAT_
   useEffect(() => {
     if (!result) {
       setUrl(null);
+      setLastRasterizeMs(null);
       return;
     }
     const id = requestAnimationFrame(() => {
-      setUrl(rasterizeHeatmapGrid(result.grid, 8, heatRender));
+      const t0 = performance.now();
+      const dataUrl = rasterizeHeatmapGrid(result.grid, 8, heatRender);
+      setLastRasterizeMs(performance.now() - t0);
+      setUrl(dataUrl);
     });
     return () => cancelAnimationFrame(id);
-  }, [result, heatRender]);
+  }, [result, heatRender, setLastRasterizeMs]);
 
   if (!url || !imageBounds || !result) return null;
 

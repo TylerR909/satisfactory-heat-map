@@ -6,9 +6,15 @@
 |----------|--------|
 | **Node.js 24 LTS** | Pin via `.nvmrc` / `engines.node >= 24` |
 | **npm** | Lockfile committed |
-| **Docker** (optional for daily UI) | Required for Compose deploy and any WASM build |
+| **Docker** | Required for Compose deploy; on hosts **without** a Dev Container, also for `wasm:build` |
 
-**Do not install on the host:** Rust, rustup, cargo, wasm-pack. WASM builds go through Docker only (`npm run wasm:build`).
+**Never install on the host:** Rust, rustup, cargo, or wasm-pack. The toolchain lives **only** in:
+
+1. **Dev Container** (`.devcontainer/`) — everyday Node + Rust + `wasm-pack` for Vite HMR  
+2. **Published Dockerfile** rust stage — compile-on-build  
+3. **CI / Cloudflare build VM** — ephemeral rustup for `npm run build`  
+
+`npm run wasm:build` uses wasm-pack when present, otherwise Docker (`rust:1-bookworm`). It does **not** install Rust on the host.
 
 ## Stack (locked for MVP)
 
@@ -23,7 +29,8 @@
 | Map | Leaflet + react-leaflet + CRS.Simple | Game image maps; pan/zoom free |
 | Workers | Vite worker (`heatmap.worker.ts`) | Scoring off main thread |
 | CSS | Tailwind **v4** (`@tailwindcss/vite`) | Fast UI |
-| Tests | Vitest | Unit + hierarchical + integration tests (solver, scorer, adaptive scale, real nodes) |
+| Tests | Vitest | WASM-backed scorer/seed + unit/integration (solver, mining, plan hash, …) |
+| Scorer / seed | Rust → WASM (`crates/`) | Hierarchical score + Konsl seed; UI stays TS |
 | PWA | vite-plugin-pwa | Offline cache |
 | Container | `node:24-alpine` build → `nginx:alpine` | Static serve |
 
@@ -44,26 +51,27 @@ Config: `biome.json` with React domain recommended + those rules as error.
 
 | Script | Behavior |
 |--------|----------|
-| **`npm start`** | `scripts/dev-start.mjs`: optional WASM via Docker if `crates/` exists → **Vite HMR** |
-| **`npm run dev`** | Vite only (skip wasm step) |
-| **`npm run build`** | `tsc -b` + Vite production (tree-shake, minify, hashed assets) → `dist/` |
+| **`npm start`** | `wasm:build` (if crates) → basemap ensure → **Vite HMR** |
+| **`npm run dev`** | Vite only (expects `crates/engine/pkg` already built for WASM) |
+| **`npm run build`** | map:ensure → **wasm:build --release** → typecheck → Vite → `dist/` (incl. `.wasm`) |
 | **`npm run preview`** | `vite preview` of `dist/` — optional local smoke only (not CF Workers / not Docker) |
-| **`npm test`** | `vitest run` |
+| **`npm test`** | `vitest run` — **WASM required** (globalSetup runs `wasm:build` if `pkg/` missing) |
 | **`npm run test:watch`** | Vitest watch |
 | **`npm run lint`** | `biome check .` |
 | **`npm run lint:fix`** | `biome check --write .` |
-| **`npm run clean`** | Remove `dist/`, caches, coverage |
-| **`npm run map:generate`** | Docker: wiki Map.jpg → WebP tiles **+** `public/data/water/open-water.json` (GDAL then Node/sharp). `MAP_SKIP_TILES=1` refreshes water only. |
+| **`npm run clean`** | Remove `dist/`, caches, `crates/**/pkg`, `target` |
+| **`npm run map:generate`** | Docker: wiki Map.jpg → WebP tiles **+** `public/data/water/open-water.json` (GDAL then Node/sharp). Rare offline tooling. |
 | **`npm run map:pack`** | Pack WebPs → committed `map-tiles/v1.tar.gz` (~1.4 MB) for CF Git builds |
 | **`npm run map:ensure`** | Unpack pack into `public/map/v1/` if tiles missing (used by `npm run build`) |
 | **`npm run map:clean`** | Remove generated map tiles / scratch dirs; keep README + pack |
-| **`npm run wasm:build`** | Docker Compose `wasm-builder` only; no-op without `crates/` |
+| **`npm run wasm:build`** | Compile `crates/engine` → `pkg/` if sources changed (skip when up to date). Local: Docker + named volumes `sf-heatmap-cargo-cache` / `sf-heatmap-rustup-cache`. CI/CF: native rustup. `FORCE_WASM_BUILD=1` or `--force` always rebuilds. **Never commit pkg.** |
 
 ### Production Docker (idiomatic)
 
 - **Tiles stage:** OSGeo GDAL image runs `scripts/map-generate-inner.sh` (wiki → WebP pyramid)
-- **Build stage:** `npm ci` + copy tiles from GDAL stage + `npm run build` (map:ensure is a no-op if tiles already present)
-- **Runtime:** nginx copies `dist/` — **no Node in runtime image**
+- **WASM stage:** `rust` image + wasm-pack → `crates/engine/pkg`
+- **Build stage:** `npm ci` + copy tiles + copy wasm pkg + Vite (ships compiled `.wasm` in `dist/`)
+- **Runtime:** nginx copies `dist/` only — **no Node, no Rust**
 - Do **not** use `npm run preview` as container CMD or as “production”
 
 ```bash
@@ -81,13 +89,23 @@ Vite wiring lives in `vite.config.ts` (`react()` + babel `reactCompilerPreset()`
 
 - `@/*` → `src/*` (Vite + `tsconfig.app.json`)
 
-## WASM strategy (future, Docker-only)
+## WASM strategy (current)
 
-- Optional crates under `crates/`
-- `Dockerfile.wasm` / compose service `wasm-builder` with rust + wasm-pack
-- Commit generated glue under `src/wasm/` so `npm start` works without Docker for pure UI
-- First WASM candidate: **Konsl seed randomization** (MIT algorithm). Scorer only if TS profiling demands it.
-- Map rendering stays Leaflet — never WASM map engine.
+| Piece | Detail |
+|-------|--------|
+| Layout | `crates/` workspace: `engine` (cdylib + wasm-bindgen), `vendored/konsl_randomization` (rlib) |
+| Compile | Part of `npm start` / `npm run build` / Conductor `setup` — same class as TS transpile, **not** a committed artifact |
+| Artifacts | `crates/engine/pkg/` **gitignored**; release profile by default (`WASM_DEV=1` for debug) |
+| Vite | `vite-plugin-wasm` + `wasmPackWatch` (release rebuild when wasm-pack on PATH) |
+| Load | App boot + worker: `loadWasmEngine()` — **WASM required** for `score_grid` and `apply_map_seed` (no TS algorithm fallback) |
+| TS types | Rust wire structs use **`tsify`** → wasm-pack `.d.ts`; copied to `src/lib/wasm/generated/sf_engine.d.ts` on each `wasm:build`. Façade maps wire ↔ `@/types` (no `any`) |
+| Host Rust | **Forbidden** — Dev Container or Docker only (current stable rustc) |
+| CF Git | Build command `npm run build` only — `wasm-build` bootstraps rustup on the CF VM (no Docker) |
+| Map | Leaflet only — never a WASM map engine |
+
+### Dev Container
+
+Open the repo in a Dev Container (`.devcontainer/`). Then `npm start` has wasm-pack for true Rust rebuild + Vite.
 
 ## Related open-source references (legal use)
 

@@ -7,7 +7,15 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!dist", "!coverage", "!public/data/nodes/default-nodes.json"]
+    "includes": [
+      "**",
+      "!dist",
+      "!coverage",
+      "!public/data/nodes/default-nodes.json",
+      "!src/lib/wasm/generated",
+      "!crates/**/pkg",
+      "!crates/**/target"
+    ]
   },
   "formatter": {
     "enabled": true,

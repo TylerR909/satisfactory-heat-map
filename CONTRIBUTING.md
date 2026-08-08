@@ -5,15 +5,17 @@ Dev setup, data refresh, and project docs for people working on the codebase. En
 ## Quick start (Node)
 
 ```bash
-# Node 24+
+# Node 24+ and Docker (for WASM compile when rustc/wasm-pack are not on PATH)
 npm ci             # also runs prepare → lefthook install (git hooks)
-npm start          # Vite HMR
+npm start          # wasm:build (Docker or wasm-pack) → basemap ensure → Vite HMR
 ```
 
+**Never install Rust on the host.** WASM is built via Dev Container (`.devcontainer/`), Docker (`npm run wasm:build`), or CI/CF build VMs. See [docs/TOOLING.md](docs/TOOLING.md).
+
 ```bash
-npm test
+npm test           # WASM-backed (auto wasm:build if pkg missing)
 npm run lint
-npm run build
+npm run build      # map:ensure + wasm:build + typecheck + Vite → dist/ (includes .wasm)
 npm run preview    # optional: serve dist/ locally (not how we ship prod)
 ```
 
@@ -33,7 +35,7 @@ LEFTHOOK=0 git commit …       # skip hooks once (emergency only)
 
 ## Docker commands (local)
 
-`docker-compose.yml` **builds from source** (multi-stage Node → nginx). You need Docker Desktop (or Engine) running and network access to pull base images + npm packages.
+`docker-compose.yml` **builds from source** (multi-stage: GDAL tiles → open-water → **Rust/WASM** → Vite → nginx). You need Docker Desktop (or Engine) running and network access to pull base images + npm packages. Final image is static assets only (compiled `.wasm` in `dist/`).
 
 ```bash
 # Build the image (runs npm ci + npm run build inside Linux)
@@ -106,14 +108,14 @@ Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 |------|------|------|
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs + pushes to `main` | `lint`, `test`, `build`, Docker image **smoke** (no push) |
 | [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) | Every push to `main` (+ manual) | Auto-bump `v*`, GHCR push, GitHub Release |
-| **Cloudflare** (Git integration) | Every push to `main` (and optional PR previews) | CF runs `npm run build` then `npx wrangler deploy` → [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
+| **Cloudflare** (Git integration) | Every push to `main` (and optional PR previews) | CF installs Rust + wasm-pack, then `npm run build` → `npx wrangler deploy` → [satisfactory-heatmap.com](https://satisfactory-heatmap.com) |
 
 **Merge to `main` ships both surfaces:** Cloudflare (site) and GHCR (same commit as a container). Full handshake: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 | CF setting | Value |
 |------------|--------|
 | Production branch | `main` |
-| Build command | `npm run build` |
+| Build command | `npm run build` (`wasm-build` installs rustup on the CF VM; see [DEPLOY.md](docs/DEPLOY.md)) |
 | Deploy command | `npx wrangler deploy` |
 | Assets | `wrangler.jsonc` → `./dist` |
 | Non-production branch builds | On (PR previews) |

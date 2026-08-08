@@ -31,7 +31,7 @@
 
 ## Phase 1.5 — Seeds (high value)
 
-- [x] Konsl MIT randomization (TypeScript port of algorithm; see `src/lib/seed/`, `third_party/konsl-…`)
+- [x] Konsl MIT randomization (WASM: `crates/vendored/konsl_randomization` → `apply_map_seed`; see `third_party/konsl-…`)
 - [x] UI: Seed button + popover (paste / random / named saved seeds) — mode/purity fixed to Random + unchanged
 - [x] Re-assign node types/purities on fixed slots → cached nodes → heatmap
 - [x] Share URL includes seed (omitted for Default; seed `0` valid randomized world)
@@ -83,7 +83,8 @@ Full notes: [docs/SEO.md](SEO.md). Code owns crawl files + meta; CF owns bot pol
 ## Later / maybe
 
 - [ ] Save-file upload (actual world extraction)
-- [ ] Dense interactive brush scoring (WASM scorer if needed)
+- [x] WASM hierarchical scorer (`score_grid`) + performance badge stage timings
+- [ ] Dense interactive brush scoring (further grid/worker split if needed)
 - [ ] CI: scheduled node refresh from MIT source
 - [ ] Stronger hierarchical seed diversity if users want more “new” pin regions under fixed demand
 

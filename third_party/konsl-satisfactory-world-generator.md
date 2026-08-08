@@ -6,11 +6,15 @@
 
 ## What we use
 
-TypeScript ports under `src/lib/seed/` of the **MIT-licensed** randomization algorithm from:
+**Rust / WASM** (`crates/vendored/konsl_randomization/` → `sf_engine.apply_map_seed`):
 
-- `src/random_stream.rs`
-- `src/game.rs` (resource/purity/tag enums used by randomization)
-- `src/randomization.rs`
+| Module | Source |
+|--------|--------|
+| `random_stream.rs` | Vendored as-is from Konsl (UE LCG; MIT) |
+| `randomization.rs` | Full algorithm port of Konsl `randomization.rs` + our JSON `ResourceNode` adapter (same behavior as the retired TS port) |
+| `resources.rs` | Gameplay tags / purity ordinals / labels needed for the algorithm |
+
+TypeScript `src/lib/seed/` is a **thin wrapper** (cache, types, `configForSeed`) only — no algorithm.
 
 ## What we do **not** use
 

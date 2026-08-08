@@ -1,14 +1,13 @@
 import type { HeatmapEngine } from "@/lib/engine-types";
-import { computeHierarchicalHeatmap } from "@/lib/heatmap/hierarchical";
+import { requireWasmEngine } from "@/lib/wasm/loadEngine";
 
 /**
- * Factory for the heatmap engine.
- * MVP: pure TypeScript. Later: WasmHeatmapEngine behind the same interface.
+ * Heatmap engine — WASM only (hierarchical scorer lives in crates/engine).
  */
 export function createEngine(): HeatmapEngine {
   return {
     scoreGrid(input) {
-      return computeHierarchicalHeatmap(input);
+      return requireWasmEngine().score_grid(input);
     },
   };
 }

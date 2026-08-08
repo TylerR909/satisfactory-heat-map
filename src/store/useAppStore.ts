@@ -72,6 +72,11 @@ export type AppState = {
    */
   expansionRows: ExpansionRow[];
   heatmap: HeatmapResult | null;
+  /**
+   * Last main-thread canvas PNG bake for the heat overlay (not part of badge ms).
+   * Ephemeral — not persisted.
+   */
+  lastRasterizeMs: number | null;
   computing: boolean;
   error: string | null;
   /** Vanilla slot template (positions + default types/purities). */
@@ -109,6 +114,7 @@ export type AppState = {
   setShowNodes: (v: boolean) => void;
   setSelectedSiteIndex: (i: number | null) => void;
   setHeatmap: (h: HeatmapResult | null) => void;
+  setLastRasterizeMs: (ms: number | null) => void;
   setComputing: (v: boolean) => void;
   setError: (e: string | null) => void;
   /** Reset heat/site knobs (+ opacity) to factory defaults. */
@@ -196,6 +202,7 @@ export const useAppStore = create<AppState>()(
       activeDemand: [],
       expansionRows: [],
       heatmap: null,
+      lastRasterizeMs: null,
       computing: false,
       error: null,
       baseSlots: [],
@@ -331,6 +338,7 @@ export const useAppStore = create<AppState>()(
       setSelectedSiteIndex: (selectedSiteIndex) => set({ selectedSiteIndex }),
       setHeatmap: (heatmap) =>
         set({ heatmap, selectedSiteIndex: heatmap?.topSites.length ? 0 : null }),
+      setLastRasterizeMs: (lastRasterizeMs) => set({ lastRasterizeMs }),
       setComputing: (computing) => set({ computing }),
       setError: (error) => set({ error }),
       resetKnobs: () =>

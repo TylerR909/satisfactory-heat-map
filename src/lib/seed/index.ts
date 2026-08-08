@@ -1,16 +1,10 @@
 /**
- * World seed / node randomization (Konsl MIT algorithm port).
+ * World seed / node randomization (Konsl MIT algorithm via WASM).
  * See third_party/konsl-satisfactory-world-generator.md
  */
 
 export { clearNodeSeedCache, getNodesForSeed } from "@/lib/seed/nodeCache";
-export {
-  applyWorldSeed,
-  distributeThroughput,
-  getPurityOverride,
-  modifyNodeDistribution,
-} from "@/lib/seed/randomization";
-export { RandomStream, shuffle } from "@/lib/seed/randomStream";
+export { applyMapSeed, applyWorldSeed } from "@/lib/seed/randomization";
 export {
   configForSeed,
   isDefaultSeed,
@@ -21,4 +15,3 @@ export {
   randomMapSeed,
   type WorldSeedConfig,
 } from "@/lib/seed/types";
-export { nodesToAlgoWorld } from "@/lib/seed/worldFromNodes";

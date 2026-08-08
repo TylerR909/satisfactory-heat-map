@@ -226,10 +226,28 @@ export type HeatmapGrid = {
   satisfiable: boolean[];
 };
 
+/**
+ * Wall-clock slices inside hierarchical scoring (worker).
+ * Sum of stages ≈ {@link HeatmapResult.elapsedMs} (badge total).
+ */
+export type HeatmapTimings = {
+  /** prepareNodes + grid/sep setup before coarse loop. */
+  prepareMs: number;
+  /** Full coarse grid score (e.g. 64×64). */
+  coarseMs: number;
+  /** Seed pick + per-seed refine subdiv scoring. */
+  refineMs: number;
+  /** Relocate, diverse top-N, capacity tags, display normalize. */
+  topSitesMs: number;
+};
+
 export type HeatmapResult = {
   grid: HeatmapGrid;
   topSites: SiteScore[];
+  /** Whole scoreGrid wall time — badge source of truth. */
   elapsedMs: number;
+  /** Stage breakdown of elapsedMs (tooltip). */
+  timings: HeatmapTimings;
   /** Demand rates scored (always the user's exact plan). */
   scoredDemand: RawDemand[];
 };

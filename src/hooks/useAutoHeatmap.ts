@@ -7,9 +7,14 @@ import { useAppStore } from "@/store/useAppStore";
  * Debounced live heatmap: re-runs when demand, extractors, mode, or knobs change.
  */
 export function useAutoHeatmap(debounceMs = 180) {
-  const { score } = useHeatmapWorker();
+  const { score, warm } = useHeatmapWorker();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gen = useRef(0);
+
+  // Boot worker + WASM as soon as the planner mounts (default HMF plan scores soon after).
+  useEffect(() => {
+    warm();
+  }, [warm]);
 
   const dataReady = useAppStore((s) => s.dataReady);
   const meta = useAppStore((s) => s.meta);
