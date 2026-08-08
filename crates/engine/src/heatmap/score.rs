@@ -369,6 +369,9 @@ fn finish_score(
             0.0
         }
     } else {
+        // Centered: L_p mean of per-resource mean hauls. Match former TS meanDistForResource:
+        // zero-supply demanded resources contribute 0 (not omitted), so unsatisfiable multi-
+        // resource sites keep the same mean denominator / score as the old scorer.
         let p = center_power.clamp(1.0, 2.5);
         scratch.means.clear();
         for &(start, len, demanded, supplied) in &scratch.res_spans {
@@ -381,6 +384,7 @@ fn finish_score(
                 1.0
             };
             if denom <= 1e-9 {
+                scratch.means.push(0.0);
                 continue;
             }
             let mut resource_haul = 0.0;
@@ -518,25 +522,34 @@ pub fn score_site(
     );
     let by_resource = materialize_assignments(scratch, demand_pools);
 
+    // Dedupe like the old TS `new Set(...)` before capping at 6.
+    let mut seen = std::collections::HashSet::new();
     let mut notes = Vec::new();
-    'outer: for ra in &by_resource {
+    for ra in &by_resource {
         for n in &ra.nodes {
-            if n.cave_risk {
-                let id_short = if n.node_id.len() > 24 {
-                    format!("{}…", &n.node_id[..24])
-                } else {
-                    n.node_id.clone()
-                };
-                notes.push(format!(
-                    "{}: node {} cave (z={})",
-                    ra.resource,
-                    id_short,
-                    n.z.round()
-                ));
+            if !n.cave_risk {
+                continue;
+            }
+            // ClassNames are ASCII; take first 24 bytes safely via char boundary.
+            let id_short = match n.node_id.char_indices().nth(24) {
+                Some((i, _)) => format!("{}…", &n.node_id[..i]),
+                None => n.node_id.clone(),
+            };
+            let note = format!(
+                "{}: node {} cave (z={})",
+                ra.resource,
+                id_short,
+                n.z.round()
+            );
+            if seen.insert(note.clone()) {
+                notes.push(note);
                 if notes.len() >= 6 {
-                    break 'outer;
+                    break;
                 }
             }
+        }
+        if notes.len() >= 6 {
+            break;
         }
     }
 
