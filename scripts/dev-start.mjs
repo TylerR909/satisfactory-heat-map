@@ -27,7 +27,7 @@ async function ensureWasm() {
     child.on("exit", (code) => {
       if (code !== 0) {
         console.warn(
-          "[start] wasm:build failed — continuing with TypeScript engine fallback if pkg missing.",
+          "[start] wasm:build failed — app will fail to boot without crates/engine/pkg (run wasm:build).",
         );
       }
       resolve();

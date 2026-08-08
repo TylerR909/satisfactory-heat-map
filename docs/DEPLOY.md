@@ -22,7 +22,7 @@ PR → GitHub Actions CI (lint · test · build · Docker smoke)
   │     docker build → push :latest :vX.Y.Z :sha-…
   │     gh release create --generate-notes
   └─ Cloudflare (Git integration)
-        rustup + wasm-pack + npm run build → dist/ (+ .wasm)
+        npm run build → wasm-build bootstraps rustup on CF VM → dist/ (+ .wasm)
         npx wrangler deploy (wrangler.jsonc → ./dist)
         → production URL / custom domain
 ```
@@ -57,7 +57,7 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 |---------|--------|
 | **Project / Worker name** | `satisfactory-heat-map` (must match [`wrangler.jsonc`](../wrangler.jsonc) `"name"`) |
 | **Production branch** | `main` |
-| **Build command** | See **Cloudflare build with Rust** below (install toolchain, then `npm run build`) |
+| **Build command** | `npm run build` |
 | **Deploy command** | `npx wrangler deploy` (dashboard default — keep it) |
 | **Root directory** | *(leave empty)* |
 | **Builds for non-production branches** | **On** (recommended — PR/preview URLs). Off = only `main` builds. |
@@ -68,19 +68,19 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 
 ### Cloudflare build with Rust (compile-on-build WASM)
 
-CF Workers Builds is **not** our Dockerfile — it is a Linux build VM running your build command. It has **no** Docker/GDAL (map tiles still use the committed pack). It **can** install Rust for the duration of the build so we never commit `.wasm` binaries.
+CF Workers Builds is a Linux VM running your build command — **not** our multi-stage Dockerfile. Map tiles still come from the committed pack (`map:ensure`).
 
-Recommended **Build command** (adjust if CF provides a custom image with rustup already):
+`npm run build` → `wasm-build.mjs` **detects CI** and installs **rustup + wasm-pack into `$HOME`** (no `docker run`). Cloudflare’s Docker socket often cannot start containers (`cgroup.controllers` errors); do **not** rely on Docker there.
+
+Dashboard **Build command** can stay simply:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
-  && . "$HOME/.cargo/env" \
-  && rustup target add wasm32-unknown-unknown \
-  && curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh \
-  && npm run build
+npm run build
 ```
 
-`npm run build` runs `map:ensure` → `wasm:build --release` → typecheck → Vite (`.wasm` lands in `dist/`).
+(`map:ensure` → native `wasm:build` → typecheck → Vite; `.wasm` lands in `dist/`).
+
+Optional override: `WASM_NATIVE=1` forces the native rustup path even outside CI.
 
 ### Basemap tiles on Cloudflare
 

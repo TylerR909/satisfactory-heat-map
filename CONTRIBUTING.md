@@ -115,7 +115,7 @@ Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
 | CF setting | Value |
 |------------|--------|
 | Production branch | `main` |
-| Build command | rustup + wasm-pack + `npm run build` (see [DEPLOY.md](docs/DEPLOY.md) — **not** bare `npm run build`) |
+| Build command | `npm run build` (`wasm-build` installs rustup on the CF VM; see [DEPLOY.md](docs/DEPLOY.md)) |
 | Deploy command | `npx wrangler deploy` |
 | Assets | `wrangler.jsonc` → `./dist` |
 | Non-production branch builds | On (PR previews) |

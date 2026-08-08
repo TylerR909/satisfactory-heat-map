@@ -100,7 +100,7 @@ Vite wiring lives in `vite.config.ts` (`react()` + babel `reactCompilerPreset()`
 | Load | App boot + worker: `loadWasmEngine()` — **WASM required** for `score_grid` and `apply_map_seed` (no TS algorithm fallback) |
 | TS types | Rust wire structs use **`tsify`** → wasm-pack `.d.ts`; copied to `src/lib/wasm/generated/sf_engine.d.ts` on each `wasm:build`. Façade maps wire ↔ `@/types` (no `any`) |
 | Host Rust | **Forbidden** — Dev Container or Docker only (current stable rustc) |
-| CF Git | Install rustup + wasm-pack in the build command (not our Dockerfile); then `npm run build` |
+| CF Git | Build command `npm run build` only — `wasm-build` bootstraps rustup on the CF VM (no Docker) |
 | Map | Leaflet only — never a WASM map engine |
 
 ### Dev Container
