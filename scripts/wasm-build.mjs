@@ -3,30 +3,33 @@
  * Compile crates/engine → wasm-bindgen package (compile-on-build).
  *
  * Order:
- * 1. wasm-pack already on PATH (Dev Container / GHA with rustup / prior bootstrap)
- * 2. CI / Cloudflare: install rustup + wasm-pack into $HOME (no Docker)
- * 3. Local laptop: Docker one-shot rust image (never installs rustc on the host)
- *
- * Cloudflare Workers Builds often has a broken/partial Docker (cgroup errors).
- * Never rely on `docker run` there — use native rustup instead.
+ * 1. Skip if crates/engine/pkg is newer than all Rust sources (unless --force)
+ * 2. wasm-pack already on PATH (Dev Container / GHA / prior bootstrap)
+ * 3. CI / Cloudflare: install rustup + wasm-pack into $HOME (no Docker)
+ * 4. Local laptop: Docker one-shot with **named volumes** for cargo/rustup cache
  *
  * Output:
  * - crates/engine/pkg/ (gitignored binaries + glue)
  * - src/lib/wasm/generated/sf_engine.d.ts (typed API for TypeScript; committed)
  */
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const engineDir = path.join(root, "crates", "engine");
+const cratesDir = path.join(root, "crates");
+const wasmFile = path.join(engineDir, "pkg", "sf_engine_bg.wasm");
 const pkgDts = path.join(engineDir, "pkg", "sf_engine.d.ts");
 const generatedDir = path.join(root, "src", "lib", "wasm", "generated");
 const generatedDts = path.join(generatedDir, "sf_engine.d.ts");
 
+/** Persist toolchain + registry across `docker run --rm` (not Dockerfile layers). */
+const DOCKER_CARGO_VOL = "sf-heatmap-cargo-cache";
+const DOCKER_RUSTUP_VOL = "sf-heatmap-rustup-cache";
+
 if (process.env.SKIP_WASM_BUILD === "1") {
-  const wasmFile = path.join(engineDir, "pkg", "sf_engine_bg.wasm");
   if (existsSync(wasmFile)) {
     console.log("[wasm] SKIP_WASM_BUILD=1 and pkg present — skipping compile.");
     publishTypes();
@@ -50,7 +53,6 @@ function hasCmd(cmd) {
   return r.status === 0;
 }
 
-/** CF Workers Builds / GHA / generic CI — install Rust on the build VM. */
 function isCiLike() {
   return Boolean(
     process.env.CI ||
@@ -58,10 +60,41 @@ function isCiLike() {
       process.env.CLOUDFLARE_ACCOUNT_ID ||
       process.env.WORKERS_CI ||
       process.env.CF_PAGES_BRANCH ||
-      // Workers Builds often sets this when using Git integration
       process.env.CF_PAGES_COMMIT_SHA ||
       process.env.GITHUB_ACTIONS,
   );
+}
+
+const force =
+  process.env.FORCE_WASM_BUILD === "1" ||
+  process.argv.includes("--force") ||
+  process.argv.includes("-f");
+
+/**
+ * Walk crates/ for sources that affect the wasm binary.
+ * If pkg wasm is newer than all of them, skip compile (npm start becomes instant).
+ */
+function collectSourceFiles(dir, out = []) {
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir, { withFileTypes: true })) {
+    if (name.name === "target" || name.name === "pkg" || name.name === "node_modules") continue;
+    const p = path.join(dir, name.name);
+    if (name.isDirectory()) collectSourceFiles(p, out);
+    else if (/\.(rs|toml|lock)$/.test(name.name)) out.push(p);
+  }
+  return out;
+}
+
+function wasmUpToDate() {
+  if (force) return false;
+  if (!existsSync(wasmFile) || !existsSync(pkgDts)) return false;
+  const wasmMtime = statSync(wasmFile).mtimeMs;
+  const sources = collectSourceFiles(cratesDir);
+  if (sources.length === 0) return false;
+  for (const f of sources) {
+    if (statSync(f).mtimeMs > wasmMtime) return false;
+  }
+  return true;
 }
 
 function prependCargoBinToPath() {
@@ -72,10 +105,6 @@ function prependCargoBinToPath() {
   process.env.PATH = `${cargoBin}${path.delimiter}${process.env.PATH || ""}`;
 }
 
-/**
- * Install rustup (stable) + wasm32 target + wasm-pack into the current user home.
- * Used on Cloudflare / CI where Docker cannot run containers.
- */
 function bootstrapRustToolchain() {
   prependCargoBinToPath();
   if (hasCmd("wasm-pack") && hasCmd("rustc")) {
@@ -141,17 +170,31 @@ function runWasmPack() {
   return r.status ?? 1;
 }
 
+/**
+ * Local Docker compile. Named volumes keep cargo registry + rustup/wasm-pack
+ * across runs so we do NOT re-download/install every `npm start`.
+ *
+ * Note: `docker run --rm` never uses Dockerfile layer cache for the *commands*
+ * we run; only the base image pull is cached. Persistence = volume mounts.
+ */
 function runDockerWasmPack() {
-  console.log("[wasm] Compiling via Docker (local host; Rust stays off host)…");
+  console.log(
+    `[wasm] Compiling via Docker (volumes ${DOCKER_CARGO_VOL}, ${DOCKER_RUSTUP_VOL} for cache)…`,
+  );
+  // Image already has rustc; we only ensure wasm target + wasm-pack in the volume.
   const shell = [
     "set -euo pipefail",
-    "export CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH",
-    "if ! command -v rustup >/dev/null 2>&1; then curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable; fi",
-    ". /usr/local/cargo/env 2>/dev/null || true",
-    "rustup target add wasm32-unknown-unknown",
-    "if ! command -v wasm-pack >/dev/null 2>&1; then curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh; fi",
+    'export PATH="$CARGO_HOME/bin:$PATH"',
+    "if ! command -v rustup >/dev/null 2>&1; then",
+    "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable",
+    "fi",
+    '. "$CARGO_HOME/env" 2>/dev/null || true',
+    "rustup target add wasm32-unknown-unknown 2>/dev/null || true",
+    "if ! command -v wasm-pack >/dev/null 2>&1; then",
+    "  curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh",
+    "fi",
     `wasm-pack ${wasmPackArgs.join(" ")}`,
-  ].join(" && ");
+  ].join("\n");
 
   const r = spawnSync(
     "docker",
@@ -160,6 +203,10 @@ function runDockerWasmPack() {
       "--rm",
       "-v",
       `${root}:/workspace`,
+      "-v",
+      `${DOCKER_CARGO_VOL}:/usr/local/cargo`,
+      "-v",
+      `${DOCKER_RUSTUP_VOL}:/usr/local/rustup`,
       "-w",
       "/workspace",
       "-e",
@@ -176,7 +223,6 @@ function runDockerWasmPack() {
   return r.status ?? 1;
 }
 
-/** Copy wasm-pack TypeScript definitions into src/ for typecheck. */
 function publishTypes() {
   if (!existsSync(pkgDts)) {
     console.warn("[wasm] sf_engine.d.ts missing after build — skip type publish");
@@ -210,9 +256,17 @@ const wasmPackArgs = [
 ];
 console.log(`[wasm] profile: ${dev ? "dev (slow)" : "release"}`);
 
+if (wasmUpToDate()) {
+  console.log(
+    "[wasm] pkg is up to date vs crates/ sources — skip compile (FORCE_WASM_BUILD=1 or --force to rebuild).",
+  );
+  publishTypes();
+  process.exit(0);
+}
+
 mkdirSync(path.join(engineDir, "pkg"), { recursive: true });
 
-// 1) Already have wasm-pack (Dev Container, GHA rust-toolchain, prior bootstrap)
+// 1) wasm-pack on PATH
 if (hasCmd("wasm-pack")) {
   const code = runWasmPack();
   if (code !== 0) process.exit(code);
@@ -220,7 +274,7 @@ if (hasCmd("wasm-pack")) {
   process.exit(0);
 }
 
-// 2) CI / Cloudflare: install toolchain on the VM (Docker often broken there)
+// 2) CI / Cloudflare: native rustup (Docker often broken)
 if (isCiLike() || process.env.WASM_NATIVE === "1") {
   console.log("[wasm] CI/native environment — bootstrapping rustup (not Docker)…");
   if (!bootstrapRustToolchain()) process.exit(1);
@@ -230,7 +284,7 @@ if (isCiLike() || process.env.WASM_NATIVE === "1") {
   process.exit(0);
 }
 
-// 3) Local laptop: one-shot Docker so host never needs rustc
+// 3) Local: Docker + persistent cargo volumes
 if (hasCmd("docker")) {
   const code = runDockerWasmPack();
   if (code === 0) {
@@ -247,7 +301,7 @@ if (hasCmd("docker")) {
   process.exit(0);
 }
 
-// 4) Last resort: native install even on non-CI host
+// 4) Last resort
 console.log("[wasm] No wasm-pack and no Docker — attempting native rustup install…");
 if (!bootstrapRustToolchain()) {
   console.error(

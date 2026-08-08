@@ -64,7 +64,7 @@ Config: `biome.json` with React domain recommended + those rules as error.
 | **`npm run map:pack`** | Pack WebPs → committed `map-tiles/v1.tar.gz` (~1.4 MB) for CF Git builds |
 | **`npm run map:ensure`** | Unpack pack into `public/map/v1/` if tiles missing (used by `npm run build`) |
 | **`npm run map:clean`** | Remove generated map tiles / scratch dirs; keep README + pack |
-| **`npm run wasm:build`** | Compile `crates/engine` → `pkg/` (wasm-pack on PATH or Docker). **Compile-on-build; never commit pkg.** |
+| **`npm run wasm:build`** | Compile `crates/engine` → `pkg/` if sources changed (skip when up to date). Local: Docker + named volumes `sf-heatmap-cargo-cache` / `sf-heatmap-rustup-cache`. CI/CF: native rustup. `FORCE_WASM_BUILD=1` or `--force` always rebuilds. **Never commit pkg.** |
 
 ### Production Docker (idiomatic)
 

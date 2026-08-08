@@ -18,7 +18,8 @@ async function ensureWasm() {
     console.log("[start] No crates/engine — TypeScript engine only.");
     return;
   }
-  console.log("[start] Building WASM engine (wasm-pack or Docker)…");
+  // wasm-build skips Docker entirely when pkg is newer than crates/ sources.
+  console.log("[start] Ensuring WASM engine (skip if pkg up to date)…");
   await new Promise((resolve) => {
     const child = spawn("node", ["scripts/wasm-build.mjs"], {
       cwd: root,
