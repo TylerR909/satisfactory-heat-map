@@ -44,7 +44,7 @@
 - `nodeType`: `node` | `deposit` | `frackingCore` | `frackingSatellite` | `geyser`.
 - Slot **positions** are fixed even under 1.2 randomization; seed only reassigns resource/purity (and well distributions).
 - **Deposits** (`BP_ResourceDeposit_*`) are **not** in the shuffle pool (Konsl extracts only `BP_ResourceNode_C`); they stay vanilla under all seeds.
-- **Seed algorithm:** TypeScript port of [Konsl/satisfactory-world-generator](https://github.com/Konsl/satisfactory-world-generator) MIT core (`src/lib/seed/`). Product policy: Default = `seed: null` (identity); any numeric seed uses in-game **Random** mode + **unchanged** purity. Full MIT notice: `third_party/konsl-satisfactory-world-generator.md`.
+- **Seed algorithm:** [Konsl/satisfactory-world-generator](https://github.com/Konsl/satisfactory-world-generator) MIT core in Rust/WASM (`crates/vendored/konsl_randomization`, export `apply_map_seed`). TS `src/lib/seed/` is cache + config only. Product policy: Default = `seed: null` (identity); any numeric seed uses in-game **Random** mode + **unchanged** purity. Full MIT notice: `third_party/konsl-satisfactory-world-generator.md`.
 
 ## Honest regeneration: resource nodes (FModel)
 
@@ -132,7 +132,7 @@ Documented in `public/map/v1/README.md`: extract map texture / `MapareatexturePe
 ## Randomization (1.2+) — later
 
 - Slot positions from our node file.
-- Assignment algorithm: Konsl **MIT** code (`src/*.rs`, `scripts/`) — port TS or Docker WASM.
+- Assignment algorithm: Konsl **MIT** code vendored/ported under `crates/vendored/konsl_randomization` (WASM via Docker/Dev Container — never host rustc).
 - Inputs: seed, node randomization mode, purity settings.
 - Viewer app under Konsl is **GPL** — only reuse MIT algorithm + extraction scripts, not the GPL UI, unless license is intentionally accepted for the whole project.
 

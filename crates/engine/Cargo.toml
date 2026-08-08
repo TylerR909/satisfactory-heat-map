@@ -1,0 +1,19 @@
+[package]
+name = "sf_engine"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Satisfactory Heatmap scoring + seed WASM surface (wasm-bindgen)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Performance"] }
+serde = { version = "1", features = ["derive"] }
+tsify = { version = "0.5.5", features = ["js"] }
+konsl_randomization = { path = "../vendored/konsl_randomization" }

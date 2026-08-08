@@ -22,7 +22,7 @@ PR → GitHub Actions CI (lint · test · build · Docker smoke)
   │     docker build → push :latest :vX.Y.Z :sha-…
   │     gh release create --generate-notes
   └─ Cloudflare (Git integration)
-        npm run build → dist/
+        rustup + wasm-pack + npm run build → dist/ (+ .wasm)
         npx wrangler deploy (wrangler.jsonc → ./dist)
         → production URL / custom domain
 ```
@@ -57,7 +57,7 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 |---------|--------|
 | **Project / Worker name** | `satisfactory-heat-map` (must match [`wrangler.jsonc`](../wrangler.jsonc) `"name"`) |
 | **Production branch** | `main` |
-| **Build command** | `npm run build` (runs `map:ensure` → unpacks `map-tiles/v1.tar.gz` when needed) |
+| **Build command** | See **Cloudflare build with Rust** below (install toolchain, then `npm run build`) |
 | **Deploy command** | `npx wrangler deploy` (dashboard default — keep it) |
 | **Root directory** | *(leave empty)* |
 | **Builds for non-production branches** | **On** (recommended — PR/preview URLs). Off = only `main` builds. |
@@ -65,6 +65,22 @@ You bought **satisfactory-heatmap.com**. Ensure the zone is active in Cloudflare
 **Do not** put `npm run build` in the Deploy command. Build produces `dist/`; deploy publishes it via Wrangler.
 
 **Node version:** [`.nvmrc`](../.nvmrc) is `24`. Optional env: `NODE_VERSION=24` if the build log uses the wrong Node.
+
+### Cloudflare build with Rust (compile-on-build WASM)
+
+CF Workers Builds is **not** our Dockerfile — it is a Linux build VM running your build command. It has **no** Docker/GDAL (map tiles still use the committed pack). It **can** install Rust for the duration of the build so we never commit `.wasm` binaries.
+
+Recommended **Build command** (adjust if CF provides a custom image with rustup already):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+  && . "$HOME/.cargo/env" \
+  && rustup target add wasm32-unknown-unknown \
+  && curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh \
+  && npm run build
+```
+
+`npm run build` runs `map:ensure` → `wasm:build --release` → typecheck → Vite (`.wasm` lands in `dist/`).
 
 ### Basemap tiles on Cloudflare
 

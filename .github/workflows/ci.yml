@@ -33,13 +33,21 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Install Rust + wasm-pack
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Lint
         run: npm run lint
 
       - name: Test
         run: npm test
 
-      # map:ensure unpacks map-tiles/v1.tar.gz so dist includes real WebPs (same as CF Git).
+      # map:ensure + wasm compile-on-build + Vite (same class of work as CF Git).
       - name: Build
         run: npm run build
 

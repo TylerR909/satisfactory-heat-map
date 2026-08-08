@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createEngine } from "@/lib/engine";
+import type { HeatmapEngine } from "@/lib/engine-types";
 import { solveProductToRaw } from "@/lib/production/solve";
 import type { ItemDef, MapMeta, OpenWaterData, Recipe, ResourceNode } from "@/types";
 import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
@@ -18,7 +19,11 @@ describe("integration with shipped data", () => {
   const recipes = loadJson<Recipe[]>("public/data/recipes/recipes.json");
   const meta = loadJson<MapMeta>("public/data/meta.json");
   const openWater = loadJson<OpenWaterData>("public/data/water/open-water.json");
-  const engine = createEngine();
+  let engine: HeatmapEngine;
+
+  beforeAll(() => {
+    engine = createEngine();
+  });
 
   it("loads hundreds of nodes", () => {
     expect(nodes.length).toBeGreaterThan(500);

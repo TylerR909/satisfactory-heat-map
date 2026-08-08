@@ -5,11 +5,17 @@ import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import wasm from "vite-plugin-wasm";
+import { wasmPackWatch } from "./src/lib/wasm/vite-wasm-pack-watch";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
+    // vite-plugin-wasm: ESM load of wasm-pack bundler output (no top-level-await needed for
+    // modern wasm-bindgen glue that imports .wasm synchronously via the plugin).
+    wasm(),
+    wasmPackWatch("crates/engine"),
     react(),
     // Partial options — plugin typings require full babel PluginOptions; runtime accepts this.
     babel({
@@ -41,7 +47,8 @@ export default defineConfig({
       },
       workbox: {
         // Do not precache the basemap pyramid (hundreds of WebPs); runtime TileLayer is enough.
-        globPatterns: ["**/*.{js,css,html,ico,svg,png,json}"],
+        // Include .wasm so the offline shell can load the scoring engine.
+        globPatterns: ["**/*.{js,css,html,ico,svg,png,json,wasm}"],
         globIgnores: ["**/map/**"],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
@@ -57,5 +64,9 @@ export default defineConfig({
   },
   worker: {
     format: "es",
+    plugins: () => [wasm()],
+  },
+  optimizeDeps: {
+    exclude: ["sf_engine"],
   },
 });

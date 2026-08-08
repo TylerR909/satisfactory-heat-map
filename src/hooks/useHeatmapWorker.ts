@@ -16,6 +16,14 @@ export function useHeatmapWorker() {
       });
       workerRef.current.onmessage = (ev: MessageEvent<WorkerResponse>) => {
         const msg = ev.data;
+        if (msg.type === "ready") {
+          if (import.meta.env.DEV) {
+            console.info(
+              `[heatmap worker] ready · wasm=${msg.wasm}${msg.version ? ` · v${msg.version}` : ""}`,
+            );
+          }
+          return;
+        }
         const pending = pendingRef.current.get(msg.id);
         if (!pending) return;
         pendingRef.current.delete(msg.id);
@@ -25,6 +33,11 @@ export function useHeatmapWorker() {
     }
     return workerRef.current;
   }, []);
+
+  /** Construct the worker immediately so WASM init runs at app load. */
+  const warm = useCallback(() => {
+    getWorker();
+  }, [getWorker]);
 
   const score = useCallback(
     (input: ScoreGridInput): Promise<HeatmapResult> => {
@@ -39,5 +52,5 @@ export function useHeatmapWorker() {
     [getWorker],
   );
 
-  return { score };
+  return { score, warm };
 }

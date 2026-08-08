@@ -13,13 +13,13 @@
 │  │ Centered/Weighted   │           │                    │          │
 │  │ Capacity tags infer │           │                    │          │
 │  └──────────┬──────────┘           │                    │          │
-│             └──────────► Web Worker (TS engine) ◄───────┘          │
+│             └──────────► Web Worker (WASM sf_engine) ◄──┘          │
 │                          exact demand + hierarchical score         │
 └────────────────────────────────────────────────────────────────────┘
          │                              │
          ▼                              ▼
-  CF Workers (static assets)     Docker: build → nginx:dist
-  (npm run build)                (not vite preview in container)
+  CF Workers (static assets)     Docker: GDAL→WASM→Vite→nginx
+  (rustup + npm run build)       (static dist/ only at runtime)
 ```
 
 ## Key modules (`src/`)
@@ -27,18 +27,18 @@
 | Path | Role |
 |------|------|
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
-| `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables |
-| `lib/heatmap/score.ts` | Capacity assignment; open-water bodies merge into `Desc_Water_C` supply |
+| `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables (UI clocks; WASM scorer has its own rates) |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
 | `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (default recipes + optional externalItems prune) |
-| `lib/heatmap/score.ts` | Capacity greedy assignment, haul combine, adaptive scale, display norm |
-| `lib/heatmap/hierarchical.ts` | Coarse grid → refine seeds → diverse top-N + Limited flags |
-| `lib/heatmap/rasterize.ts` | Grid → PNG data URL for `ImageOverlay` |
-| `lib/engine.ts` | Engine façade (`createEngine()`); TS now, WASM later |
-| `workers/heatmap.worker.ts` | Off-main-thread scoring |
+| `lib/heatmap/rasterize.ts` | Grid → PNG data URL for `ImageOverlay` (display only) |
+| `lib/engine.ts` | WASM façade (`createEngine` → `score_grid`) |
+| `lib/wasm/loadEngine.ts` | Load `sf_engine` (score + seed) |
+| `workers/heatmap.worker.ts` | Off-main-thread WASM scoring |
 | `hooks/useAutoHeatmap.ts` | Debounced live recompute from store deps |
 | `hooks/useHeatmapWorker.ts` | Worker client |
-| `lib/seed/*` | Konsl MIT node randomization port + seed→nodes cache |
+| `lib/seed/*` | Thin seed wrappers + cache; algorithm in Rust |
+| `crates/engine` | Hierarchical scorer + WASM exports |
+| `crates/vendored/konsl_randomization` | Konsl MIT seed algorithm |
 | `lib/savedSeeds.ts` | Named saved-seed library (map seed + plan shelf) |
 | `store/useAppStore.ts` | Mode, demand, products, knobs, `seed` / `baseSlots` / `nodes`, heatmap, persist |
 | `components/map/*` | Leaflet layers, panes, fit-world |
@@ -153,17 +153,20 @@ Panes are created **synchronously** before path layers attach (avoids Leaflet `_
 - Does **not** change rankings or top sites.
 - Opacity is a separate UI slider.
 
-## Engine façade (WASM-ready)
+## Engine façade (WASM)
 
 ```ts
 interface HeatmapEngine {
   scoreGrid(input: ScoreGridInput): HeatmapResult;
 }
-// createEngine() → pure TS hierarchical scorer today
-// later: WasmHeatmapEngine after Docker wasm-pack
+// createEngine() → WASM only (requireWasmEngine)
 ```
 
-UI never imports WASM directly; worker uses the façade.
+- App boot + worker: `loadWasmEngine()` then score / seed.
+- Seed: `apply_map_seed` (Konsl MIT in `konsl_randomization`).
+- No TypeScript algorithm fallback for score or seed.
+
+Rust: `crates/engine` + `crates/vendored/konsl_randomization`. Compile via `npm run wasm:build` (Dev Container wasm-pack or Docker — never host rustc).
 
 ## Performance expectations
 
@@ -176,6 +179,12 @@ UI never imports WASM directly; worker uses the façade.
 | 5 | Basemap | Self-hosted WebP `/map/v1/`; pack for CF, GDAL for Docker |
 
 64×64 + refine is typically **tens–hundreds of ms** in pure TS on full node data.
+
+### Performance badge
+
+- Planner chip shows **`HeatmapResult.elapsedMs`** — whole hierarchical **score** wall time in the worker (not debounce, not paint).
+- Hover breakdown: `timings.prepareMs` / `coarseMs` / `refineMs` / `topSitesMs` (sum ≈ badge).
+- **Rasterize** (main-thread PNG bake) is measured separately (`lastRasterizeMs`) and shown under a divider; it is **not** in the badge total.
 
 ## Persistence & PWA
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * npm start — ensure WASM artifacts (Docker, when present), basemap tiles, then Vite HMR.
- * Until a Rust crate exists, this is effectively `vite` (+ tile bootstrap).
+ * npm start — compile WASM (Dev Container wasm-pack or Docker), basemap tiles, Vite HMR.
+ * Never installs Rust on the host.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -13,22 +13,21 @@ const cratesDir = path.join(root, "crates");
 /** Production pyramid — used only when local WebPs cannot be ensured. */
 const LIVE_TILES_BASE = "https://satisfactory-heatmap.com/map/v1";
 
-async function maybeBuildWasm() {
-  if (!existsSync(cratesDir)) {
-    console.log("[start] No crates/ yet — using TypeScript heatmap engine.");
+async function ensureWasm() {
+  if (!existsSync(path.join(cratesDir, "engine"))) {
+    console.log("[start] No crates/engine — TypeScript engine only.");
     return;
   }
-  console.log("[start] crates/ found — attempting Docker wasm build…");
+  console.log("[start] Building WASM engine (wasm-pack or Docker)…");
   await new Promise((resolve) => {
-    const child = spawn("npm", ["run", "wasm:build"], {
+    const child = spawn("node", ["scripts/wasm-build.mjs"], {
       cwd: root,
       stdio: "inherit",
-      shell: true,
     });
     child.on("exit", (code) => {
       if (code !== 0) {
         console.warn(
-          "[start] wasm:build failed or Docker unavailable — continuing with committed/TS engine.",
+          "[start] wasm:build failed — continuing with TypeScript engine fallback if pkg missing.",
         );
       }
       resolve();
@@ -76,7 +75,7 @@ function ensureBasemapTiles() {
   return { localTiles: false, useLiveTiles: true };
 }
 
-await maybeBuildWasm();
+await ensureWasm();
 const basemap = ensureBasemapTiles();
 
 // Conductor (and other hosts) may inject CONDUCTOR_PORT / PORT for multi-worktree previews.

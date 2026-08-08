@@ -35,3 +35,9 @@ public/map/v1/**
 *.njsproj
 *.sln
 *.sw?
+
+# Rust / WASM (compile-on-build — never commit binaries)
+**/target/
+crates/**/pkg/
+**/*.wasm
+!**/fixtures/**/*.wasm

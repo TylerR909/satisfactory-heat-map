@@ -46,21 +46,20 @@ const ATTRIBUTION_BODY = (
         .
       </li>
       <li>
-        <span className="text-slate-100">Node randomization (1.2+ seeds)</span> — algorithm ported
-        from{" "}
+        <span className="text-slate-100">Node randomization (1.2+ seeds)</span> — Konsl{" "}
         <a
           className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
           href="https://github.com/Konsl/satisfactory-world-generator"
           target="_blank"
           rel="noopener noreferrer"
         >
-          Konsl/satisfactory-world-generator
+          satisfactory-world-generator
         </a>{" "}
-        (MIT; viewer UI not used). See{" "}
+        MIT algorithm (Rust/WASM; GPL viewer not used). See{" "}
         <span className="font-mono text-slate-400">
           third_party/konsl-satisfactory-world-generator.md
-        </span>
-        .
+        </span>{" "}
+        and <span className="font-mono text-slate-400">crates/vendored/konsl_randomization</span>.
       </li>
       <li>
         <span className="text-slate-100">Recipes &amp; items</span> — compact extract derived from

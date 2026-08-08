@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node scripts/dev-start.mjs",
     "dev": "vite",
-    "build": "node scripts/map-ensure-tiles.mjs && tsc -p tsconfig.app.json --noEmit && vite build",
+    "build": "node scripts/map-ensure-tiles.mjs && node scripts/wasm-build.mjs && tsc -p tsconfig.app.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
@@ -49,6 +49,7 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vite-plugin-pwa": "^1.0.3",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^3.2.4"
   }
 }

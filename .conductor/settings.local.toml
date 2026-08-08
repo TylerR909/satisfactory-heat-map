@@ -18,11 +18,11 @@ name = "docker"
 url = "http://localhost:18547/"
 
 [scripts]
-# Per-worktree: install deps + build basemap WebPs into public/map/v1/
-# Prefer pack unpack (no Docker on all machines); generate still available via map:generate
-setup = "npm ci && npm run map:ensure"
-# Drop large gitignored tile artifacts when archiving the workspace
-archive = "npm run map:clean"
-# Start Vite on Conductor's port (see scripts/dev-start.mjs)
+# Per-worktree: install deps, basemap tiles, and prebuild WASM (Docker if no wasm-pack).
+# Avoids first `npm start` paying a multi-minute rustc cold compile.
+setup = "npm ci && npm run map:ensure && npm run wasm:build"
+# Drop gitignored tiles + WASM build artifacts when archiving the worktree
+archive = "npm run map:clean && npm run clean"
+# Start Vite on Conductor's port (pkg already built by setup)
 run = "npm start"
 auto_run_after_setup = false

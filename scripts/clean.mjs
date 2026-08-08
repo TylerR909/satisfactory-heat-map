@@ -4,7 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const targets = ["dist", "coverage", "node_modules/.tmp", "node_modules/.vite", "dev-dist"];
+const targets = [
+  "dist",
+  "coverage",
+  "node_modules/.tmp",
+  "node_modules/.vite",
+  "dev-dist",
+  "crates/target",
+  "crates/engine/pkg",
+  "crates/engine/target",
+];
 
 for (const rel of targets) {
   const full = path.join(root, rel);

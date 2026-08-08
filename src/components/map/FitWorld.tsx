@@ -176,7 +176,7 @@ export function FitWorld({ layoutKey = 0 }: Props) {
     userMoved.current = false;
     layoutAnimating.current = true;
 
-    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+    let safetyTimer: number | null = null;
 
     const finish = () => {
       layoutAnimating.current = false;
@@ -227,7 +227,7 @@ export function FitWorld({ layoutKey = 0 }: Props) {
       duration: LAYOUT_ANIM_S,
       easeLinearity: 0.25,
     });
-    safetyTimer = window.setTimeout(finish, LAYOUT_ANIM_S * 1000 + 250);
+    safetyTimer = window.setTimeout(finish, LAYOUT_ANIM_S * 1000 + 250) as unknown as number;
 
     return () => {
       map.off("zoomend", onZoomEnd);
