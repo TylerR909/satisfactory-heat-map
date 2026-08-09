@@ -5,15 +5,16 @@
 1. **Ship honest, attributed data** under `public/data/` and generated `public/map/v1/`.
 2. Prefer never committing proprietary calculator assets or full game dumps (Docs / Persistent_Level stay gitignored).
 3. **Do not** copy code or data from satisfactory-calculator.com (`en-Stable.json`, proprietary map assets, etc.).
-4. Prefer **MIT community extraction** (rockfactory) or **your own FModel export** for node slots.
-5. Prefer **official Docs.json** for recipes when available.
+4. **Node slots:** own FModel extract of `Persistent_Level` → `npm run extract-world-nodes` (never commit the ~100MB dump).
+5. Prefer **official Docs.json** for recipes when available (`npm run parse-docs`).
 6. **Basemap:** own WebP pyramid from the public wiki map image (or a later FModel extract) — see `public/map/v1/README.md`.
 
 ## Shipped assets
 
 | Path | Contents | Provenance |
 |------|----------|------------|
-| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | Bootstrap from [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) `WorldResourceNodes.json` (**MIT** — notice in `third_party/rockfactory-satisfactory-logistics.LICENSE`). Attribute & replace with own FModel extract when possible. |
+| `public/data/nodes/default-nodes.json` | **626** resource nodes / deposits / wells / geysers | **Our FModel extract** via `npm run extract-world-nodes` (source dump gitignored) |
+| `public/data/nodes/nodes-meta.json` | Extract stamp / counts | Generated with the nodes file; safe to commit |
 | `public/data/recipes/items.json` | Compact item catalog (~194) | Derived from Coffee Stain Docs via `npm run parse-docs` |
 | `public/data/recipes/recipes.json` | Factory recipes (~290: defaults + alts) | Same; **not** the 10MB Docs file |
 | `public/data/recipes/docs-meta.json` | Parse stamp / counts | Generated; safe to commit |
@@ -48,21 +49,86 @@
 
 ## Honest regeneration: resource nodes (FModel)
 
-After a game update (adapt rockfactory’s workflow):
+**Docs (`en-US.json`) are recipes only** — they do **not** contain world node coordinates. Nodes come from the **map level**.
 
-1. Install [FModel](https://fmodel.app); load Satisfactory (see [modding extract docs](https://docs.ficsit.app/satisfactory-modding/latest/Development/ExtractGameFiles.html)).
-2. Open `FactoryGame/Content/FactoryGame/Map/GameLevel01/Persistent_Level.umap`.
-3. Right-click → **Save Properties (.json)** (~100MB).
-4. Place as `data/Persistent_Level.json` (gitignored raw dump).
-5. Run extract script (to be adapted into `scripts/extract-world-nodes.ts` from rockfactory MIT sources):
+### Pipeline (done)
+
+| Step | Command / action |
+|------|------------------|
+| 1. FModel → `Persistent_Level.json` (~100MB) | Windows hand export (below) |
+| 2. Compact → `default-nodes.json` | `npm run extract-world-nodes` |
+
+### Which file from a GameLevel01 export?
+
+If FModel (or a zip of the export) gives you:
+
+```
+GameLevel01/
+  Persistent_Level.json          ← USE THIS (~100MB, one array of UObjects)
+  Persistent_Level/_Generated_/  ← ignore for nodes (~4k cell JSON files)
+```
+
+`_Generated_` is World Partition cell data. **All resource actors we need** (`BP_ResourceNode_C`, deposits, fracking cores/satellites, geysers) are already in the top-level **`Persistent_Level.json`**. You do not need to merge the cell files.
+
+### Windows: FModel export (repeatable)
+
+Official setup: [Extracting Game Files](https://docs.ficsit.app/satisfactory-modding/latest/Development/ExtractGameFiles.html) (`.usmap`, correct UE version, game directory).
+
+1. Install [FModel](https://fmodel.app); add your Satisfactory install.
+2. Load archives until you can browse packages.
+3. Navigate to:
+
+   `FactoryGame` → `Content` → `FactoryGame` → `Map` → `GameLevel01`
+
+4. Select **`Persistent_Level`** (the level / map asset — not a random mesh).
+5. **Right-click → Packages → Save Properties (.json)**  
+   (wording varies slightly by FModel version: “Save Properties”, “Export properties as JSON”, etc.)
+6. You should get a single large JSON (~100MB) or a folder that **contains** `Persistent_Level.json` at the top.  
+   If you get a zip (e.g. `GameLevel01.zip`), unzip and take **only** that top-level `Persistent_Level.json`.
+7. Copy it into this repo (gitignored):
 
    ```bash
-   NODE_OPTIONS="--max-old-space-size=4096" npm run extract-world-nodes
+   # from Mac/Linux with the dump available, or after sharing from Windows:
+   mkdir -p data
+   cp /path/to/Persistent_Level.json data/Persistent_Level.json
    ```
 
-6. Emits sorted `public/data/nodes/default-nodes.json`. Review diff; commit.
+8. Generate committed assets:
 
-Actors of interest: `BP_ResourceNode_C`, `BP_ResourceDeposit_C`, `BP_FrackingCore_C`, `BP_FrackingSatellite_C`, `BP_ResourceNodeGeyser_C`.
+   ```bash
+   npm run extract-world-nodes
+   # → public/data/nodes/default-nodes.json
+   # → public/data/nodes/nodes-meta.json
+   ```
+
+9. Spot-check counts in `nodes-meta.json` (expect ~626 total: ~459 nodes, ~118 well satellites, ~17 cores, ~31 geysers, 1 deposit). Eyeball pins in the app. Commit the two files under `public/data/nodes/`.
+
+**Never commit** `data/Persistent_Level.json` (already in `.gitignore`).
+
+### What the extractor keeps
+
+| FModel `Type` | Our `nodeType` | Resource field | Notes |
+|---------------|----------------|----------------|--------|
+| `BP_ResourceNode_C` | `node` | `mResourceClass` | Ore, oil, limestone, … |
+| `BP_ResourceDeposit_C` | `deposit` | `mOverrideResourceClass` | Surface deposits |
+| `BP_FrackingCore_C` | `frackingCore` | `mResourceClass` | Well pressurizer hubs |
+| `BP_FrackingSatellite_C` | `frackingSatellite` | `mResourceClass` + `mPurity` | Well extractors |
+| `BP_ResourceNodeGeyser_C` | `geyser` | forced `Desc_GeothermalEnergy_C` | No resource class in dump |
+
+- **Purity:** `RP_Pure` → `pure`, `RP_Inpure` → `impure`, missing → `normal` (game spelling is `Inpure`).
+- **Position:** `RelativeLocation` on the actor’s root `BoxComponent` / `DepositMesh` (Unreal cm).
+- **Geysers:** no `mResourceClass` in the properties dump → we set geothermal explicitly (matches prior bootstrap / in-game use).
+
+### After a game patch
+
+Re-export `Persistent_Level` from FModel for the new build, replace `data/Persistent_Level.json`, run `npm run extract-world-nodes`, review the diff, commit.
+
+### Docs vs nodes (quick reference)
+
+| File | Source | What it is |
+|------|--------|------------|
+| `CommunityResources/Docs/en-US.json` | Game install folder | Recipes/items → `npm run parse-docs` |
+| `Persistent_Level.json` | FModel Save Properties | World actors → `npm run extract-world-nodes` |
 
 ## Honest regeneration: recipes / items (Docs.json)
 
@@ -145,7 +211,7 @@ Documented in `public/map/v1/README.md`: extract map texture / `MapareatexturePe
 | **Water resource wells** (fracking core + satellites) | Yes | 8 cores + 55 satellites | Late-game pressurizer + well extractors |
 | **Open water** (coasts, lakes, rivers for Water Extractor) | **No** (not game nodes) | See `open-water.json` | Approximated from basemap art at `map:generate` |
 
-Water Extractors are placed freely on **deep water surfaces** (wiki: shallow rivers often fail). There is no permanent impure/normal/pure water *node* for open water — only wells are map entities with fixed coordinates. MIT rockfactory-style extracts mirror that: wells yes, free water no.
+Water Extractors are placed freely on **deep water surfaces** (wiki: shallow rivers often fail). There is no permanent impure/normal/pure water *node* for open water — only wells are map entities with fixed coordinates. Our FModel extract mirrors that: wells yes, free water no.
 
 ### Open-water data (`public/data/water/open-water.json`)
 
@@ -163,7 +229,7 @@ Runtime scoring merges well satellites + open-water bodies into one `Desc_Water_
 |---------------|--|
 | Basemap blue ≠ guaranteed deep/extractable water | Shallow rivers may still appear if wide enough |
 | Slots are area-scaled, not physics | Tune via map:generate env knobs / re-calibrate anchor |
-| Off-site Water in Mode B Expansion | Mark Water off-site to drop it from heatmap demand (piped extractors) |
+| Off-site Water in Mode B Intermediates | Mark Water off-site to drop it from heatmap demand (piped extractors) |
 
 Regenerate when basemap art changes: `npm run map:generate` (or `MAP_SKIP_TILES=1` to refresh water only) and commit `open-water.json`.
 
@@ -187,14 +253,14 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 
 ## Attribution snippet (README / about)
 
-> Resource nodes: [satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT extract. Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Basemap: wiki-derived self-hosted tiles (`map-tiles/v1.tar.gz` / Docker GDAL; map art © Coffee Stain). Open water: basemap blue-pixel extract (`open-water.json`). Not affiliated with Coffee Stain or satisfactory-calculator.com.
+> Resource nodes: own FModel extract (`npm run extract-world-nodes`). Recipes/items: compact Coffee Stain Docs extract (`npm run parse-docs`). Basemap: wiki-derived self-hosted tiles (`map-tiles/v1.tar.gz` / Docker GDAL; map art © Coffee Stain). Open water: basemap blue-pixel extract (`open-water.json`). Not affiliated with Coffee Stain.
 
 ## After each game patch checklist
 
-- [ ] Re-export Persistent_Level / re-run node extract  
+- [ ] Re-export Persistent_Level from FModel → `data/Persistent_Level.json` → `npm run extract-world-nodes`
 - [ ] Re-parse Docs → recipes/items  
 - [ ] Diff Konsl/default-world tables if randomization changed  
 - [ ] Bump `meta.json` `gameVersion`  
 - [ ] If map art changed: `map:generate` + `map:pack` + commit `map-tiles/v1.tar.gz` **and** `public/data/water/open-water.json`  
-- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Expansion off-site Water + Send to Raw, capacity tags, seed mode when present  
+- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Intermediates off-site Water + Send to raw, capacity tags, seed mode when present  
 

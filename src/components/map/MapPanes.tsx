@@ -4,8 +4,14 @@ import { useMap } from "react-leaflet";
 /**
  * Custom Leaflet panes (created synchronously so Path layers can attach).
  *
- * Stack (bottom → top):
- *   tiles (200) → heatmap → haul lines → demand nodes → site pins → tooltips (650)
+ * Stack (bottom → top), matching product intent:
+ *   1. tiles              (Leaflet tilePane ≈ 200)
+ *   2. heatmap colors     heatmapPane
+ *   3. ambient demand dots  nodePane        — “non-draw” resource nodes
+ *   4. haul / assignment lines  haulLinePane
+ *   5. assignment endpoints   assignedNodePane — water sources + selected feed nodes
+ *   6. top-site pins      sitePinPane
+ *   7. tooltips           (Leaflet tooltipPane ≈ 650)
  */
 function pane(map: LeafletMap, name: string, zIndex: string, pointerEvents?: string): void {
   const el = map.getPane(name) ?? map.createPane(name);
@@ -14,12 +20,15 @@ function pane(map: LeafletMap, name: string, zIndex: string, pointerEvents?: str
 }
 
 export function ensureMapPanes(map: LeafletMap): void {
+  // 2 — heat under everything interactive
   pane(map, "heatmapPane", "350", "none");
-  // Assignment lines above heat, under resource nodes
-  pane(map, "haulLinePane", "400");
-  // Demand nodes above haul lines + heat, under site pins
-  pane(map, "nodePane", "520");
-  // Hotspot pins above everything except tooltips (650)
+  // 3 — ambient demand nodes (under haul lines so lines aren’t buried)
+  pane(map, "nodePane", "400");
+  // 4 — assignment haul lines
+  pane(map, "haulLinePane", "500");
+  // 5 — nodes at the end of haul lines (water sources + selected feeds)
+  pane(map, "assignedNodePane", "550");
+  // 6 — hotspot pins
   pane(map, "sitePinPane", "600");
   // Legacy alias (HMR / older layers)
   pane(map, "assignmentPane", "600");

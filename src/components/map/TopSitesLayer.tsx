@@ -47,6 +47,10 @@ function haulLineColor(resource: string, caveRisk: boolean, elevOff: boolean): s
   return "#ffffff";
 }
 
+function endpointFill(resource: string): string {
+  return RESOURCE_COLORS[resource] ?? "#94a3b8";
+}
+
 export function TopSitesLayer({
   sites,
   selectedIndex,
@@ -58,13 +62,20 @@ export function TopSitesLayer({
   ensureMapPanes(map);
 
   const selected = selectedIndex != null ? sites[selectedIndex] : null;
-  if (!map.getPane("sitePinPane") || !map.getPane("haulLinePane")) return null;
+  if (
+    !map.getPane("sitePinPane") ||
+    !map.getPane("haulLinePane") ||
+    !map.getPane("assignedNodePane")
+  ) {
+    return null;
+  }
 
   const siteZ = selected?.z ?? 0;
   const elevThresh = elevDashThresholdCm ?? -1;
 
   return (
     <>
+      {/* 4 — haul lines (above ambient demand nodes, under endpoint dots + pins) */}
       {selected?.byResource.flatMap((ra) =>
         ra.nodes.map((n) => {
           const elevOff = elevOffsetShouldDash(n.z, siteZ, elevThresh);
@@ -90,26 +101,37 @@ export function TopSitesLayer({
         }),
       )}
 
-      {/* Water source dots at the far end of water haul lines */}
-      {selected?.byResource.flatMap((ra) => {
-        if (ra.resource !== WATER_RESOURCE_ID) return [];
-        return ra.nodes.map((n) => (
-          <CircleMarker
-            key={`water-src-${selectedIndex}-${n.nodeId}`}
-            center={worldToLeaflet(n.x, n.y, meta)}
-            radius={6}
-            pane="haulLinePane"
-            pathOptions={{
-              color: "#e0f2fe",
-              fillColor: WATER_LINE,
-              fillOpacity: 1,
-              weight: 2,
-              opacity: 1,
-            }}
-          />
-        ));
-      })}
+      {/*
+        5 — “draw” endpoints: sit on top of haul lines so lines don’t bury the
+        destination (water sources + assigned demand nodes).
+      */}
+      {selected?.byResource.flatMap((ra) =>
+        ra.nodes.map((n) => {
+          const isWater = ra.resource === WATER_RESOURCE_ID;
+          const fill = isWater ? WATER_LINE : endpointFill(ra.resource);
+          // Light border only on selected “draw” endpoints (not ambient demand nodes).
+          const stroke = "#f8fafc";
+          return (
+            <CircleMarker
+              key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}
+              center={worldToLeaflet(n.x, n.y, meta)}
+              radius={isWater ? 6 : 5}
+              pane="assignedNodePane"
+              pathOptions={{
+                color: stroke,
+                fillColor: fill,
+                fillOpacity: 1,
+                weight: 2,
+                opacity: 1,
+                // Decorative endpoint — selection is via site pins only.
+                interactive: false,
+              }}
+            />
+          );
+        }),
+      )}
 
+      {/* 6 — top-site pins */}
       {sites.map((site, i) => {
         const isSel = i === selectedIndex;
         const rank = i + 1;

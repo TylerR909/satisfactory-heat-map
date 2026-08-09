@@ -7,7 +7,7 @@
 ## Problem
 
 - Community tools excel at **production ratios** (satisfactorytools.com, KirkMcDonald) and **browsing nodes/collectibles** (SCIM, th.gl, Konsl seed viewer).
-- Almost nothing answers: *given this shopping list of raw throughput (or target products), where on the map is the best place to plant the factory?*
+- Almost nothing answers: *given this raw throughput demand (or target products), where on the map is the best place to plant the factory?*
 - Update **1.2+ resource randomization** makes location choice 10× more valuable: same fixed node *slots*, shuffled types/purities per seed.
 
 ## Product principles
@@ -30,11 +30,11 @@
 
 Both share extractors, site preference, capacity intent, heatmap engine, map, and top-N breakdown.
 
-Mode A is **not** a secondary escape hatch — power users who already solved ratios live there permanently. Mode B can **Send to Raw** to hand-tune the expanded rates.
+Mode A is **not** a secondary escape hatch — power users who already solved ratios live there permanently. Mode B can **Send to raw** to hand-tune the expanded rates.
 
-Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. **Water** is the one map raw also listed in Expansion so it can be imported off-site (piped extractors); other ores stay heatmap-only (off-site via their intermediate, e.g. Ingots). This is *not* a full recipe planner — only “what pulls into site selection.”
+Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. **Water** is the one map raw also listed under **Intermediates** so it can be imported off-site (piped extractors); other ores stay heatmap-only (off-site via their intermediate, e.g. Ingots). This is *not* a full recipe planner — only “what counts toward site selection.”
 
-In Raw mode the “Active raw demand” summary is omitted (the editor *is* the demand). In Products mode it shows the expanded raw list.
+In Raw mode the “Raw demand” summary is omitted (the editor *is* the demand). In Products mode it shows the expanded raw list.
 
 ## Site preference (haul combine)
 
@@ -51,7 +51,7 @@ Heat and ranking always use the **exact rates you typed**. Capacity is **not** a
 
 | Tag | Meaning |
 |-----|---------|
-| **shortfall** | Cannot meet demand |
+| **Shortfall** | Cannot meet demand |
 | **Limited** | Meets demand, but local supply is nearly maxed (~≥75% utilization) — thin pocket |
 | **OK** | Solid fit with moderate spare |
 | **Abundant** | Meets demand with lots of nearby spare (and absolute spare is meaningful) — maybe leave the hub for a bigger plant |
@@ -64,7 +64,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 
 - **Proximity + aggregate extract capacity** under extractor settings (miner Mk + miner/oil/water/well clocks; open water + optional resource wells).
 - **Rate-invariant haul quality** so a small factory and a large one that use the same nearby nodes paint similarly; capacity shortfall still matters.
-- Clear **shortfall** when the region cannot supply demand.
+- Clear **Shortfall** when the region cannot supply demand.
 - Diverse **top-N** candidate sites with per-resource node assignment and haul cost.
 - Peak-emphasized heat paint (display only) so the whole map does not wash yellow.
 - Seed-aware worlds: paste Map Seed → fixed slots, reassigned types/purities (Konsl MIT algorithm).
@@ -84,8 +84,8 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 ## Success criteria (current)
 
 - Mode A: multi-resource raw rates + extractors → live heatmap without recipes.
-- Mode B: multi-product rates → stacked derived raw list + same heatmap path; Send to Raw.
-- Unsatisfiable regions render cold / shortfall labels.
+- Mode B: multi-product rates → stacked derived raw list + same heatmap path; Send to raw.
+- Unsatisfiable regions render cold / Shortfall labels.
 - Satisfiable clusters light up; top sites show assigned nodes + rates.
 - Centered vs Weighted change haul ranking meaningfully.
 - Capacity tags: Limited / Abundant inferred; huge plans are not all Abundant.
@@ -94,6 +94,14 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 - `npm start`, `lint`, `test`, `build`, `clean`; Docker → nginx static; PWA-ready.
 - Docs explain data provenance and regeneration.
 
-## Positioning copy (UI)
+## Positioning copy
 
-*Live heatmap — changes recompute automatically. Bring ratios from Tools / Kirk, or pick a product for a quick default-recipe estimate.*
+**SERP / meta description** (what Google often shows under the title):
+
+*Answers "Where to build" in Satisfactory. Enter raw rates or product targets (e.g. Heavy Modular Frames) and find the best factory sites — for v1.2.*
+
+**UI subtitle** (planner header; not the primary SEO signal):
+
+*Bring raw rates from another tool, or pick a product for a quick default-recipe estimate.*
+
+**Version badge:** greyed `v1.2` next to the title (Satisfactory Update 1.2).

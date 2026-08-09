@@ -68,19 +68,30 @@ export function resourceLabel(
     .trim();
 }
 
+/**
+ * Map dot fills — tuned for a dark basemap.
+ * Contrasting borders are reserved for selected “draw” endpoints (TopSitesLayer),
+ * not ambient demand nodes.
+ */
 export const RESOURCE_COLORS: Record<string, string> = {
-  Desc_OreIron_C: "#94a3b8",
+  // Mid slate — readable without washing out on the basemap
+  Desc_OreIron_C: "#64748b",
   Desc_OreCopper_C: "#f97316",
-  Desc_Stone_C: "#a8a29e",
-  Desc_Coal_C: "#475569",
-  Desc_OreGold_C: "#eab308",
+  // Light aquamarine — taupe blended into ~80% of the basemap
+  Desc_Stone_C: "#5eead4",
+  // Dark slate (not pure black — too stark on the map)
+  Desc_Coal_C: "#334155",
+  // Gold / amber (sulfur is brighter yellow)
+  Desc_OreGold_C: "#ca8a04",
   Desc_RawQuartz_C: "#e879f9",
-  Desc_Sulfur_C: "#facc15",
-  Desc_OreBauxite_C: "#c2410c",
+  Desc_Sulfur_C: "#fde047",
+  // Brick — darker than copper orange
+  Desc_OreBauxite_C: "#9a3412",
   Desc_OreUranium_C: "#22c55e",
   Desc_SAM_C: "#a855f7",
-  // Light enough on dark basemap (was #0f172a — invisible)
-  Desc_LiquidOil_C: "#a16207",
+  // Amber-brown crude (not black)
+  Desc_LiquidOil_C: "#b45309",
   Desc_Water_C: "#38bdf8",
-  Desc_NitrogenGas_C: "#e2e8f0",
+  // Cool ice — not iron grey
+  Desc_NitrogenGas_C: "#bae6fd",
 };

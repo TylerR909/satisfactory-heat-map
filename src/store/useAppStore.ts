@@ -60,7 +60,7 @@ export type AppState = {
   heatPaintOpen: boolean;
   extractorsOpen: boolean;
   advancedOpen: boolean;
-  /** Mode B Expansion accordion (off-site intermediate toggles). */
+  /** Mode B Intermediates accordion (off-site intermediate toggles). */
   expansionOpen: boolean;
   heatOpacity: number;
   showNodes: boolean;
@@ -100,7 +100,7 @@ export type AppState = {
   updateProductLine: (id: string, patch: Partial<Omit<ProductTargetLine, "id">>) => void;
   addProductLine: () => void;
   removeProductLine: (id: string) => void;
-  /** Mark / unmark an Expansion item as off-site for Mode B expand (incl. Water). */
+  /** Mark / unmark an Intermediates row as off-site for Mode B expand (incl. Water). */
   setItemExternal: (itemId: string, external: boolean) => void;
   setMiner: (m: Partial<MinerSettings>) => void;
   setScoringMode: (mode: ScoringMode) => void;

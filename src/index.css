@@ -23,6 +23,15 @@ body {
   overscroll-behavior: none;
 }
 
+/* Tailwind preflight leaves buttons as cursor:default — make interactive chrome feel clickable */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
 /*
  * Thin dark scrollbars — especially helps Windows (default classic bars are huge
  * and light). Firefox: scrollbar-*; Chromium/Safari/Edge: ::-webkit-scrollbar.
@@ -77,6 +86,24 @@ body {
   background: #020617;
   /* Touch: keep pan/zoom snappy; don't let the browser steal gestures for page scroll */
   touch-action: none;
+}
+
+/*
+ * Pull control corners in from the display safe area (iPhone home indicator,
+ * rounded corners, notch). Needs viewport-fit=cover on the meta viewport.
+ * Leaflet’s own 10px control margin still applies on top of these insets.
+ */
+.leaflet-container .leaflet-top {
+  top: env(safe-area-inset-top, 0px);
+}
+.leaflet-container .leaflet-bottom {
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+.leaflet-container .leaflet-left {
+  left: env(safe-area-inset-left, 0px);
+}
+.leaflet-container .leaflet-right {
+  right: env(safe-area-inset-right, 0px);
 }
 
 .leaflet-container .leaflet-control-zoom a {
@@ -182,12 +209,14 @@ body {
     0 0 0 4px #38bdf8;
 }
 
+/* Latin "i" only — do not use ℹ / ℹ️ (iOS substitutes a squarish emoji) */
 .sf-map-attrib-icon {
-  font-size: 14px;
+  font-size: 13px;
   font-style: normal;
   font-weight: 700;
   line-height: 1;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: 0;
 }
 
 /* Nearest-neighbor scaling so coarse heat cells stay blocky, not blurry.
@@ -195,6 +224,27 @@ body {
 .sf-heatmap-overlay {
   image-rendering: pixelated;
   mix-blend-mode: normal;
+}
+
+/*
+ * Demand nodes: hover tooltips only — not focusable controls.
+ * Click focus on SVG paths drew a ring that looked like the dot “got bigger”.
+ * !important: beat UA :focus-visible outline on SVG paths.
+ */
+.sf-resource-node,
+.sf-resource-node.leaflet-interactive {
+  cursor: default;
+  /* biome-ignore lint/complexity/noImportantStyles: kill SVG focus ring that looks like a selected/bigger node */
+  outline: none !important;
+}
+.sf-resource-node:focus,
+.sf-resource-node:focus-visible,
+.sf-resource-node:active,
+.sf-resource-node.leaflet-interactive:focus,
+.sf-resource-node.leaflet-interactive:focus-visible,
+.sf-resource-node.leaflet-interactive:active {
+  /* biome-ignore lint/complexity/noImportantStyles: kill SVG focus ring that looks like a selected/bigger node */
+  outline: none !important;
 }
 
 /* Rank number sits *on* the hotspot pin — no opaque box covering the color */

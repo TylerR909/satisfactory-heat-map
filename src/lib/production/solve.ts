@@ -17,7 +17,7 @@ export type SolveOptions = {
   externalItems?: ReadonlySet<string> | readonly string[];
 };
 
-/** One row in the Mode B Expansion list (crafted only — map raws stay on Active raw demand). */
+/** One row in the Mode B Intermediates list (crafted only — map raws stay on Raw demand). */
 export type ExpansionEntry = {
   itemId: string;
   itemsPerMinute: number;
@@ -39,7 +39,7 @@ export type SolveResult = {
    */
   external: Record<string, number>;
   /**
-   * Expansion UI rows: deep precursors → … → direct recipe inputs → targets.
+   * Intermediates UI rows: deep precursors → … → direct recipe inputs → targets.
    * Duplicates are merged; position uses the **minimum** depth (bottom-most / closest to target).
    */
   expansion: ExpansionEntry[];
@@ -141,7 +141,7 @@ export function indexProductionRecipes(recipes: Recipe[]): Map<string, Recipe> {
  *
  * `externalItems` stops expansion at those crafted ids (import / off-site / recycled) —
  * their ingredient subtrees never become map demand. **Water** is the one map raw also
- * listed in Expansion so it can be marked off-site (piped / extracted elsewhere);
+ * listed under Intermediates so it can be marked off-site (piped / extracted elsewhere);
  * other ores stay heatmap-only (off-site via their ingot/intermediate instead).
  * Top-level product targets always expand at least one recipe level so a product
  * row is never a no-op.
@@ -156,13 +156,13 @@ export function solveProductsToRaw(
   const byProduct = indexProductionRecipes(recipes);
   const rawNeed = new Map<string, number>();
   const intermediates: Record<string, number> = {};
-  /** On-site map raws that also appear in Expansion (currently Water only). */
+  /** On-site map raws that also appear under Intermediates (currently Water only). */
   const expansionRaws = new Map<string, number>();
   const externalNeed = new Map<string, number>();
   const unresolvedMap = new Map<string, { rate: number; reason: string }>();
   const visiting = new Set<string>();
   /**
-   * Placement for Expansion UI: min depth (closer to target = lower on screen) and
+   * Placement for Intermediates UI: min depth (closer to target = lower on screen) and
    * visit seq at that depth (recipe ingredient order among siblings).
    */
   const place = new Map<string, { depth: number; seq: number }>();
@@ -201,7 +201,7 @@ export function solveProductsToRaw(
     if (rate <= 1e-9) return;
 
     // Map raws stop expansion (heatmap node demand). Water is special: listed in
-    // Expansion so the user can mark it off-site without inventing a fake intermediate.
+    // Intermediates so the user can mark it off-site without inventing a fake intermediate.
     if (isMapRawResource(itemId, items)) {
       if (itemId === WATER_RESOURCE_ID) {
         if (!asTarget && externalSet.has(itemId)) {
