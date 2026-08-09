@@ -55,7 +55,7 @@ export type ScoringMode = "centered" | "weighted";
 
 /**
  * Inferred from exact demand vs local extract capacity (no user capacity mode).
- * - shortfall: cannot meet demand
+ * - shortfall (UI: Shortfall): cannot meet demand
  * - limited: meets demand but local supply is nearly exhausted
  * - ok: solid fit with moderate spare
  * - abundant: meets demand with lots of nearby spare (maybe leave for a bigger plant)

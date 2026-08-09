@@ -22,6 +22,6 @@ TypeScript `src/lib/seed/` is a **thin wrapper** (cache, types, `configForSeed`)
 
 ## Notes
 
-- Node **slot positions** and the vanilla type/purity template come from our own bootstrap (`public/data/nodes/default-nodes.json`, rockfactory MIT extract), not from Konsl’s encrypted resources zip.
+- Node **slot positions** and the vanilla type/purity template come from our FModel extract (`public/data/nodes/default-nodes.json` via `npm run extract-world-nodes`), not from Konsl’s encrypted resources zip.
 - Konsl’s extractor only includes `BP_ResourceNode_C` (not `BP_ResourceDeposit_C`). Our port **excludes** deposits from the shuffle pool to match that membership.
 - Fixed product policy for non-default seeds: randomization mode **strict** (in-game “Random”) + purity **no_change**.

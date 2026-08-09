@@ -12,7 +12,9 @@ dist
 dist-ssr
 coverage
 dev-dist
+# FModel / Docs dumps (never commit — regenerate compact public/data/*)
 data/Persistent_Level.json
+data/GameLevel01/
 data/Docs/
 data/map/
 *.local

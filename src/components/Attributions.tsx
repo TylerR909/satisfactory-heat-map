@@ -21,70 +21,52 @@ function clampTipBox(anchor: DOMRect, boxW: number, boxH: number, vw: number, vh
   return { left, top };
 }
 
+/**
+ * User-facing credits only — keep short. Legal/OSS detail lives in third_party/
+ * and docs/DATA.md (not in this tip).
+ *
+ * - Coffee Stain (trademark + map art)
+ * - Leaflet (map library)
+ * - Konsl (vendored seed randomization)
+ *
+ * Do not list our own FModel node extract — nothing to attribute.
+ */
 const ATTRIBUTION_BODY = (
   <div className="space-y-2 text-[11px] leading-snug text-slate-300">
     <p>
-      <span className="font-medium text-slate-100">Not affiliated</span> with Coffee Stain Studios
-      or satisfactory-calculator.com.
+      <span className="font-medium text-slate-100">Not affiliated</span> with Coffee Stain Studios.
     </p>
     <ul className="list-disc space-y-1.5 pl-4">
       <li>
-        <span className="text-slate-100">Resource nodes (slots)</span> — positions and vanilla
-        types/purities bootstrapped from{" "}
         <a
           className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
-          href="https://github.com/rockfactory/satisfactory-logistics"
+          href="https://leafletjs.com"
           target="_blank"
           rel="noopener noreferrer"
         >
-          rockfactory/satisfactory-logistics
+          Leaflet
         </a>{" "}
-        (<span className="font-mono text-slate-400">WorldResourceNodes.json</span>, MIT). See{" "}
-        <span className="font-mono text-slate-400">
-          third_party/rockfactory-satisfactory-logistics.md
-        </span>
-        .
+        — interactive map library
       </li>
       <li>
-        <span className="text-slate-100">Node randomization (1.2+ seeds)</span> — Konsl{" "}
+        <span className="text-slate-100">Map art</span> © Coffee Stain Studios (community wiki
+        basemap)
+      </li>
+      <li>
+        <span className="text-slate-100">Map seed randomization</span> —{" "}
         <a
           className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
           href="https://github.com/Konsl/satisfactory-world-generator"
           target="_blank"
           rel="noopener noreferrer"
         >
-          satisfactory-world-generator
+          Konsl/satisfactory-world-generator
         </a>{" "}
-        MIT algorithm (Rust/WASM; GPL viewer not used). See{" "}
-        <span className="font-mono text-slate-400">
-          third_party/konsl-satisfactory-world-generator.md
-        </span>{" "}
-        and <span className="font-mono text-slate-400">crates/vendored/konsl_randomization</span>.
-      </li>
-      <li>
-        <span className="text-slate-100">Recipes &amp; items</span> — compact extract derived from
-        Coffee Stain{" "}
-        <span className="font-mono text-slate-400">CommunityResources/Docs/en-US.json</span>{" "}
-        (shipped derived tables only; full Docs not redistributed).
-      </li>
-      <li>
-        <span className="text-slate-100">Basemap tiles</span> — self-hosted WebP pyramid derived
-        from the public wiki map image (map art © Coffee Stain Studios). See{" "}
-        <span className="font-mono text-slate-400">public/map/v1/README.md</span>.
-      </li>
-      <li>
-        <span className="text-slate-100">Open water</span> — capacity pockets derived from the same
-        basemap (blue-pixel extract at{" "}
-        <span className="font-mono text-slate-400">map:generate</span>; not discrete game nodes).
-        See <span className="font-mono text-slate-400">public/data/water/</span>.
-      </li>
-      <li>
-        <span className="text-slate-100">Extractor rates</span> — project-maintained tables (not
-        Docs).
+        (MIT)
       </li>
     </ul>
     <p className="text-slate-500">
-      Satisfactory is a trademark of Coffee Stain. This tool is fan-made and open source (MIT).
+      Satisfactory is a trademark of Coffee Stain. Fan-made, open source (MIT).
     </p>
   </div>
 );
@@ -179,9 +161,6 @@ export function Attributions() {
             onMouseEnter={show}
             onMouseLeave={scheduleHide}
           >
-            <div className="mb-1.5 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
-              Data &amp; map credits
-            </div>
             {ATTRIBUTION_BODY}
           </div>,
           document.body,

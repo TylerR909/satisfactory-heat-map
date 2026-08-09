@@ -1,6 +1,6 @@
 # Satisfactory Heatmap
 
-> Capacity-aware factory location heatmap for the game Satisfactory.
+> Answers "Where to build" in Satisfactory (v1.2).
 > Free static web tool — not a full production calculator.
 
 ## Site
@@ -13,18 +13,18 @@
 Given raw resource rates (or product targets such as Heavy Modular Frames),
 scores the map for where a factory is easiest to feed — distance plus local
 extract capacity under the player's miner Mk / clock settings. Supports
-Update 1.2+ map seeds (randomized node types/purities on fixed slots).
+Update 1.2 map seeds (randomized node types/purities on fixed slots).
 
 ## How to use
 
 1. Open the site.
-2. Mode A: enter raw demand rates, or Mode B: pick products and rates.
+2. Enter raw demand rates, or pick products and rates.
 3. Adjust extractors and clustering (Centered vs Weighted).
-4. Read the live heatmap and top-N site pins; share via URL hash.
+4. Read the heatmap and top-N site pins; share via URL hash.
 
 ## Related tools (not us)
 
-- Production ratios: satisfactorytools.com, KirkMcDonald calculator
+- Production ratios: satisfactory-calculator.com, satisfactorytools.com, KirkMcDonald
 - Collectible / interactive maps: SCIM, th.gl
 
 ## Notes for agents

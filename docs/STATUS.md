@@ -29,15 +29,15 @@ satisfactory-heat-map/
 
 ## Working design decisions encoded in code
 
-1. **Dual modes** share `activeDemand` in Zustand; Mode B multi-product + Expansion off-site prune (`solveProductsToRaw`).
+1. **Dual modes** share `activeDemand` in Zustand; Mode B multi-product + Intermediates off-site prune (`solveProductsToRaw`).
 2. **Live heatmap** via `useAutoHeatmap` → worker → `HeatmapResult`.
 3. **Scoring** is capacity-first in **WASM** (`crates/engine`) with rate-invariant haul quality; hierarchical multi-pass + diverse top-N.
-4. **Capacity tags** inferred per top site (Limited / OK / Abundant / shortfall).
+4. **Capacity tags** inferred per top site (Limited / OK / Abundant / Shortfall).
 5. **Extractors:** miner Mk + independent clocks for miner / oil / water / well pressurizer; wells toggle (forced on if plan needs Nitrogen).
 6. **Water supply** = basemap open-water bodies (`open-water.json`) ∪ well satellites when wells enabled.
-7. **Mode B Water** can be marked off-site in Expansion (only map raw treated that way).
+7. **Mode B Water** can be marked off-site under Intermediates (only map raw treated that way).
 8. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
-9. **Nodes** rockfactory MIT bootstrap (~626); **recipes** Docs compact extract.
+9. **Nodes** own FModel extract (~626 via `extract-world-nodes`); **recipes** Docs compact extract.
 10. **Persist** `sf-heatmap-v9` (plan shelf + extractors; display knobs local).
 
 ## Verified
@@ -68,6 +68,6 @@ npm start         # Vite HMR
 ## Sensible next coding priorities
 
 1. Operator: CF dashboard build command = rustup + wasm-pack + `npm run build` ([DEPLOY.md](DEPLOY.md)).
-2. Optional Mode B alternate recipe toggles on Expansion rows.
+2. Optional Mode B alternate recipe toggles on Intermediates rows.
 3. Basemap v2 ~8k FModel extract — `public/map/v1/README.md`.
-4. Own FModel node extract when desired (`extract-world-nodes`).
+4. Re-run `extract-world-nodes` after game patches (FModel re-export).

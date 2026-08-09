@@ -593,7 +593,7 @@ export function SavedPlansBar() {
     <section className="space-y-1.5">
       {plans.length > 0 && (
         <div className="flex items-center gap-1.5 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
-          Heatmaps
+          Plans
           <span className="font-normal normal-case text-slate-600">({plans.length})</span>
         </div>
       )}
@@ -610,8 +610,8 @@ export function SavedPlansBar() {
         <button
           type="button"
           onClick={onAdd}
-          title="Save current & start new heatmap"
-          aria-label="Save current and start new heatmap"
+          title="Save current & start a new plan"
+          aria-label="Save current and start a new plan"
           className={iconBtn}
         >
           <PlusIcon />
@@ -853,7 +853,7 @@ function PlanChip({
             {plan.demand.length > 0 && (
               <>
                 <div className="mt-2 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
-                  Active raw demand
+                  Raw demand
                 </div>
                 <ul className="mt-1 space-y-0.5">
                   {plan.demand.map((d) => (

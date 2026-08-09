@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMap } from "react-leaflet";
 
-const TIP_W = 260;
+const TIP_W = 240;
 const TIP_PAD = 8;
 const MOBILE_MQ = "(max-width: 767px)";
 
@@ -169,8 +169,9 @@ function AttributionButton({ basemapAttribution }: { basemapAttribution: string 
           });
         }}
       >
+        {/* Latin "i" only — ℹ / ℹ️ become squarish emoji on iOS */}
         <span aria-hidden className="sf-map-attrib-icon">
-          ℹ
+          i
         </span>
       </button>
       {pos &&
@@ -191,23 +192,19 @@ function AttributionButton({ basemapAttribution }: { basemapAttribution: string 
             }}
             onMouseLeave={() => setHovering(false)}
           >
-            <div className="mb-1.5 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
-              Map attribution
-            </div>
-            <div className="space-y-1.5 text-[11px] leading-snug text-slate-300">
-              <p>
-                <a
-                  className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
-                  href="https://leafletjs.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Leaflet
-                </a>
-                {" — open-source JavaScript library for interactive maps."}
-              </p>
-              <p>{basemapAttribution}</p>
-            </div>
+            <p className="text-[11px] leading-snug text-slate-300">
+              <a
+                className="text-sky-400 underline decoration-slate-600 underline-offset-2 hover:text-sky-300"
+                href="https://leafletjs.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Leaflet
+              </a>
+              {" — "}
+              {basemapAttribution || "Map art © Coffee Stain Studios"}
+              <span className="text-slate-500"> · community wiki basemap</span>
+            </p>
           </div>,
           document.body,
         )}

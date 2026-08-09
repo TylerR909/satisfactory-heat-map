@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-08-09T04:12:14.521Z",
+  "source": "data/Persistent_Level.json",
+  "sourceBytes": 110894103,
+  "objectCount": 24577,
+  "nodeCount": 626,
+  "byType": {
+    "frackingCore": 17,
+    "frackingSatellite": 118,
+    "deposit": 1,
+    "node": 459,
+    "geyser": 31
+  },
+  "byResource": {
+    "Desc_NitrogenGas_C": 51,
+    "Desc_Water_C": 63,
+    "Desc_LiquidOil_C": 51,
+    "Desc_OreUranium_C": 6,
+    "Desc_Coal_C": 62,
+    "Desc_OreCopper_C": 55,
+    "Desc_SAM_C": 19,
+    "Desc_Stone_C": 94,
+    "Desc_OreIron_C": 127,
+    "Desc_OreGold_C": 17,
+    "Desc_RawQuartz_C": 17,
+    "Desc_Sulfur_C": 16,
+    "Desc_OreBauxite_C": 17,
+    "Desc_GeothermalEnergy_C": 31
+  },
+  "tool": "scripts/extract-world-nodes.mjs",
+  "notes": "Own FModel Persistent_Level export. Geysers forced to Desc_GeothermalEnergy_C (no mResourceClass in dump)."
+}

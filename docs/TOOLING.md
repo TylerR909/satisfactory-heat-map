@@ -111,7 +111,7 @@ Open the repo in a Dev Container (`.devcontainer/`). Then `npm start` has wasm-p
 
 | Project | Use |
 |---------|-----|
-| [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT | Node extract scripts + `WorldResourceNodes.json` bootstrap |
+| Own FModel pipeline | `npm run extract-world-nodes` — `data/Persistent_Level.json` → `public/data/nodes/*` |
 | [Konsl/satisfactory-world-generator](https://github.com/Konsl/satisfactory-world-generator) | Randomization **MIT** (`src/*.rs`, `scripts/`); viewer is GPL — do not copy GPL app code lightly |
 | [greeny/SatisfactoryTools](https://github.com/greeny/SatisfactoryTools) | Docs.json parse patterns |
 | Official `CommunityResources/Docs/*.json` | Items/recipes (Coffee Stain community dump) |

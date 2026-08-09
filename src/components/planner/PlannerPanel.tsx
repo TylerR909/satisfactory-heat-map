@@ -42,14 +42,17 @@ import { DEFAULT_HEAT_OPACITY } from "@/types";
  */
 function ClockPercentSlider({
   label,
+  /** Optional line under the label (e.g. “Required for Nitrogen”). */
+  belowLabel,
   value,
   onChange,
   "aria-label": ariaLabel,
   /** Live rate readout, e.g. "300/min" or "75/150/300/min" (impure/normal/pure). */
   rateLabel,
 }: {
-  /** Left side of the header row (section name, Mk group, checkbox, tip…). */
+  /** Left side of the header row (section name, Mk group, switch, tip…). */
   label: ReactNode;
+  belowLabel?: ReactNode;
   value: number;
   onChange: (n: number) => void;
   "aria-label": string;
@@ -84,8 +87,13 @@ function ClockPercentSlider({
 
   return (
     <div className="block space-y-1 text-xs text-slate-400">
-      <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex min-w-0 items-center gap-1.5">{label}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="inline-flex min-w-0 items-center gap-1.5">{label}</span>
+          {belowLabel != null && belowLabel !== false && (
+            <div className="mt-0.5 pl-10">{belowLabel}</div>
+          )}
+        </div>
         <span className="shrink-0 font-mono text-slate-300">{valueText}</span>
       </div>
       <input
@@ -148,6 +156,86 @@ function MinerMkGroup({ value, onChange }: { value: MinerMk; onChange: (mk: Mine
   );
 }
 
+/** Compact switch — used instead of raw checkboxes for boolean settings. */
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  title,
+  "aria-label": ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  /** Native tooltip (browser-delayed) — keep short. */
+  title?: string;
+  "aria-label": string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      title={title}
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onChange(!checked);
+      }}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+        checked ? "bg-sky-500" : "bg-slate-700"
+      } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+    >
+      <span
+        aria-hidden
+        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-4" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+}
+
+/** Label left · switch right (space-between). Optional subtitle under the label. */
+function ToggleRow({
+  label,
+  tip,
+  subtitle,
+  checked,
+  onChange,
+  disabled,
+  "aria-label": ariaLabel,
+}: {
+  label: string;
+  tip?: string;
+  subtitle?: ReactNode;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  "aria-label"?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-xs">
+      <div className="min-w-0">
+        <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+          {label}
+          {tip != null && tip !== "" && <InfoTip text={tip} />}
+        </span>
+        {subtitle != null && (
+          <span className="mt-0.5 block text-[10px] text-slate-500">{subtitle}</span>
+        )}
+      </div>
+      <ToggleSwitch
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        aria-label={ariaLabel ?? label}
+      />
+    </div>
+  );
+}
+
 /**
  * Single UI continuum for site preference:
  * 0 = Centered + harsh (centerPower 2.0) … N-1 = Centered + soft (1.0) … N = Weighted.
@@ -180,7 +268,7 @@ function capacityLabel(
     case "limited":
       return { text: "Limited", className: "text-amber-400" };
     case "shortfall":
-      return { text: "shortfall", className: "text-red-400" };
+      return { text: "Shortfall", className: "text-red-400" };
     default:
       return { text: "OK", className: "text-emerald-400" };
   }
@@ -373,7 +461,23 @@ export function PlannerPanel() {
     <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto overscroll-contain border-slate-800 bg-slate-950/95 p-4 text-slate-100 [-webkit-overflow-scrolling:touch] md:border-r">
       <header>
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-lg font-semibold tracking-tight text-white">Satisfactory Heatmap</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h1 className="text-lg font-semibold tracking-tight text-white">
+                Satisfactory Heatmap
+              </h1>
+              <span
+                className="shrink-0 text-[10px] font-medium tracking-wide text-slate-600"
+                title="Data and rates aligned with Satisfactory Update 1.2"
+              >
+                v1.2
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-snug text-slate-400">
+              Bring raw rates from another tool, or pick a product for a quick default-recipe
+              estimate.
+            </p>
+          </div>
           {computing && (
             <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
               Updating…
@@ -383,10 +487,6 @@ export function PlannerPanel() {
             <HeatmapTimingBadge heatmap={heatmap} rasterizeMs={lastRasterizeMs} />
           )}
         </div>
-        <p className="mt-1 text-xs text-slate-400">
-          Live heatmap — changes recompute automatically. Bring ratios from Tools / Kirk, or pick a
-          product for a quick default-recipe estimate.
-        </p>
       </header>
 
       <SavedPlansBar />
@@ -463,18 +563,9 @@ export function PlannerPanel() {
       ) : (
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-slate-300">
-              Products{" "}
-              <span className="font-normal text-slate-500">
-                (co-located · {craftable.length} factory products)
-              </span>
-            </h2>
+            <h2 className="text-sm font-medium text-slate-300">Products</h2>
             <CopyHashButton state={copyState} onClick={() => void copyPlanHash()} />
           </div>
-          <p className="text-[11px] leading-snug text-slate-500">
-            Add multiple outputs — intermediate demand stacks (e.g. Pipe + Beam + Steel Ingot 200
-            all share ore/coal for total ingots).
-          </p>
           {productTargets.map((line) => (
             <div key={line.id} className="flex gap-2">
               <select
@@ -530,11 +621,11 @@ export function PlannerPanel() {
             aria-expanded={expansionOpen}
           >
             <span className="font-medium">
-              Expansion
+              Intermediates
               <span className="ml-2 font-normal text-slate-500">
                 {expansionRows.length} item{expansionRows.length === 1 ? "" : "s"}
                 {externalItems.length > 0
-                  ? ` · ${expansionRows.filter((r) => externalItems.includes(r.itemId)).length} off-site`
+                  ? ` · ${expansionRows.filter((r) => externalItems.includes(r.itemId)).length} off`
                   : ""}
               </span>
             </span>
@@ -543,48 +634,45 @@ export function PlannerPanel() {
           {expansionOpen && (
             <div className="space-y-2 border-t border-slate-800 px-3 py-3">
               <p className="text-[11px] leading-snug text-slate-500">
-                Mark anything you import as <span className="text-slate-400">off-site</span> so it
-                doesn’t pull into the heatmap (e.g. Empty Canisters recycled elsewhere, Modular
-                Frames from another factory, or <span className="text-slate-400">Water</span> piped
-                in from off-site extractors).
+                Disabling a product removes it from the heatmap. Use that when an intermediate is
+                produced off-site (piping in water, trucking in Polymer, recycling canisters, …).
               </p>
-              <ul className="space-y-1.5 text-sm">
+              <ul className="space-y-0.5 text-sm">
                 {expansionRows.map((row) => {
                   const isTarget = productTargets.some((t) => t.productId === row.itemId);
-                  const offSite = externalItems.includes(row.itemId);
+                  const onSite = !externalItems.includes(row.itemId);
                   const label = resourceLabel(row.itemId, items);
                   return (
                     <li
                       key={row.itemId}
-                      className={`flex items-center justify-between gap-2 ${
-                        offSite ? "text-slate-500" : "text-slate-200"
-                      }`}
+                      className={`flex items-center justify-between gap-2 rounded-md px-1.5 py-1 transition-colors ${
+                        onSite ? "text-slate-200" : "text-slate-500"
+                      } hover:bg-slate-800/80`}
                     >
                       <span
-                        className={`min-w-0 truncate ${offSite ? "line-through decoration-slate-600" : ""}`}
+                        className={`min-w-0 truncate ${onSite ? "" : "line-through decoration-slate-600"}`}
                       >
                         {label}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span
-                          className={`font-mono text-xs ${offSite ? "text-slate-500" : "text-slate-300"}`}
+                          className={`font-mono text-xs ${onSite ? "text-slate-300" : "text-slate-500"}`}
                         >
                           {formatRate(row.itemsPerMinute)}/min
                         </span>
                         {isTarget ? (
-                          <span className="w-[4.5rem] text-right text-[10px] text-slate-600">
-                            target
-                          </span>
+                          <span className="w-9 text-right text-[10px] text-slate-600">target</span>
                         ) : (
-                          <label className="flex w-[4.5rem] cursor-pointer items-center justify-end gap-1 text-[10px] text-slate-400">
-                            <input
-                              type="checkbox"
-                              className="rounded border-slate-600"
-                              checked={offSite}
-                              onChange={(e) => setItemExternal(row.itemId, e.target.checked)}
-                            />
-                            <span>Off-site</span>
-                          </label>
+                          <ToggleSwitch
+                            checked={onSite}
+                            onChange={(on) => setItemExternal(row.itemId, !on)}
+                            aria-label={`${label}: ${onSite ? "included" : "disabled (off-site)"}`}
+                            title={
+                              onSite
+                                ? "Included on the heatmap — click to treat as off-site import"
+                                : "Off-site import — click to include on the heatmap"
+                            }
+                          />
                         )}
                       </span>
                     </li>
@@ -600,19 +688,19 @@ export function PlannerPanel() {
       {mode === "product" && (
         <section className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-slate-300">Active raw demand</h2>
+            <h2 className="text-sm font-medium text-slate-300">Raw demand</h2>
             {activeDemand.length > 0 && (
               <button
                 type="button"
-                className="text-[11px] text-amber-400 hover:text-amber-300"
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300 transition hover:border-amber-400/60 hover:bg-amber-500/20 hover:text-amber-200"
                 onClick={sendProductsToRaw}
               >
-                Send to Raw →
+                Send to raw →
               </button>
             )}
           </div>
           {activeDemand.length === 0 ? (
-            <p className="text-xs text-slate-500">None yet — heat waits for demand.</p>
+            <p className="text-xs text-slate-500">No demand yet — set a product rate above.</p>
           ) : (
             <ul className="space-y-1 text-sm">
               {activeDemand.map((d) => (
@@ -628,7 +716,7 @@ export function PlannerPanel() {
         </section>
       )}
 
-      {/* Clustering — site balance, pins, peak emphasis (above heat paint) */}
+      {/* Clustering — pin count, balance, heat focus (above map paint) */}
       <section className="rounded-lg border border-slate-800">
         <button
           type="button"
@@ -644,8 +732,50 @@ export function PlannerPanel() {
             <label className="block space-y-1 text-xs text-slate-400">
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
+                  Number of sites
+                  <InfoTip text="How many ranked pins to place. A wide min. distance can hide some if they sit too close together." />
+                </span>
+                <span className="font-mono text-slate-300">{scoringOptions.topN}</span>
+              </span>
+              <input
+                type="range"
+                min={3}
+                max={10}
+                step={1}
+                className="w-full"
+                value={scoringOptions.topN}
+                onChange={(e) => setScoringOptions({ topN: Number(e.target.value) })}
+              />
+            </label>
+            <label className="block space-y-1 text-xs text-slate-400">
+              <span className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1">
+                  Min. distance between sites
+                  <InfoTip text="How far apart ranked pins must be (% of map diagonal). Wider spreads them across the map; you may get fewer than Number of sites." />
+                </span>
+                <span className="font-mono text-slate-300">
+                  {(scoringOptions.siteSepFraction * 100).toFixed(0)}% diag
+                </span>
+              </span>
+              <input
+                type="range"
+                min={0.04}
+                max={0.4}
+                step={0.02}
+                className="w-full"
+                value={scoringOptions.siteSepFraction}
+                onChange={(e) => setScoringOptions({ siteSepFraction: Number(e.target.value) })}
+              />
+              <span className="flex justify-between text-[10px] text-slate-600">
+                <span>Closer</span>
+                <span>Farther</span>
+              </span>
+            </label>
+            <label className="block space-y-1 text-xs text-slate-400">
+              <span className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1">
                   Centered / Weighted
-                  <InfoTip text="Centered: each resource counts equally — prefers multi-resource midpoints (e.g. a little sulfur with lots of oil/coal). Sliding right softens that equal-resource push, then switches to Weighted: haul cost scales with rate × distance so high-throughput feeds dominate." />
+                  <InfoTip text="Centered puts the factory in the middle of the nodes it needs. Weighted pulls it closer to resources you need more of (e.g. lots of iron, a little copper)." />
                 </span>
                 <span className="font-mono text-slate-300">
                   {scoringMode === "weighted"
@@ -676,50 +806,8 @@ export function PlannerPanel() {
             <label className="block space-y-1 text-xs text-slate-400">
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
-                  Top sites
-                  <InfoTip text="How many hotspot pins to place. Separation may yield fewer if Site spread is wide." />
-                </span>
-                <span className="font-mono text-slate-300">{scoringOptions.topN}</span>
-              </span>
-              <input
-                type="range"
-                min={3}
-                max={10}
-                step={1}
-                className="w-full"
-                value={scoringOptions.topN}
-                onChange={(e) => setScoringOptions({ topN: Number(e.target.value) })}
-              />
-            </label>
-            <label className="block space-y-1 text-xs text-slate-400">
-              <span className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1">
-                  Site spread
-                  <InfoTip text="Minimum gap between hotspot pins, as % of map diagonal. Wider forces pins farther apart and may show fewer than Top sites — it never squeezes them together to fill the list." />
-                </span>
-                <span className="font-mono text-slate-300">
-                  {(scoringOptions.siteSepFraction * 100).toFixed(0)}% diag
-                </span>
-              </span>
-              <input
-                type="range"
-                min={0.04}
-                max={0.4}
-                step={0.02}
-                className="w-full"
-                value={scoringOptions.siteSepFraction}
-                onChange={(e) => setScoringOptions({ siteSepFraction: Number(e.target.value) })}
-              />
-              <span className="flex justify-between text-[10px] text-slate-600">
-                <span>Clustered</span>
-                <span>Map-wide</span>
-              </span>
-            </label>
-            <label className="block space-y-1 text-xs text-slate-400">
-              <span className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1">
-                  Peak emphasis
-                  <InfoTip text="How exclusive the heat field is (recomputes). Primary control for map sparseness — kills mid-map so only strong hubs remain. Heat settings only color what’s left. Lower = more secondary hubs; higher = narrow peaks only." />
+                  Heat focus
+                  <InfoTip text="How tightly the heatmap concentrates on the best spots. Higher = fewer sharp peaks; lower = more of the map glows. Map settings only recolor what’s left — this changes the score field itself." />
                 </span>
                 <span className="font-mono text-slate-300">
                   {scoringOptions.heatContrast.toFixed(2)}
@@ -739,47 +827,38 @@ export function PlannerPanel() {
                 <span>Peaks only</span>
               </span>
             </label>
-            <label className="flex items-start gap-2 text-xs text-slate-400">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={scoringOptions.includeElevation}
-                onChange={(e) => setScoringOptions({ includeElevation: e.target.checked })}
-              />
-              <span>
-                <span className="inline-flex items-center gap-1 font-medium text-slate-300">
-                  Elevation in distance
-                  <InfoTip text="On (default): distance includes elevation. Factory height is the median Z of assigned nodes — a high plateau is free; cliffs between hub and node stretch the route. Off: plan-view XY only (same as older builds)." />
-                </span>
-                <span className="mt-0.5 block text-[10px] text-slate-500">
-                  {scoringOptions.includeElevation
-                    ? "3D · cliffs cost real distance"
-                    : "2D · vertical ignored"}
-                </span>
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-400">
-              <input
-                type="checkbox"
-                checked={showNodes}
-                onChange={(e) => setShowNodes(e.target.checked)}
-              />
-              Show demand nodes
-            </label>
+            <ToggleRow
+              label="Elevation factor"
+              tip="On: height counts as distance — cliffs make a node feel farther. Off: flat map distance only."
+              subtitle={
+                scoringOptions.includeElevation
+                  ? "3D · cliffs cost real distance"
+                  : "2D · vertical ignored"
+              }
+              checked={scoringOptions.includeElevation}
+              onChange={(v) => setScoringOptions({ includeElevation: v })}
+              aria-label="Elevation factor"
+            />
+            <ToggleRow
+              label="Show demand nodes"
+              checked={showNodes}
+              onChange={setShowNodes}
+              aria-label="Show demand nodes"
+            />
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
                 onClick={resetKnobs}
                 className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
               >
-                Reset knobs
+                Reset clustering
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (
                     window.confirm(
-                      "Reset extractors, site preference, and all knobs? Your products and raw inputs are kept.",
+                      "Reset extractors, clustering, and map display? Your products and raw inputs are kept.",
                     )
                   ) {
                     resetAllDefaults();
@@ -794,7 +873,7 @@ export function PlannerPanel() {
         )}
       </section>
 
-      {/* Heat settings — display only, localStorage, not URL hash */}
+      {/* Map settings — display only, localStorage, not URL hash */}
       <section className="rounded-lg border border-slate-800">
         <button
           type="button"
@@ -802,20 +881,20 @@ export function PlannerPanel() {
           onClick={() => setHeatPaintOpen(!heatPaintOpen)}
           aria-expanded={heatPaintOpen}
         >
-          <span className="font-medium">Heat settings</span>
+          <span className="font-medium">Map settings</span>
           <span className="text-slate-500">{heatPaintOpen ? "▾" : "▸"}</span>
         </button>
         {heatPaintOpen && (
           <div className="space-y-3 border-t border-slate-800 px-3 py-3">
             <p className="text-[11px] leading-snug text-slate-500">
-              Color and opacity of heat that already passed Peak emphasis (under Clustering). Does
-              not change rankings or pins. Saved in this browser — not in the share URL.
+              How the heat looks on the map — not rankings or pins. Saved in this browser, not the
+              share link.
             </p>
             <label className="block space-y-1 text-xs text-slate-400">
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Elev. dash threshold
-                  <InfoTip text="Haul lines only (display). Left = dash on any elevation difference. Sliding right raises the bar (only larger Δz dashes). Far right = Off (never dash for elevation). Cave-flagged nodes always dash (lilac)." />
+                  <InfoTip text="When haul lines dash for height difference. Left = any height gap dashes; right = only big gaps; Off = never for height. Cave nodes always dash (lilac)." />
                 </span>
                 <span className="font-mono text-slate-300">
                   {heatRender.elevDashThresholdCm < 0
@@ -848,7 +927,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Fade start
-                  <InfoTip text="Normalized heat ≤ this is fully clear. Raise to kill more fringe between hubs (max 0.85)." />
+                  <InfoTip text="Heat weaker than this is invisible. Raise it to clear weak glow between hotspots." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.fadeDead.toFixed(2)}</span>
               </span>
@@ -870,7 +949,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Fade end
-                  <InfoTip text="Heat ≥ this is full paint opacity. Higher softens edges; lower makes solid cores." />
+                  <InfoTip text="Heat stronger than this is full color. Lower = harder cores; higher = softer edges." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.fadeFull.toFixed(2)}</span>
               </span>
@@ -892,7 +971,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Fade ease
-                  <InfoTip text="Shape of the opacity ramp. Higher fills each hotspot body more." />
+                  <InfoTip text="How quickly fade ramps up inside a hotspot. Higher fills the blob more." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.fadeEase.toFixed(1)}</span>
               </span>
@@ -910,7 +989,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Max alpha
-                  <InfoTip text="Peak strength of the heat raster (before overlay opacity)." />
+                  <InfoTip text="How strong the brightest heat can get (before overlay opacity)." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.maxAlpha.toFixed(2)}</span>
               </span>
@@ -928,7 +1007,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Overlay opacity
-                  <InfoTip text="Global strength of the heat layer on the map." />
+                  <InfoTip text="Overall heat layer strength on the map." />
                 </span>
                 <span className="font-mono text-slate-300">{heatOpacity.toFixed(2)}</span>
               </span>
@@ -949,7 +1028,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Green band
-                  <InfoTip text="How far soft green/lime holds before yellow. Higher = longer cool falloff." />
+                  <InfoTip text="How much of the glow stays green before turning yellow. Higher = cooler edges." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.stopYellow.toFixed(2)}</span>
               </span>
@@ -967,7 +1046,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Yellow band
-                  <InfoTip text="Where yellow gives way toward orange. Higher = more yellow body, orange only near the peak." />
+                  <InfoTip text="Where yellow gives way to orange. Higher = more yellow body, orange only at the tip." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.stopOrange.toFixed(2)}</span>
               </span>
@@ -985,7 +1064,7 @@ export function PlannerPanel() {
               <span className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1">
                   Into orange peak
-                  <InfoTip text="Where the ramp hits the orange hotspot core. Keep high (~0.97) for narrow orange tips." />
+                  <InfoTip text="Where the core goes fully orange. Keep high for a tight orange tip." />
                 </span>
                 <span className="font-mono text-slate-300">{heatRender.stopRed.toFixed(2)}</span>
               </span>
@@ -1010,7 +1089,7 @@ export function PlannerPanel() {
               }}
               className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
             >
-              Reset heat defaults
+              Reset map defaults
             </button>
           </div>
         )}
@@ -1074,26 +1153,26 @@ export function PlannerPanel() {
               <ClockPercentSlider
                 label={
                   <>
-                    <input
-                      type="checkbox"
-                      className="disabled:opacity-60"
+                    <ToggleSwitch
                       checked
                       disabled={wellsRequiredForPlan}
-                      onChange={(e) => {
+                      onChange={(on) => {
                         if (wellsRequiredForPlan) return;
-                        setMiner({ resourceWellsEnabled: e.target.checked });
+                        setMiner({ resourceWellsEnabled: on });
                       }}
                       aria-label="Pressurized Resource Wells"
                     />
                     <span className="text-slate-400">Resource wells</span>
-                    <InfoTip text="Tier 8 pressurizer + extractors on oil, water, and nitrogen satellites. Open water still supplies Water when this is off. Nitrogen has no other map source." />
-                    {wellsRequiredForPlan && (
-                      <span className="truncate text-[10px] font-normal text-amber-400/90">
-                        — Required for{" "}
-                        {wellOnlyInDemand.map((d) => resourceLabel(d.resource, items)).join(", ")}
-                      </span>
-                    )}
+                    <InfoTip text="Tier 8 wells for oil, water, and nitrogen. Lakes/coasts still count for water when this is off. Nitrogen only comes from wells." />
                   </>
+                }
+                belowLabel={
+                  wellsRequiredForPlan ? (
+                    <span className="text-[10px] font-normal text-amber-400/90">
+                      Required for{" "}
+                      {wellOnlyInDemand.map((d) => resourceLabel(d.resource, items)).join(", ")}
+                    </span>
+                  ) : null
                 }
                 value={miner.wellClockPercent}
                 onChange={(n) => setMiner({ wellClockPercent: n })}
@@ -1103,14 +1182,13 @@ export function PlannerPanel() {
             ) : (
               <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
                 <span className="inline-flex min-w-0 items-center gap-1.5">
-                  <input
-                    type="checkbox"
+                  <ToggleSwitch
                     checked={false}
-                    onChange={(e) => setMiner({ resourceWellsEnabled: e.target.checked })}
+                    onChange={(on) => setMiner({ resourceWellsEnabled: on })}
                     aria-label="Pressurized Resource Wells"
                   />
                   <span>Resource wells</span>
-                  <InfoTip text="Tier 8 pressurizer + extractors on oil, water, and nitrogen satellites. Open water still supplies Water when this is off. Nitrogen has no other map source." />
+                  <InfoTip text="Tier 8 wells for oil, water, and nitrogen. Lakes/coasts still count for water when this is off. Nitrogen only comes from wells." />
                 </span>
                 <span className="shrink-0 font-mono text-slate-500">off</span>
               </div>
@@ -1143,12 +1221,13 @@ export function PlannerPanel() {
             <span className="font-normal text-slate-500">({heatmap.topSites.length})</span>
           </h2>
           <p className="text-[11px] leading-snug text-slate-500">
-            Hotspot pins are tagged from your rates vs nearby extract capacity:{" "}
+            Pins are tagged from your rates vs nearby extract capacity:{" "}
             <span className="text-emerald-400">OK</span>,{" "}
             <span className="text-amber-400">Limited</span> (thin local supply), or{" "}
-            <span className="text-sky-400">Abundant</span> (lots of spare nearby — maybe leave for a
-            bigger plant). Ranking prefers sites that fully meet demand, so shortfall pins only show
-            if the plan can’t be fully fed anywhere useful on the map.
+            <span className="text-sky-400">Abundant</span> (plenty of spare nearby — consider saving
+            the hub for a larger plant). Ranking prefers sites that fully meet demand;{" "}
+            <span className="text-red-400">Shortfall</span> pins only appear when the plan cannot be
+            fully fed anywhere useful on the map.
           </p>
           <ul className="space-y-1">
             {heatmap.topSites.map((site, i) => {
@@ -1382,9 +1461,14 @@ function fmtMs(ms: number): string {
   return ms < 10 ? ms.toFixed(1) : ms.toFixed(0);
 }
 
+/** True mouse hover — not iOS synthetic mouseenter after a tap. */
+function canHoverOpen(): boolean {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
 /**
- * Score wall-time badge (worker hierarchical total). Hover shows stage breakdown
- * plus main-thread rasterize (not included in the badge sum).
+ * Score wall-time badge (worker hierarchical total). Hover (desktop) or tap (mobile)
+ * shows stage breakdown plus main-thread rasterize (not included in the badge sum).
  */
 function HeatmapTimingBadge({
   heatmap,
@@ -1393,52 +1477,85 @@ function HeatmapTimingBadge({
   heatmap: HeatmapResult;
   rasterizeMs: number | null;
 }) {
+  const tipId = useId();
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const [pinned, setPinned] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const open = pinned || hovering;
   const { elapsedMs, timings } = heatmap;
   const t = timings;
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onDoc = (e: PointerEvent) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setPinned(false);
+    };
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [pinned]);
+
   return (
-    <span className="group relative shrink-0">
-      <span className="cursor-default rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-        {elapsedMs.toFixed(0)} ms
-      </span>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 hidden w-[11.5rem] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-[10px] font-normal text-slate-300 shadow-lg group-hover:block"
+    <span ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
+        aria-describedby={open ? tipId : undefined}
+        aria-expanded={open}
+        aria-label={`${elapsedMs.toFixed(0)} milliseconds score time. Show breakdown.`}
+        onClick={() => {
+          setPinned((p) => !p);
+          setHovering(false);
+        }}
+        onMouseEnter={() => {
+          if (canHoverOpen()) setHovering(true);
+        }}
+        onMouseLeave={() => setHovering(false)}
       >
-        <div className="mb-1.5 flex justify-between gap-3 font-medium text-emerald-300">
-          <span>Score</span>
-          <span className="tabular-nums">{fmtMs(elapsedMs)} ms</span>
-        </div>
-        <ul className="space-y-0.5 text-slate-400">
-          <li className="flex justify-between gap-3">
-            <span>Prepare</span>
-            <span className="tabular-nums text-slate-300">{fmtMs(t.prepareMs)}</span>
-          </li>
-          <li className="flex justify-between gap-3">
-            <span>Coarse grid</span>
-            <span className="tabular-nums text-slate-300">{fmtMs(t.coarseMs)}</span>
-          </li>
-          <li className="flex justify-between gap-3">
-            <span>Refine</span>
-            <span className="tabular-nums text-slate-300">{fmtMs(t.refineMs)}</span>
-          </li>
-          <li className="flex justify-between gap-3">
-            <span>Top sites</span>
-            <span className="tabular-nums text-slate-300">{fmtMs(t.topSitesMs)}</span>
-          </li>
-        </ul>
-        {rasterizeMs != null && (
-          <>
-            <div className="my-1.5 border-t border-slate-700" />
-            <div className="flex justify-between gap-3 text-slate-500">
-              <span>Rasterize</span>
-              <span className="tabular-nums">{fmtMs(rasterizeMs)} ms</span>
-            </div>
-            <p className="mt-1 text-[9px] leading-snug text-slate-600">
-              Rasterize is main-thread paint, not in the badge total.
-            </p>
-          </>
-        )}
-      </span>
+        {elapsedMs.toFixed(0)} ms
+      </button>
+      {open && (
+        <span
+          id={tipId}
+          role="tooltip"
+          className="absolute right-0 top-full z-50 mt-1.5 w-[11.5rem] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-[10px] font-normal text-slate-300 shadow-lg"
+        >
+          <div className="mb-1.5 flex justify-between gap-3 font-medium text-emerald-300">
+            <span>Score</span>
+            <span className="tabular-nums">{fmtMs(elapsedMs)} ms</span>
+          </div>
+          <ul className="space-y-0.5 text-slate-400">
+            <li className="flex justify-between gap-3">
+              <span>Prepare</span>
+              <span className="tabular-nums text-slate-300">{fmtMs(t.prepareMs)}</span>
+            </li>
+            <li className="flex justify-between gap-3">
+              <span>Coarse grid</span>
+              <span className="tabular-nums text-slate-300">{fmtMs(t.coarseMs)}</span>
+            </li>
+            <li className="flex justify-between gap-3">
+              <span>Refine</span>
+              <span className="tabular-nums text-slate-300">{fmtMs(t.refineMs)}</span>
+            </li>
+            <li className="flex justify-between gap-3">
+              <span>Top sites</span>
+              <span className="tabular-nums text-slate-300">{fmtMs(t.topSitesMs)}</span>
+            </li>
+          </ul>
+          {rasterizeMs != null && (
+            <>
+              <div className="my-1.5 border-t border-slate-700" />
+              <div className="flex justify-between gap-3 text-slate-500">
+                <span>Rasterize</span>
+                <span className="tabular-nums">{fmtMs(rasterizeMs)} ms</span>
+              </div>
+              <p className="mt-1 text-[9px] leading-snug text-slate-600">
+                Rasterize is main-thread paint, not in the badge total.
+              </p>
+            </>
+          )}
+        </span>
+      )}
     </span>
   );
 }

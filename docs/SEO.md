@@ -72,3 +72,14 @@ Do after the SEO PR merges (or post as a **PR comment** while review is open):
 - Do **not** try to outrank full calculators for “satisfactory calculator.”
 
 Largest on-site levers already in this pass: real `robots.txt`/`sitemap`, rich meta, static OG image, crawlable pitch text. Largest off-site lever: Reddit/Discord/wiki/GitHub links.
+
+## What Google shows vs in-app UI
+
+| Surface | Source | Role |
+|---------|--------|------|
+| **SERP title** | `<title>` / `og:title` | “Satisfactory Heatmap — Where to build” |
+| **SERP snippet** | `<meta name="description">` (primary) | Sales pitch — keep short, intent-first |
+| **Crawlable body** | `#seo-pitch` in `index.html` | Backup text for bots; hidden once React paints |
+| **UI subtitle** | Planner header in React | Onboarding only — **not** what Google cites as the snippet |
+
+Do not put jargon (“capacity-aware”, “live recompute”) in the meta description. Lead with the question the tool answers.

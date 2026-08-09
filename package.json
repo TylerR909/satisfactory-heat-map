@@ -23,6 +23,7 @@
     "map:ensure": "node scripts/map-ensure-tiles.mjs",
     "map:clean": "node scripts/map-clean.mjs",
     "parse-docs": "node scripts/parse-docs.mjs",
+    "extract-world-nodes": "node scripts/extract-world-nodes.mjs",
     "wasm:build": "node scripts/wasm-build.mjs"
   },
   "dependencies": {

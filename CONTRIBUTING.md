@@ -88,13 +88,20 @@ docker compose up -d
 
 | Asset | Source |
 |-------|--------|
-| Resource nodes | [rockfactory/satisfactory-logistics](https://github.com/rockfactory/satisfactory-logistics) MIT `WorldResourceNodes.json` |
+| Resource nodes | Own FModel extract of `Persistent_Level` → `npm run extract-world-nodes` → `public/data/nodes/*` (dump gitignored) |
 | Recipes & items | Compact extract from Coffee Stain `CommunityResources/Docs/en-US.json` via `npm run parse-docs` (full Docs **not** shipped) |
 | Basemap tiles | Self-hosted `/map/v1/` WebPs. Commit pack `map-tiles/v1.tar.gz`; worktree: `npm run map:ensure` or `map:generate`. Map art © Coffee Stain. See `public/map/v1/README.md` |
 | Open water | `public/data/water/open-water.json` from the same `map:generate` pass (Node/sharp blue-pixel extract). Commit when map art/thresholds change. See [docs/DATA.md](docs/DATA.md). |
 | Extractor rates | Project tables in `src/lib/mining.ts` (miner / oil / water / well clocks) |
 
-Full policy: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
+Full policy + FModel walkthrough: [docs/DATA.md](docs/DATA.md). In-app: footer **Attributions**.
+
+### Refresh node slots after a game patch
+
+1. On Windows: FModel → `FactoryGame/.../Map/GameLevel01/Persistent_Level` → **Save Properties (.json)**.
+2. Copy the ~100MB `Persistent_Level.json` → `data/Persistent_Level.json` (gitignored). Ignore `_Generated_` cell files.
+3. `npm run extract-world-nodes`
+4. Commit `public/data/nodes/default-nodes.json` + `nodes-meta.json`.
 
 ### Refresh recipes after a game patch
 

@@ -47,12 +47,12 @@
 ## Data flow
 
 1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks) and optional **off-site** intermediates.
-2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems`) and **`expansionRows`** for the Expansion UI.
+2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems`) and **`expansionRows`** for the Intermediates UI.
 3. **`useAutoHeatmap`** (debounced) posts `ScoreGridInput` to the worker whenever demand, miner, scoring mode, or knobs change.
 4. Worker runs `createEngine().scoreGrid(input)` → `HeatmapResult` (grid + topSites with capacity tags).
 5. Map paints heat via `ImageOverlay` from the coarse grid; pins/lines from `topSites` / selection.
 
-**Send to Raw:** expands current product targets into `rawDemand` lines and switches to Mode A.
+**Send to raw:** expands current product targets into `rawDemand` lines and switches to Mode A.
 
 ## Scoring algorithm
 
@@ -119,7 +119,7 @@ User knobs (`ScoringOptions`): `centerPower`, `heatContrast`, `topN`, `siteSepFr
 
 ### Extractor rates
 
-See `src/lib/mining.ts` and `docs/DATA.md`. **Miner Mk only affects solid ores**. Independent clocks (50–250%): miner, oil extractor, water extractor, well pressurizer. Open water is not in the node file: `prepareNodes` merges basemap `openWater` bodies into the `Desc_Water_C` supply pool (finite slots × 120 × water clock). Mode B can mark Water off-site in Expansion.
+See `src/lib/mining.ts` and `docs/DATA.md`. **Miner Mk only affects solid ores**. Independent clocks (50–250%): miner, oil extractor, water extractor, well pressurizer. Open water is not in the node file: `prepareNodes` merges basemap `openWater` bodies into the `Desc_Water_C` supply pool (finite slots × 120 × water clock). Mode B can mark Water off-site under Intermediates.
 
 ## Map rendering
 
@@ -140,10 +140,11 @@ Approximate bounds (`meta.worldBounds`):
 
 1. **Basemap** — self-hosted XYZ WebP tiles (`tilePane` ~200)
 2. **Heatmap** `ImageOverlay` — `heatmapPane` 350
-3. **Haul lines** — `haulLinePane` 400
-4. **Demand nodes** — `nodePane` 520
-5. **Site / hotspot pins** — `sitePinPane` 600
-6. **Tooltips** — default `tooltipPane` 650
+3. **Ambient demand nodes** — `nodePane` 400 (under haul lines)
+4. **Haul / assignment lines** — `haulLinePane` 500
+5. **Assignment endpoints** — `assignedNodePane` 550 (water sources + selected feed nodes, on top of lines)
+6. **Site / hotspot pins** — `sitePinPane` 600
+7. **Tooltips** — default `tooltipPane` 650
 
 Panes are created **synchronously** before path layers attach (avoids Leaflet `_removePath` crashes).
 
@@ -191,7 +192,7 @@ Rust: `crates/engine` + `crates/vendored/konsl_randomization`. Compile via `npm 
 - Zustand `persist` → localStorage key **`sf-heatmap-v5`**: mode, raw lines, product targets, miner, scoring mode, knobs, UI prefs.
 - Merge migrates legacy scoring mode names; ignores removed capacity-mode / scaleHeadroom fields.
 - **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~20–35 chars**. Binary packs flags, quantized knobs, and catalog-index demand lines for the **active mode only** (raw *or* products). Catalogs are append-only. On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced).
-- **Reset knobs** → scoring options + heat opacity + show nodes.
+- **Reset clustering** → scoring options + heat opacity + show nodes.
 - **Reset all defaults** → extractors, scoring mode, knobs — **keeps** mode, raw demand, and products.
 - Export plan JSON from planner.
 - `vite-plugin-pwa` precaches shell + JSON.

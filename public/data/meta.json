@@ -1,6 +1,6 @@
 {
   "gameVersion": "1.0+",
-  "dataNote": "Nodes: rockfactory MIT bootstrap. Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). Basemap: wiki-derived WebPs via map-tiles/v1.tar.gz (map:ensure) or map:generate. Open water: public/data/water/open-water.json from the same map:generate pass. See docs/DATA.md.",
+  "dataNote": "Nodes: FModel Persistent_Level extract (npm run extract-world-nodes). Recipes/items: compact extract from Coffee Stain Docs (npm run parse-docs). Basemap: wiki-derived WebPs via map-tiles/v1.tar.gz (map:ensure) or map:generate. Open water: public/data/water/open-water.json from the same map:generate pass. See docs/DATA.md.",
   "worldBounds": {
     "minX": -324700,
     "maxX": 425300,

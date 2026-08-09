@@ -31,7 +31,7 @@ export default defineConfig({
         name: "Satisfactory Heatmap",
         short_name: "SF Heatmap",
         description:
-          "Capacity-aware heatmap for Satisfactory — raw rates or product targets, including 1.2+ map seeds.",
+          'Answers "Where to build" in Satisfactory. Raw rates or product targets → best factory sites. For v1.2.',
         theme_color: "#0f172a",
         background_color: "#0f172a",
         display: "standalone",

@@ -1,8 +1,10 @@
+import { Fragment } from "react";
 import { CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { ensureMapPanes } from "@/components/map/MapPanes";
 import { worldToLeaflet } from "@/lib/coords";
 import { elevOffsetShouldDash } from "@/lib/heatmap/heatRender";
-import { RESOURCE_COLORS, WATER_RESOURCE_ID } from "@/lib/resources";
+import { formatRate } from "@/lib/mining";
+import { RESOURCE_COLORS, resourceLabel, WATER_RESOURCE_ID } from "@/lib/resources";
 import type { CapacityTag, MapMeta, SiteScore } from "@/types";
 
 type Props = {
@@ -47,6 +49,10 @@ function haulLineColor(resource: string, caveRisk: boolean, elevOff: boolean): s
   return "#ffffff";
 }
 
+function endpointFill(resource: string): string {
+  return RESOURCE_COLORS[resource] ?? "#94a3b8";
+}
+
 export function TopSitesLayer({
   sites,
   selectedIndex,
@@ -58,13 +64,20 @@ export function TopSitesLayer({
   ensureMapPanes(map);
 
   const selected = selectedIndex != null ? sites[selectedIndex] : null;
-  if (!map.getPane("sitePinPane") || !map.getPane("haulLinePane")) return null;
+  if (
+    !map.getPane("sitePinPane") ||
+    !map.getPane("haulLinePane") ||
+    !map.getPane("assignedNodePane")
+  ) {
+    return null;
+  }
 
   const siteZ = selected?.z ?? 0;
   const elevThresh = elevDashThresholdCm ?? -1;
 
   return (
     <>
+      {/* 4 — haul lines (above ambient demand nodes, under endpoint dots + pins) */}
       {selected?.byResource.flatMap((ra) =>
         ra.nodes.map((n) => {
           const elevOff = elevOffsetShouldDash(n.z, siteZ, elevThresh);
@@ -90,26 +103,85 @@ export function TopSitesLayer({
         }),
       )}
 
-      {/* Water source dots at the far end of water haul lines */}
-      {selected?.byResource.flatMap((ra) => {
-        if (ra.resource !== WATER_RESOURCE_ID) return [];
-        return ra.nodes.map((n) => (
-          <CircleMarker
-            key={`water-src-${selectedIndex}-${n.nodeId}`}
-            center={worldToLeaflet(n.x, n.y, meta)}
-            radius={6}
-            pane="haulLinePane"
-            pathOptions={{
-              color: "#e0f2fe",
-              fillColor: WATER_LINE,
-              fillOpacity: 1,
-              weight: 2,
-              opacity: 1,
-            }}
-          />
-        ));
-      })}
+      {/*
+        5 — “draw” endpoints: sit on top of haul lines so lines don’t bury the
+        destination (water sources + assigned demand nodes).
+      */}
+      {selected?.byResource.flatMap((ra) =>
+        ra.nodes.map((n) => {
+          const isWater = ra.resource === WATER_RESOURCE_ID;
+          const isOpenWater = n.nodeId.startsWith("ow_");
+          const fill = isWater ? WATER_LINE : endpointFill(ra.resource);
+          /**
+           * Light rim via two solid discs (not SVG stroke — stroke hit-testing is flaky).
+           *
+           * IMPORTANT: `interactive` must be a top-level CircleMarker prop.
+           * Putting it in pathOptions only reaches setStyle() and is ignored, so both
+           * circles stayed interactive; the inner (no tooltip) sat on top → tips only
+           * on the exposed rim. That showed up more consistently on CF builds.
+           */
+          const rim = "#f8fafc";
+          const outerR = isWater ? 7 : 6;
+          const innerR = isWater ? 5 : 4;
+          const center = worldToLeaflet(n.x, n.y, meta);
+          const label = resourceLabel(ra.resource);
+          const noSelect = {
+            mousedown: (e: { originalEvent: Event }) => {
+              e.originalEvent.preventDefault();
+            },
+            click: (e: { originalEvent: Event }) => {
+              e.originalEvent.preventDefault();
+              e.originalEvent.stopPropagation();
+            },
+          };
+          return (
+            <Fragment key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}>
+              {/* Outer disc: full hit target + tooltip (rim color) */}
+              <CircleMarker
+                center={center}
+                radius={outerR}
+                pane="assignedNodePane"
+                interactive
+                bubblingMouseEvents
+                className="sf-assigned-node"
+                pathOptions={{
+                  color: rim,
+                  fillColor: rim,
+                  fillOpacity: 1,
+                  weight: 0,
+                  opacity: 1,
+                }}
+                eventHandlers={noSelect}
+              >
+                <Tooltip direction="top" opacity={0.95} sticky={false}>
+                  {label}
+                  {isOpenWater ? " · open water" : ` · ${n.purity}`}
+                  {n.caveRisk ? " · cave" : ""}
+                  <br />
+                  {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
+                  <br />({Math.round(n.x)}, {Math.round(n.y)})
+                </Tooltip>
+              </CircleMarker>
+              {/* Inner fill: must be non-interactive so hover reaches the outer disc */}
+              <CircleMarker
+                center={center}
+                radius={innerR}
+                pane="assignedNodePane"
+                interactive={false}
+                pathOptions={{
+                  color: fill,
+                  fillColor: fill,
+                  fillOpacity: 1,
+                  weight: 0,
+                  opacity: 1,
+                }}
+              />
+            </Fragment>
+          );
+        }),
+      )}
 
+      {/* 6 — top-site pins */}
       {sites.map((site, i) => {
         const isSel = i === selectedIndex;
         const rank = i + 1;

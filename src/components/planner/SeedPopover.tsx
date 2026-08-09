@@ -430,8 +430,7 @@ export function SeedPopover({
                           Delete “{pt.name}”?
                         </div>
                         <div className="font-mono text-[10px] text-red-300/70">
-                          {pt.plans.length} heatmap{pt.plans.length === 1 ? "" : "s"} will be
-                          removed
+                          {pt.plans.length} plan{pt.plans.length === 1 ? "" : "s"} will be removed
                         </div>
                       </div>
                       <button
