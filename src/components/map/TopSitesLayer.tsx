@@ -112,23 +112,19 @@ export function TopSitesLayer({
           const isWater = ra.resource === WATER_RESOURCE_ID;
           const isOpenWater = n.nodeId.startsWith("ow_");
           const fill = isWater ? WATER_LINE : endpointFill(ra.resource);
-          // Light rim for selected endpoints. Two circles so hover works on the whole
-          // disc (SVG stroke-only rings miss hit-tests in some browsers / production builds).
+          /**
+           * Light rim via two solid discs (not SVG stroke — stroke hit-testing is flaky).
+           *
+           * IMPORTANT: `interactive` must be a top-level CircleMarker prop.
+           * Putting it in pathOptions only reaches setStyle() and is ignored, so both
+           * circles stayed interactive; the inner (no tooltip) sat on top → tips only
+           * on the exposed rim. That showed up more consistently on CF builds.
+           */
           const rim = "#f8fafc";
           const outerR = isWater ? 7 : 6;
           const innerR = isWater ? 5 : 4;
           const center = worldToLeaflet(n.x, n.y, meta);
           const label = resourceLabel(ra.resource);
-          const tip = (
-            <Tooltip direction="top" opacity={0.95} sticky={false}>
-              {label}
-              {isOpenWater ? " · open water" : ` · ${n.purity}`}
-              {n.caveRisk ? " · cave" : ""}
-              <br />
-              {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
-              <br />({Math.round(n.x)}, {Math.round(n.y)})
-            </Tooltip>
-          );
           const noSelect = {
             mousedown: (e: { originalEvent: Event }) => {
               e.originalEvent.preventDefault();
@@ -140,37 +136,44 @@ export function TopSitesLayer({
           };
           return (
             <Fragment key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}>
-              {/* Outer disc = rim color + full hit target + tooltip */}
+              {/* Outer disc: full hit target + tooltip (rim color) */}
               <CircleMarker
                 center={center}
                 radius={outerR}
                 pane="assignedNodePane"
+                interactive
+                bubblingMouseEvents
+                className="sf-assigned-node"
                 pathOptions={{
                   color: rim,
                   fillColor: rim,
                   fillOpacity: 1,
                   weight: 0,
                   opacity: 1,
-                  interactive: true,
-                  bubblingMouseEvents: true,
-                  className: "sf-assigned-node",
                 }}
                 eventHandlers={noSelect}
               >
-                {tip}
+                <Tooltip direction="top" opacity={0.95} sticky={false}>
+                  {label}
+                  {isOpenWater ? " · open water" : ` · ${n.purity}`}
+                  {n.caveRisk ? " · cave" : ""}
+                  <br />
+                  {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
+                  <br />({Math.round(n.x)}, {Math.round(n.y)})
+                </Tooltip>
               </CircleMarker>
-              {/* Inner fill — non-interactive so outer keeps the hover across the whole disc */}
+              {/* Inner fill: must be non-interactive so hover reaches the outer disc */}
               <CircleMarker
                 center={center}
                 radius={innerR}
                 pane="assignedNodePane"
+                interactive={false}
                 pathOptions={{
                   color: fill,
                   fillColor: fill,
                   fillOpacity: 1,
                   weight: 0,
                   opacity: 1,
-                  interactive: false,
                 }}
               />
             </Fragment>
