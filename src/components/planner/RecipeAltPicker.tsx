@@ -203,10 +203,17 @@ export function RecipeAltPicker({
     };
   }, [open]);
 
-  // Outside dismiss: close menu + clear sticky highlights (tap-away).
+  // Outside dismiss: close menu + clear sticky highlights on a real *tap*, not a
+  // scroll. Mobile pointerdown-on-scroll was wiping sticky highlights as soon as
+  // you tried to scroll a long Intermediates list (desktop wheel/trackpad is fine).
   // Anchor is excluded so a second button tap can close the menu without clearing sticky.
   useEffect(() => {
     if (!open && !highlightSticky) return;
+
+    /** px — above this, treat as drag/scroll and keep sticky highlights */
+    const TAP_SLOP = 14;
+    let gesture: { id: number; x: number; y: number } | null = null;
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -215,19 +222,44 @@ export function RecipeAltPicker({
         if (!hoveringRef.current) onHighlightChangeRef.current?.(false);
       }
     };
-    const onPointer = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t)) return;
-      if (anchorRef.current?.contains(t)) return;
+
+    const isInsideChrome = (t: Node) =>
+      Boolean(panelRef.current?.contains(t) || anchorRef.current?.contains(t));
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (isInsideChrome(e.target as Node)) {
+        gesture = null;
+        return;
+      }
+      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!gesture || e.pointerId !== gesture.id) return;
+      const start = gesture;
+      gesture = null;
+      if (isInsideChrome(e.target as Node)) return;
+      const dx = Math.abs(e.clientX - start.x);
+      const dy = Math.abs(e.clientY - start.y);
+      if (dx > TAP_SLOP || dy > TAP_SLOP) return; // scroll / drag — keep highlights
       setOpen(false);
       setHighlightSticky(false);
       onHighlightChangeRef.current?.(false);
     };
+
+    const onPointerCancel = (e: PointerEvent) => {
+      if (gesture && e.pointerId === gesture.id) gesture = null;
+    };
+
     window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
     };
   }, [open, highlightSticky]);
 
