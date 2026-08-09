@@ -718,6 +718,18 @@ export function PlannerPanel() {
   const selected =
     heatmap && selectedSiteIndex != null ? heatmap.topSites[selectedSiteIndex] : null;
 
+  // Stable props for AltQuickSelects (content changes only — not every store re-render)
+  const expansionItemIds = useMemo(() => expansionRows.map((r) => r.itemId), [expansionRows]);
+  const productTargetIds = useMemo(() => productTargets.map((t) => t.productId), [productTargets]);
+  const quickSelectProductTargets = useMemo(
+    () =>
+      productTargets.map((t) => ({
+        productId: t.productId,
+        itemsPerMinute: t.itemsPerMinute,
+      })),
+    [productTargets],
+  );
+
   return (
     <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto overscroll-contain border-slate-800 bg-slate-950/95 p-4 text-slate-100 [-webkit-overflow-scrolling:touch] md:border-r">
       <header>
@@ -910,12 +922,9 @@ export function PlannerPanel() {
                 <AltQuickSelects
                   recipes={recipes}
                   items={items}
-                  expansionItemIds={expansionRows.map((r) => r.itemId)}
-                  productTargetIds={productTargets.map((t) => t.productId)}
-                  productTargets={productTargets.map((t) => ({
-                    productId: t.productId,
-                    itemsPerMinute: t.itemsPerMinute,
-                  }))}
+                  expansionItemIds={expansionItemIds}
+                  productTargetIds={productTargetIds}
+                  productTargets={quickSelectProductTargets}
                   externalItems={externalItems}
                   onApply={applyRecipeOverrides}
                 />

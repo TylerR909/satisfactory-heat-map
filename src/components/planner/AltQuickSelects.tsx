@@ -45,6 +45,28 @@ type Props = {
  * Popover of alternate quick-selects (Defaults, All Pure, harmonies, No Screws, …).
  * Only lists presets that match the current expand / products.
  */
+/** Content fingerprint so parent `.map()` identity churn does not re-run expand solvers. */
+function sortedIdKey(ids: readonly string[]): string {
+  if (ids.length === 0) return "";
+  return [...ids].sort().join("\0");
+}
+
+function productTargetsKey(
+  targets: ReadonlyArray<{ productId: string; itemsPerMinute: number }> | undefined,
+): string {
+  if (!targets || targets.length === 0) return "";
+  return targets
+    .map((t) => `${t.productId}:${t.itemsPerMinute}`)
+    .sort()
+    .join("|");
+}
+
+/** Keep last array whose content fingerprint matches `key`. */
+function useContentStableArray<T>(arr: T[] | undefined, key: string): T[] | undefined {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity intentionally ignored; `key` is content
+  return useMemo(() => arr, [key]);
+}
+
 export function AltQuickSelects({
   recipes,
   items,
@@ -54,16 +76,22 @@ export function AltQuickSelects({
   externalItems,
   onApply,
 }: Props) {
+  // Stabilize against fresh `.map()` arrays each parent render (rate keystrokes, heat, …).
+  const expansionIds = useContentStableArray(expansionItemIds, sortedIdKey(expansionItemIds));
+  const productIds = useContentStableArray(productTargetIds, sortedIdKey(productTargetIds));
+  const targets = useContentStableArray(productTargets, productTargetsKey(productTargets));
+  const externals = useContentStableArray(externalItems, sortedIdKey(externalItems ?? []));
+
   const ctx: QuickSelectContext = useMemo(
     () => ({
       recipes,
       items,
-      expansionItemIds: new Set(expansionItemIds),
-      productTargetIds: new Set(productTargetIds),
-      productTargets,
-      externalItems,
+      expansionItemIds: new Set(expansionIds ?? []),
+      productTargetIds: new Set(productIds ?? []),
+      productTargets: targets,
+      externalItems: externals,
     }),
-    [recipes, items, expansionItemIds, productTargetIds, productTargets, externalItems],
+    [recipes, items, expansionIds, productIds, targets, externals],
   );
 
   const options = useMemo(() => applicableQuickSelects(ctx), [ctx]);
