@@ -81,9 +81,10 @@ export const RESOURCE_COLORS: Record<string, string> = {
   Desc_Stone_C: "#5eead4",
   // Dark slate (not pure black — too stark on the map)
   Desc_Coal_C: "#334155",
-  // Gold / amber (sulfur is brighter yellow)
-  Desc_OreGold_C: "#ca8a04",
+  // Caterium — pale metallic gold (ingot-like), not copper-orange
+  Desc_OreGold_C: "#e8c547",
   Desc_RawQuartz_C: "#e879f9",
+  // Brighter lemon — distinct from caterium gold
   Desc_Sulfur_C: "#fde047",
   // Brick — darker than copper orange
   Desc_OreBauxite_C: "#9a3412",
