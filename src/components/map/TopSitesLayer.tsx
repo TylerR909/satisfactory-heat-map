@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { ensureMapPanes } from "@/components/map/MapPanes";
 import { worldToLeaflet } from "@/lib/coords";
@@ -111,45 +112,68 @@ export function TopSitesLayer({
           const isWater = ra.resource === WATER_RESOURCE_ID;
           const isOpenWater = n.nodeId.startsWith("ow_");
           const fill = isWater ? WATER_LINE : endpointFill(ra.resource);
-          // Light border only on selected “draw” endpoints (not ambient demand nodes).
-          const stroke = "#f8fafc";
+          // Light rim for selected endpoints. Two circles so hover works on the whole
+          // disc (SVG stroke-only rings miss hit-tests in some browsers / production builds).
+          const rim = "#f8fafc";
+          const outerR = isWater ? 7 : 6;
+          const innerR = isWater ? 5 : 4;
+          const center = worldToLeaflet(n.x, n.y, meta);
           const label = resourceLabel(ra.resource);
+          const tip = (
+            <Tooltip direction="top" opacity={0.95} sticky={false}>
+              {label}
+              {isOpenWater ? " · open water" : ` · ${n.purity}`}
+              {n.caveRisk ? " · cave" : ""}
+              <br />
+              {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
+              <br />({Math.round(n.x)}, {Math.round(n.y)})
+            </Tooltip>
+          );
+          const noSelect = {
+            mousedown: (e: { originalEvent: Event }) => {
+              e.originalEvent.preventDefault();
+            },
+            click: (e: { originalEvent: Event }) => {
+              e.originalEvent.preventDefault();
+              e.originalEvent.stopPropagation();
+            },
+          };
           return (
-            <CircleMarker
-              key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}
-              center={worldToLeaflet(n.x, n.y, meta)}
-              radius={isWater ? 6 : 5}
-              pane="assignedNodePane"
-              pathOptions={{
-                color: stroke,
-                fillColor: fill,
-                fillOpacity: 1,
-                weight: 2,
-                opacity: 1,
-                // Hoverable for tooltips only — sit above ambient nodes so must carry tips themselves.
-                interactive: true,
-                bubblingMouseEvents: true,
-                className: "sf-assigned-node",
-              }}
-              eventHandlers={{
-                mousedown: (e) => {
-                  e.originalEvent.preventDefault();
-                },
-                click: (e) => {
-                  e.originalEvent.preventDefault();
-                  e.originalEvent.stopPropagation();
-                },
-              }}
-            >
-              <Tooltip direction="top" opacity={0.95} sticky={false}>
-                {label}
-                {isOpenWater ? " · open water" : ` · ${n.purity}`}
-                {n.caveRisk ? " · cave" : ""}
-                <br />
-                {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
-                <br />({Math.round(n.x)}, {Math.round(n.y)})
-              </Tooltip>
-            </CircleMarker>
+            <Fragment key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}>
+              {/* Outer disc = rim color + full hit target + tooltip */}
+              <CircleMarker
+                center={center}
+                radius={outerR}
+                pane="assignedNodePane"
+                pathOptions={{
+                  color: rim,
+                  fillColor: rim,
+                  fillOpacity: 1,
+                  weight: 0,
+                  opacity: 1,
+                  interactive: true,
+                  bubblingMouseEvents: true,
+                  className: "sf-assigned-node",
+                }}
+                eventHandlers={noSelect}
+              >
+                {tip}
+              </CircleMarker>
+              {/* Inner fill — non-interactive so outer keeps the hover across the whole disc */}
+              <CircleMarker
+                center={center}
+                radius={innerR}
+                pane="assignedNodePane"
+                pathOptions={{
+                  color: fill,
+                  fillColor: fill,
+                  fillOpacity: 1,
+                  weight: 0,
+                  opacity: 1,
+                  interactive: false,
+                }}
+              />
+            </Fragment>
           );
         }),
       )}
