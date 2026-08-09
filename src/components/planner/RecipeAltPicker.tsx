@@ -27,22 +27,44 @@ import type { ItemDef, Recipe } from "@/types";
 
 const PAD = 8;
 const PANEL_W = 300;
+const GAP = 6;
 /** Recipe-control (◇ / −) summary tip — delayed so it doesn't fight link-highlight scanning. */
 const RECIPE_BUTTON_TIP_MS = 500;
 
-type Pos = { left: number; top: number };
+type Pos = { left: number; top: number; maxHeight: number };
 
+/**
+ * Position the alt popover so it never covers the anchor button.
+ * (Covering the button breaks mobile: tap open → tap again to close while keeping
+ * row highlights; outside tap clears highlights.)
+ *
+ * Prefer the side with more room; pin top/bottom to the anchor edge and cap height
+ * instead of sliding the panel over the button when the viewport is tight.
+ */
 function clampPanel(anchor: DOMRect, w: number, h: number, vw: number, vh: number): Pos {
   const width = Math.min(w, vw - PAD * 2);
   // Prefer align to button right (column sits on the right edge of the row)
   let left = anchor.right - width;
   left = Math.min(vw - PAD - width, Math.max(PAD, left));
-  const spaceBelow = vh - anchor.bottom - PAD;
-  const spaceAbove = anchor.top - PAD;
-  const placeBelow = spaceBelow >= Math.min(h, 200) || spaceBelow >= spaceAbove;
-  let top = placeBelow ? anchor.bottom + 6 : anchor.top - 6 - h;
-  top = Math.min(vh - PAD - h, Math.max(PAD, top));
-  return { left, top };
+
+  const spaceBelow = Math.max(0, vh - anchor.bottom - PAD - GAP);
+  const spaceAbove = Math.max(0, anchor.top - PAD - GAP);
+  // Prefer below only when it fully fits; otherwise prefer above when that fits;
+  // else use the roomier side with a height cap (still never straddling the button).
+  const placeBelow =
+    spaceBelow >= Math.min(h, 160)
+      ? true
+      : spaceAbove >= Math.min(h, 160)
+        ? false
+        : spaceBelow >= spaceAbove;
+
+  if (placeBelow) {
+    const maxHeight = Math.max(120, spaceBelow);
+    return { left, top: anchor.bottom + GAP, maxHeight };
+  }
+  const maxHeight = Math.max(120, spaceAbove);
+  const usedH = Math.min(h, maxHeight);
+  return { left, top: anchor.top - GAP - usedH, maxHeight };
 }
 
 type Props = {
@@ -90,6 +112,11 @@ export function RecipeAltPicker({
   const [open, setOpen] = useState(false);
   /** Hover tip for the currently selected recipe (default or alt). */
   const [recipeTipOpen, setRecipeTipOpen] = useState(false);
+  /**
+   * After opening (esp. mobile), keep row highlights when the menu is closed via
+   * a second tap on the alt button — clear only on outside tap / Escape / dim.
+   */
+  const [highlightSticky, setHighlightSticky] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const hoveringRef = useRef(false);
@@ -116,6 +143,7 @@ export function RecipeAltPicker({
   useEffect(() => {
     setOpen(false);
     setRecipeTipOpen(false);
+    setHighlightSticky(false);
     clearRecipeTipTimer();
     hoveringRef.current = false;
     setHighlight(false);
@@ -126,6 +154,7 @@ export function RecipeAltPicker({
     if (!dimmed) return;
     setOpen(false);
     setRecipeTipOpen(false);
+    setHighlightSticky(false);
     if (recipeTipTimer.current) {
       clearTimeout(recipeTipTimer.current);
       recipeTipTimer.current = null;
@@ -140,13 +169,13 @@ export function RecipeAltPicker({
     };
   }, []);
 
-  // Menu open (incl. mobile tap) holds input-link highlight; close clears unless still hovering.
-  // Only depend on `open` — sibling pickers must not re-fire clear on parent re-render.
+  // Menu open always lights links; sticky keeps them after mobile close-via-button.
+  // Only depend on `open` / sticky — sibling pickers must not re-fire clear on parent re-render.
   useEffect(() => {
     if (dimmed) return;
-    if (open) onHighlightChangeRef.current?.(true);
+    if (open || highlightSticky) onHighlightChangeRef.current?.(true);
     else if (!hoveringRef.current) onHighlightChangeRef.current?.(false);
-  }, [open, dimmed]);
+  }, [open, highlightSticky, dimmed]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -174,27 +203,33 @@ export function RecipeAltPicker({
     };
   }, [open]);
 
+  // Outside dismiss: close menu + clear sticky highlights (tap-away).
+  // Anchor is excluded so a second button tap can close the menu without clearing sticky.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !highlightSticky) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         setOpen(false);
+        setHighlightSticky(false);
+        if (!hoveringRef.current) onHighlightChangeRef.current?.(false);
       }
     };
-    const onPointer = (e: MouseEvent) => {
+    const onPointer = (e: PointerEvent) => {
       const t = e.target as Node;
       if (panelRef.current?.contains(t)) return;
       if (anchorRef.current?.contains(t)) return;
       setOpen(false);
+      setHighlightSticky(false);
+      onHighlightChangeRef.current?.(false);
     };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointer);
+    window.addEventListener("pointerdown", onPointer);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointer);
+      window.removeEventListener("pointerdown", onPointer);
     };
-  }, [open]);
+  }, [open, highlightSticky]);
 
   // Off-site: inert glyph only (no menu / hover / tips)
   if (dimmed) {
@@ -248,7 +283,13 @@ export function RecipeAltPicker({
         onClick={() => {
           clearRecipeTipTimer();
           setRecipeTipOpen(false);
-          setOpen((v) => !v);
+          if (open) {
+            // Second tap: close menu, keep sticky highlights until outside tap
+            setOpen(false);
+          } else {
+            setHighlightSticky(true);
+            setOpen(true);
+          }
         }}
         onMouseEnter={() => {
           hoveringRef.current = true;
@@ -260,8 +301,8 @@ export function RecipeAltPicker({
         }}
         onMouseLeave={() => {
           hoveringRef.current = false;
-          // Hold while menu open (popover / touch path)
-          if (!open) setHighlight(false);
+          // Hold while menu open or sticky (mobile close-via-button)
+          if (!open && !highlightSticky) setHighlight(false);
           clearRecipeTipTimer();
           setRecipeTipOpen(false);
         }}
@@ -286,8 +327,12 @@ export function RecipeAltPicker({
             ref={panelRef}
             role="dialog"
             aria-labelledby={titleId}
-            className="fixed z-[6000] max-h-[min(70vh,28rem)] w-[min(300px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
-            style={{ left: pos.left, top: pos.top }}
+            className="fixed z-[6000] w-[min(300px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
+            style={{
+              left: pos.left,
+              top: pos.top,
+              maxHeight: Math.min(pos.maxHeight, window.innerHeight * 0.7, 28 * 16),
+            }}
           >
             <div className="border-b border-slate-800 px-3 py-2">
               <h3 id={titleId} className="text-xs font-medium text-slate-200">
@@ -337,7 +382,11 @@ export function RecipeAltPicker({
   );
 }
 
-/** Portal hover tip anchored to a control (selected recipe IO summary). */
+/**
+ * Portal hover tip for the alt / preview control.
+ * Desktop: to the **right** of the control (falls back left if clipped) so it
+ * does not cover Intermediate rows above the button.
+ */
 function RecipeHoverTip({
   anchorRef,
   text,
@@ -345,31 +394,44 @@ function RecipeHoverTip({
   anchorRef: RefObject<HTMLElement | null>;
   text: string;
 }) {
-  const [pos, setPos] = useState<{ left: number; top: number; place: "above" | "below" } | null>(
-    null,
-  );
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{
+    left: number;
+    top: number;
+    side: "right" | "left";
+  } | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: remount with new `text` repositions tip
   useLayoutEffect(() => {
     const el = anchorRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const left = Math.min(window.innerWidth - 8, Math.max(8, r.left + r.width / 2));
-    const place: "above" | "below" = r.top > 48 ? "above" : "below";
-    const top = place === "above" ? r.top - 6 : r.bottom + 6;
-    setPos({ left, top, place });
+    const vw = window.innerWidth;
+    const tipW = tipRef.current?.offsetWidth ?? 220;
+    const tipH = tipRef.current?.offsetHeight ?? 48;
+    const roomRight = vw - r.right - PAD;
+    const side: "right" | "left" = roomRight >= Math.min(tipW, 120) + GAP ? "right" : "left";
+    const left = side === "right" ? r.right + GAP : r.left - GAP;
+    // Vertically center on the control; clamp into the viewport
+    let top = r.top + r.height / 2;
+    top = Math.min(window.innerHeight - PAD - tipH / 2, Math.max(PAD + tipH / 2, top));
+    setPos({ left, top, side });
   }, [anchorRef, text]);
 
-  if (!pos) return null;
   return (
     <span
+      ref={tipRef}
       role="tooltip"
       className="pointer-events-none fixed z-[7000] max-w-[16rem] rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-[10px] leading-snug text-slate-200 shadow-lg"
-      style={{
-        left: pos.left,
-        top: pos.top,
-        transform: pos.place === "above" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
-      }}
+      style={
+        pos
+          ? {
+              left: pos.left,
+              top: pos.top,
+              transform: pos.side === "right" ? "translate(0, -50%)" : "translate(-100%, -50%)",
+            }
+          : { visibility: "hidden", left: 0, top: 0 }
+      }
     >
       {text}
     </span>
