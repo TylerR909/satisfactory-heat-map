@@ -487,6 +487,222 @@ describe("fluid unit normalization (Docs milliliters → m³)", () => {
   });
 });
 
+describe("byproduct-only + alt-only production", () => {
+  it("Distilled Silica expands Dissolved Silica via Quartz Purification", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+
+    const distilledId = "Recipe_Alternate_Silica_Distilled_C";
+    expect(recipes.some((r) => r.id === distilledId)).toBe(true);
+
+    const { demand, intermediates, unresolved } = solveProductsToRaw(
+      [{ productId: "Desc_Silica_C", itemsPerMinute: 270 }],
+      recipes,
+      items,
+      { recipeOverrides: { Desc_Silica_C: distilledId } },
+    );
+
+    // Dissolved Silica is byproduct-only — must still expand
+    expect(intermediates.Desc_DissolvedSilica_C).toBeGreaterThan(0);
+    expect(unresolved.find((u) => u.itemId === "Desc_DissolvedSilica_C")).toBeUndefined();
+    // Quartz Purification needs quartz + nitric acid path
+    expect(demand.some((d) => d.resource === "Desc_RawQuartz_C")).toBe(true);
+    // Should not leave silica unresolved
+    expect(unresolved.find((u) => u.itemId === "Desc_Silica_C")).toBeUndefined();
+  });
+
+  it("alt-only products still expand (Turbofuel, Compacted Coal)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+
+    const turbo = solveProductsToRaw(
+      [{ productId: "Desc_LiquidTurboFuel_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    expect(turbo.unresolved.find((u) => u.itemId === "Desc_LiquidTurboFuel_C")).toBeUndefined();
+    expect(turbo.demand.length).toBeGreaterThan(0);
+
+    const compact = solveProductsToRaw(
+      [{ productId: "Desc_CompactedCoal_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    expect(compact.unresolved.find((u) => u.itemId === "Desc_CompactedCoal_C")).toBeUndefined();
+    expect(compact.demand.some((d) => d.resource === "Desc_Coal_C")).toBe(true);
+  });
+
+  it("does not use Alumina byproduct as Silica default", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_Silica_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    // Default Silica is quartz-only — not bauxite via alumina byproduct
+    expect(demand.find((d) => d.resource === "Desc_OreBauxite_C")).toBeUndefined();
+    expect(demand.find((d) => d.resource === "Desc_RawQuartz_C")?.itemsPerMinute).toBeCloseTo(
+      36,
+      5,
+    );
+  });
+});
+
+describe("plastic/rubber polymer default + recycled cycle", () => {
+  it("defaults Plastic to crude-oil path; Residual is an explicit override", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+    const baseline = solveProductsToRaw(
+      [{ productId: "Desc_Plastic_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    // Game default: crude → plastic (+ HOR), not polymer residual
+    expect(baseline.unresolved).toHaveLength(0);
+    expect(baseline.demand.some((d) => d.resource === "Desc_LiquidOil_C")).toBe(true);
+    expect(baseline.intermediates.Desc_PolymerResin_C ?? 0).toBe(0);
+
+    const polymer = solveProductsToRaw(
+      [{ productId: "Desc_Plastic_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { recipeOverrides: { Desc_Plastic_C: "Recipe_ResidualPlastic_C" } },
+    );
+    expect(polymer.unresolved).toHaveLength(0);
+    expect(polymer.intermediates.Desc_PolymerResin_C).toBeGreaterThan(0);
+    expect(polymer.demand.some((d) => d.resource === "Desc_Water_C")).toBe(true);
+  });
+
+  it("Recycled Plastic + Recycled Rubber expand without unresolved cycle", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+    const { demand, unresolved } = solveProductsToRaw(
+      [{ productId: "Desc_Plastic_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      {
+        recipeOverrides: {
+          Desc_Plastic_C: "Recipe_Alternate_Plastic_1_C",
+          Desc_Rubber_C: "Recipe_Alternate_RecycledRubber_C",
+        },
+      },
+    );
+    expect(unresolved.filter((u) => u.reason === "recipe cycle")).toHaveLength(0);
+    // Seed + fuel should hit oil and/or water
+    expect(demand.length).toBeGreaterThan(0);
+    expect(
+      demand.some((d) => d.resource === "Desc_LiquidOil_C" || d.resource === "Desc_Water_C"),
+    ).toBe(true);
+  });
+});
+
+describe("recipeOverrides (Mode B alternates)", () => {
+  const items: Record<string, ItemDef> = {
+    Desc_OreIron_C: { id: "Desc_OreIron_C", name: "Iron Ore", raw: true },
+    Desc_Water_C: { id: "Desc_Water_C", name: "Water", raw: true },
+    Desc_IronIngot_C: { id: "Desc_IronIngot_C", name: "Iron Ingot", raw: false },
+    Desc_IronPlate_C: { id: "Desc_IronPlate_C", name: "Iron Plate", raw: false },
+  };
+
+  const recipes: Recipe[] = [
+    {
+      id: "Recipe_IronIngot_C",
+      name: "Iron Ingot",
+      durationSec: 2,
+      ingredients: [{ item: "Desc_OreIron_C", amount: 1 }],
+      products: [{ item: "Desc_IronIngot_C", amount: 1 }],
+      alternate: false,
+    },
+    {
+      id: "Recipe_Alternate_PureIronIngot_C",
+      name: "Alternate: Pure Iron Ingot",
+      durationSec: 12,
+      ingredients: [
+        { item: "Desc_OreIron_C", amount: 7 },
+        { item: "Desc_Water_C", amount: 4 },
+      ],
+      products: [{ item: "Desc_IronIngot_C", amount: 13 }],
+      alternate: true,
+    },
+    {
+      id: "Recipe_IronPlate_C",
+      name: "Iron Plate",
+      durationSec: 6,
+      ingredients: [{ item: "Desc_IronIngot_C", amount: 3 }],
+      products: [{ item: "Desc_IronPlate_C", amount: 2 }],
+      alternate: false,
+    },
+  ];
+
+  it("default expand uses non-alt iron ingot", () => {
+    // 60 plate → 90 ingot → 90 ore
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(90, 5);
+    expect(demand.find((d) => d.resource === "Desc_Water_C")).toBeUndefined();
+  });
+
+  it("override Pure Iron Ingot reduces ore and adds water", () => {
+    // 60 plate → 90 ingot; pure: 7 ore + 4 water per 13 ingot
+    // crafts = 90/13; ore = 90/13*7; water = 90/13*4
+    const { demand, intermediates } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { recipeOverrides: { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" } },
+    );
+    expect(intermediates.Desc_IronIngot_C).toBeCloseTo(90, 5);
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(
+      (90 / 13) * 7,
+      5,
+    );
+    expect(demand.find((d) => d.resource === "Desc_Water_C")?.itemsPerMinute).toBeCloseTo(
+      (90 / 13) * 4,
+      5,
+    );
+  });
+
+  it("invalid override falls back to default", () => {
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { recipeOverrides: { Desc_IronIngot_C: "Recipe_DoesNotExist_C" } },
+    );
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(90, 5);
+  });
+});
+
 describe("externalItems (import / off-site prune)", () => {
   const items: Record<string, ItemDef> = {
     Desc_OreIron_C: { id: "Desc_OreIron_C", name: "Iron Ore", raw: true },

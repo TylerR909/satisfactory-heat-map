@@ -39,9 +39,16 @@
 ## Phase 2 — Depth without becoming a calculator
 
 - [x] Mode B **Resource Toggle** — mark intermediates off-site / imported (stop expand); Empty Canister + Empty Fluid Tank default off-site; **Water** also off-site-able; share-hash + Intermediates UI
-- [ ] Mode B **alternate recipe toggles** (alts in data; UI still default-only — same Intermediates rows later)
+- [x] Mode B **alternate recipes** (**Intermediates & Alternates**) — done as a shippable slice:
+  - [x] Squarish picker + popover (default + alts; Residual / non-HD paths selectable)
+  - [x] Live re-expand + share-hash / persist `recipeOverrides`
+  - [x] Deterministic badges (Removes / Skips / Pure / Alloy / Screw-Free / RE / High Throughput / machine via Docs `producedIn` / unavoidable Adds / …)
+  - [x] Quick selects (Defaults, All Pure, No Screws, RE, Polymer, Recycled, Oil→recycled, Al packs, …)
+  - [x] **Minimize Input Types** (greedy unique-raw expand; not blind Removes badges)
+  - [x] List sort (ingredients-first ↔ products-first; display-only local pref)
+  - [x] Recipe-control hover: violet predicates + emerald consumers
 - [ ] **Blueprint paste** — paste a Satisfactory blueprint string; derive raw demand (and/or product targets) for the heatmap without becoming a full planner
-- [ ] “These alts unlock hotter regions” comparison (nice-to-have)
+- [ ] “These alts unlock hotter regions” comparison (nice-to-have — not required for alt MVP)
 - [ ] Cave node flags / better elevation heuristics
 - [ ] Clearer per-resource breakdown (smell-test / trust) — water haul lines already colored
 

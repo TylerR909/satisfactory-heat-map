@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { decodePlanHash, encodePlanHash, mapSeedsEqual, type PlanHashSource } from "@/lib/planHash";
-import { getActiveSavedSeed, loadSeedLibrary, persistSeedLibrary } from "@/lib/savedSeeds";
+import {
+  ensureDefaultSavedSeed,
+  findSavedSeedByMapSeed,
+  getActiveSavedSeed,
+  loadSeedLibrary,
+  persistSeedLibrary,
+} from "@/lib/savedSeeds";
 import { useAppStore } from "@/store/useAppStore";
 
 function pickPlanSource(): PlanHashSource {
@@ -14,6 +20,7 @@ function pickPlanSource(): PlanHashSource {
     scoringOptions: s.scoringOptions,
     seed: s.seed,
     externalItems: s.externalItems,
+    recipeOverrides: s.recipeOverrides,
   };
 }
 
@@ -45,18 +52,32 @@ export function usePlanHash(writeDebounceMs = 200) {
       if (!snap) return false;
       applyingHash.current = true;
 
-      // Shared URL: stay on active saved seed only if seed matches; else ephemeral
+      // Shared URL shelf policy (amber UI is derived: seed not in library):
+      // - matching active shelf → stay attached
+      // - seed exists under another saved entry → attach that shelf
+      // - Default → ensure Default shelf
+      // - seed not in library → detach so we don't rewrite shelves
       const lib = loadSeedLibrary();
       const active = getActiveSavedSeed(lib);
       const hashSeed = snap.seed ?? null;
       if (active && mapSeedsEqual(active.seed, hashSeed)) {
         useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
-      } else if (active && !mapSeedsEqual(active.seed, hashSeed)) {
-        // Ephemeral: clear active saved seed so we don't rewrite its shelf
-        persistSeedLibrary({ ...lib, activeId: null });
-        useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
       } else {
-        useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+        const owned = findSavedSeedByMapSeed(lib, hashSeed);
+        if (owned) {
+          if (lib.activeId !== owned.id) {
+            persistSeedLibrary({ ...lib, activeId: owned.id });
+          }
+          useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+        } else if (hashSeed === null) {
+          persistSeedLibrary(ensureDefaultSavedSeed(lib));
+          useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+        } else {
+          if (lib.activeId) {
+            persistSeedLibrary({ ...lib, activeId: null });
+          }
+          useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
+        }
       }
 
       queueMicrotask(() => {

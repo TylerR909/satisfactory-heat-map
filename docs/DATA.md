@@ -138,6 +138,7 @@ Re-export `Persistent_Level` from FModel for the new build, replace `data/Persis
 3. `npm run parse-docs` → `scripts/parse-docs.mjs`  
    - Keeps recipes produced in **automated factory buildings** (constructor / assembler / smelter / manufacturer / …).  
    - Drops Equipment Workshop-only recipes (Hoverpack, Xeno-Zapper, …). Dual workshop+factory (e.g. Explosive Rebar) stay.  
+   - Stores primary factory **`producedIn`** (`Build_OilRefinery_C`, …) for machine badges — never infer buildings from ingredient count.  
    - Marks `alternate` from ClassName / display name.  
    - **Fluids/gases:** Docs amounts are milliliters (`1000` = 1 m³). Parser divides by 1000 so rates match the in-game UI (avoids 112 500 crude bugs on packaging chains).  
    - Items: raw map resources + recipe IO only. **`automatable: true`** = product of a default factory recipe → Products dropdown. World pickups (Power Slugs, Mercer Spheres), enemy drops (Hog Remains), and workshop-only gear never get `automatable`.  
@@ -262,5 +263,5 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 - [ ] Diff Konsl/default-world tables if randomization changed  
 - [ ] Bump `meta.json` `gameVersion`  
 - [ ] If map art changed: `map:generate` + `map:pack` + commit `map-tiles/v1.tar.gz` **and** `public/data/water/open-water.json`  
-- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Intermediates off-site Water + Send to raw, capacity tags, seed mode when present  
+- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Intermediates off-site Water + alt pick / quick select + Send to raw, capacity tags, seed mode when present  
 

@@ -226,24 +226,37 @@ describe("planHash compact v1 (computation only)", () => {
     expect(decoded?.externalItems).toEqual(["Desc_FluidCanister_C", "Desc_GasTank_C"]);
   });
 
-  it("omits external tail when empty (backward-compatible short hash)", () => {
+  it("omits external tail when empty (shorter hash)", () => {
     const bare = encodePlanHash(sample({ externalItems: [] }));
     const withExt = encodePlanHash(sample({ externalItems: ["Desc_FluidCanister_C"] }));
     expect(bare.length).toBeLessThan(withExt.length);
     expect(decodePlanHash(bare)?.externalItems).toEqual([]);
   });
 
-  it("decodes older hashes without external flag as empty externalItems", () => {
-    // Product HMF 10, no external / seed — must still decode
-    const legacy = encodePlanHash(
+  it("round-trips recipeOverrides (Mode B alternate picks)", () => {
+    const src = sample({
+      mode: "product",
+      productTargets: [{ id: "p", productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+      recipeOverrides: {
+        Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C",
+        Desc_IronPlateReinforced_C: "Recipe_Alternate_StitchedIronPlate_C",
+      },
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.recipeOverrides).toEqual({
+      Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C",
+      Desc_IronPlateReinforced_C: "Recipe_Alternate_StitchedIronPlate_C",
+    });
+  });
+
+  it("omits recipeOverrides tail when empty (shorter hash)", () => {
+    const bare = encodePlanHash(sample({ recipeOverrides: {} }));
+    const withOv = encodePlanHash(
       sample({
-        mode: "product",
-        productTargets: [{ id: "p", productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
-        externalItems: [],
+        recipeOverrides: { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" },
       }),
     );
-    const decoded = decodePlanHash(legacy);
-    expect(decoded?.externalItems).toEqual([]);
-    expect(decoded?.productTargets[0]?.productId).toBe("Desc_ModularFrameHeavy_C");
+    expect(bare.length).toBeLessThan(withOv.length);
+    expect(decodePlanHash(bare)?.recipeOverrides).toEqual({});
   });
 });

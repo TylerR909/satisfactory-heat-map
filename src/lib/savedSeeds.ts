@@ -25,9 +25,25 @@ export type SavedSeed = {
 
 export type SeedLibrary = {
   seeds: SavedSeed[];
-  /** null = ephemeral world (random / shared URL) not in library */
+  /**
+   * Active named shelf. `null` = detached from the library (shared-link plan
+   * for a seed you don't have saved, or a temporary Random world before Save).
+   * Normal Default usage should always have an active shelf — see
+   * {@link ensureDefaultSavedSeed}.
+   */
   activeId: string | null;
 };
+
+/** Listeners notified after {@link persistSeedLibrary} (same-tab sync). */
+const libraryListeners = new Set<() => void>();
+
+/** Subscribe to local seed-library writes (e.g. from hash sync). */
+export function subscribeSeedLibrary(listener: () => void): () => void {
+  libraryListeners.add(listener);
+  return () => {
+    libraryListeners.delete(listener);
+  };
+}
 
 function newId(): string {
   return `seed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -90,6 +106,40 @@ export function persistSeedLibrary(lib: SeedLibrary): void {
   } catch {
     // Private mode / quota — best-effort
   }
+  for (const listener of libraryListeners) {
+    try {
+      listener();
+    } catch {
+      /* ignore subscriber errors */
+    }
+  }
+}
+
+/**
+ * Find or create the vanilla Default shelf (`seed: null`) and make it active.
+ * Used so everyday Default-map work is never "ephemeral".
+ */
+export function ensureDefaultSavedSeed(lib: SeedLibrary): SeedLibrary {
+  const existing = lib.seeds.find((p) => p.seed === null);
+  if (existing) {
+    return { ...lib, activeId: existing.id };
+  }
+  const pt = createSavedSeed({
+    name: uniqueSeedName(lib, "Default"),
+    seed: null,
+    autoNamed: false,
+  });
+  return upsertSavedSeed(lib, pt);
+}
+
+/** First library entry whose map seed matches (null = Default). */
+export function findSavedSeedByMapSeed(lib: SeedLibrary, seed: MapSeed): SavedSeed | null {
+  return lib.seeds.find((p) => p.seed === seed) ?? null;
+}
+
+/** True when some named shelf already owns this map seed (incl. Default / null). */
+export function isMapSeedSaved(lib: SeedLibrary, seed: MapSeed): boolean {
+  return findSavedSeedByMapSeed(lib, seed) !== null;
 }
 
 export function defaultNameForSeed(seed: MapSeed): string {

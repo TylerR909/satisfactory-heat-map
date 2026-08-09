@@ -22,7 +22,8 @@ import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
  * seed (has-seed flag + i32; omitted when Default/null for short hashes), optional
  * external items (has-external flag + ClassName tokens — intermediates **and** Water),
  * extractor extension when present (water clock, well pressurizer clock, wells-enabled,
- * optional trailing oil clock).
+ * optional trailing oil clock), optional **recipe overrides** after oil
+ * (product itemId → alternate recipe ClassName; only non-default picks).
  *
  * **Products:** ClassNames are stored inline (no product allowlist). If the Products
  * dropdown can select it, the hash can encode it. Raw resources still use the fixed
@@ -43,7 +44,7 @@ const FLAG_HAS_EXTERNAL = 1 << 6;
 /**
  * flags bit 7: trailing extractor extension present
  * Layout: waterClock u8, wellClock u8, wellFlags u8 (bit0 = resourceWellsEnabled),
- * optional oilClock u8 (appended; older hashes omit → default 250%).
+ * optional oilClock u8 (appended when present).
  */
 const FLAG_HAS_EXTRACTOR_EXT = 1 << 7;
 
@@ -52,8 +53,12 @@ const MAX_LINES = 15;
 const MAX_RATE = 65_535;
 /** Max external intermediate ids encoded in the share hash. */
 const MAX_EXTERNAL = 15;
+/** Max Mode B recipe overrides (product → alternate recipe) in the share hash. */
+const MAX_RECIPE_OVERRIDES = 20;
 /** Max UTF-8 bytes for a compact product token (ClassName without Desc_/_C). */
 const MAX_PRODUCT_TOKEN_BYTES = 120;
+/** Max UTF-8 bytes for a compact recipe token (ClassName without Recipe_/_C). */
+const MAX_RECIPE_TOKEN_BYTES = 120;
 
 /** Fields applied from a shared link (scoring display knobs stay local). */
 export type PlanSnapshot = {
@@ -74,6 +79,11 @@ export type PlanSnapshot = {
    * Empty when absent from older hashes.
    */
   externalItems: string[];
+  /**
+   * Mode B: product itemId → recipe ClassName (non-default picks only).
+   * Empty when absent from older hashes.
+   */
+  recipeOverrides: Record<string, string>;
 };
 
 export type PlanHashSource = {
@@ -86,6 +96,8 @@ export type PlanHashSource = {
   seed: MapSeed;
   /** Mode B off-site intermediates (optional; omitted from hash when empty). */
   externalItems?: string[];
+  /** Mode B alternate recipe picks (optional; omitted when empty). */
+  recipeOverrides?: Record<string, string>;
 };
 
 function clamp(n: number, lo: number, hi: number, fallback: number): number {
@@ -146,6 +158,42 @@ function normalizeExternalItems(ids: string[] | undefined): string[] {
   return out;
 }
 
+/** Compact recipe ClassName: strip Recipe_ … _C when present. */
+export function compactRecipeToken(recipeId: string): string {
+  const id = recipeId.trim();
+  const m = /^Recipe_(.+)_C$/.exec(id);
+  return m?.[1] ?? id;
+}
+
+export function expandRecipeToken(token: string): string {
+  if (token.startsWith("Recipe_")) return token;
+  return `Recipe_${token}_C`;
+}
+
+/**
+ * Normalize recipe overrides: product itemId → recipe ClassName.
+ * Sorted by product id for stable hashes; capped at {@link MAX_RECIPE_OVERRIDES}.
+ */
+export function normalizeRecipeOverrides(
+  overrides: Record<string, string> | undefined | null,
+): Record<string, string> {
+  if (!overrides) return {};
+  const entries: Array<[string, string]> = [];
+  for (const [rawProduct, rawRecipe] of Object.entries(overrides)) {
+    if (!rawProduct || !rawRecipe) continue;
+    const productId = canonicalizeProductId(rawProduct);
+    const recipeId = rawRecipe.trim();
+    if (!productId || !recipeId) continue;
+    entries.push([productId, recipeId]);
+  }
+  entries.sort((a, b) => a[0].localeCompare(b[0]));
+  const out: Record<string, string> = {};
+  for (const [p, r] of entries.slice(0, MAX_RECIPE_OVERRIDES)) {
+    out[p] = r;
+  }
+  return out;
+}
+
 export function toSnapshot(source: PlanHashSource): PlanSnapshot {
   const seed: MapSeed =
     source.seed === null || source.seed === undefined ? null : Number(source.seed) | 0;
@@ -185,6 +233,7 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
     },
     seed,
     externalItems: normalizeExternalItems(source.externalItems),
+    recipeOverrides: normalizeRecipeOverrides(source.recipeOverrides),
   };
 }
 
@@ -247,6 +296,31 @@ function externalToEncode(ids: string[]): Uint8Array[] {
   return out;
 }
 
+type EncodedOverride = {
+  productTok: Uint8Array;
+  recipeTok: Uint8Array;
+};
+
+function recipeOverridesToEncode(overrides: Record<string, string> | undefined): EncodedOverride[] {
+  const norm = normalizeRecipeOverrides(overrides);
+  const out: EncodedOverride[] = [];
+  for (const [productId, recipeId] of Object.entries(norm)) {
+    const productTok = utf8Encode(compactProductToken(productId));
+    const recipeTok = utf8Encode(compactRecipeToken(recipeId));
+    if (
+      productTok.length === 0 ||
+      productTok.length > MAX_PRODUCT_TOKEN_BYTES ||
+      recipeTok.length === 0 ||
+      recipeTok.length > MAX_RECIPE_TOKEN_BYTES
+    ) {
+      continue;
+    }
+    out.push({ productTok, recipeTok });
+    if (out.length >= MAX_RECIPE_OVERRIDES) break;
+  }
+  return out;
+}
+
 export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   const raw = snap.rawDemand.filter((d) => indexOfRaw(d.resource) >= 0).slice(0, MAX_LINES);
   // Any product id is allowed — same universe as the Products dropdown (no allowlist).
@@ -255,6 +329,9 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   const activeProducts = snap.mode === "product" ? productsToEncode(snap.productTargets) : [];
   // Externals only meaningful in product mode (Mode B expand prune)
   const activeExternal = snap.mode === "product" ? externalToEncode(snap.externalItems ?? []) : [];
+  // Recipe overrides only in product mode (Mode B alternate picks)
+  const activeOverrides =
+    snap.mode === "product" ? recipeOverridesToEncode(snap.recipeOverrides) : [];
 
   const out: number[] = [];
 
@@ -331,6 +408,23 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   out.push(clampClockPercent(snap.miner.wellClockPercent, DEFAULT_MINER_SETTINGS.wellClockPercent));
   out.push(snap.miner.resourceWellsEnabled ? 1 : 0);
   out.push(clampClockPercent(snap.miner.oilClockPercent, DEFAULT_MINER_SETTINGS.oilClockPercent));
+
+  // Optional recipe overrides (after oil): count + (productTok, recipeTok) pairs
+  if (activeOverrides.length > 0) {
+    out.push(activeOverrides.length & 0xff);
+    for (const o of activeOverrides) {
+      out.push(o.productTok.length & 0xff);
+      for (let b = 0; b < o.productTok.length; b++) {
+        const byte = o.productTok[b];
+        if (byte !== undefined) out.push(byte);
+      }
+      out.push(o.recipeTok.length & 0xff);
+      for (let b = 0; b < o.recipeTok.length; b++) {
+        const byte = o.recipeTok[b];
+        if (byte !== undefined) out.push(byte);
+      }
+    }
+  }
 
   return new Uint8Array(out);
 }
@@ -443,6 +537,29 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     }
   }
 
+  // Optional recipe overrides after oil
+  const recipeOverrides: Record<string, string> = {};
+  if (i < bytes.length) {
+    const nOv = bytes[i++] ?? 0;
+    if (nOv > MAX_RECIPE_OVERRIDES) return null;
+    for (let k = 0; k < nOv; k++) {
+      if (i >= bytes.length) return null;
+      const pLen = bytes[i++] ?? 0;
+      if (pLen === 0 || pLen > MAX_PRODUCT_TOKEN_BYTES) return null;
+      if (i + pLen > bytes.length) return null;
+      const pTok = utf8Decode(bytes.subarray(i, i + pLen));
+      i += pLen;
+      if (i >= bytes.length) return null;
+      const rLen = bytes[i++] ?? 0;
+      if (rLen === 0 || rLen > MAX_RECIPE_TOKEN_BYTES) return null;
+      if (i + rLen > bytes.length) return null;
+      const rTok = utf8Decode(bytes.subarray(i, i + rLen));
+      i += rLen;
+      if (!pTok || !rTok) continue;
+      recipeOverrides[expandProductToken(pTok)] = expandRecipeToken(rTok);
+    }
+  }
+
   return toSnapshot({
     mode,
     rawDemand: rawDemand.map((d, j) => ({ id: `h${j}`, ...d })),
@@ -465,6 +582,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     },
     seed,
     externalItems,
+    recipeOverrides,
   });
 }
 

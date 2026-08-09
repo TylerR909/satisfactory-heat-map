@@ -7,9 +7,10 @@
 │  React 19 + TS + Vite  ·  React Compiler  ·  PWA                   │
 │  ┌─────────────────────┐  ┌───────────────────┐  ┌──────────────┐  │
 │  │ Mode A: raw rates   │  │ Leaflet map       │  │ Zustand      │  │
-│  │ Mode B: products[]  │──│ tiles · heat ★    │  │ persist v4   │  │
-│  │ → RawDemand[]       │  │ nodes · pins      │  └──────┬───────┘  │
-│  │ Extractors · knobs  │  └────────▲──────────┘         │          │
+│  │ Mode B: products[]  │──│ tiles · heat ★    │  │ persist v9   │  │
+│  │ + alts / off-site   │  │ nodes · pins      │  └──────┬───────┘  │
+│  │ → RawDemand[]       │  └────────▲──────────┘         │          │
+│  │ Extractors · knobs  │           │                    │          │
 │  │ Centered/Weighted   │           │                    │          │
 │  │ Capacity tags infer │           │                    │          │
 │  └──────────┬──────────┘           │                    │          │
@@ -29,7 +30,10 @@
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
 | `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables (UI clocks; WASM scorer has its own rates) |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
-| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (default recipes + optional externalItems prune) |
+| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (defaults + `recipeOverrides` + `externalItems` prune; cycle break) |
+| `lib/production/badges.ts` | Deterministic alt badges (Removes, Skips, Pure, Alloy, machine via `producedIn`, …) |
+| `lib/production/quickSelects.ts` | Named alt packs (Pure, No Screws, Polymer, Recycled, Minimize Input Types, …) |
+| `lib/production/minimizeInputTypes.ts` | Greedy unique-raw recipe search for quick-select |
 | `lib/heatmap/rasterize.ts` | Grid → PNG data URL for `ImageOverlay` (display only) |
 | `lib/engine.ts` | WASM façade (`createEngine` → `score_grid`) |
 | `lib/wasm/loadEngine.ts` | Load `sf_engine` (score + seed) |
@@ -42,12 +46,12 @@
 | `lib/savedSeeds.ts` | Named saved-seed library (map seed + plan shelf) |
 | `store/useAppStore.ts` | Mode, demand, products, knobs, `seed` / `baseSlots` / `nodes`, heatmap, persist |
 | `components/map/*` | Leaflet layers, panes, fit-world |
-| `components/planner/*` | Side panel, Seed popover, saved plans |
+| `components/planner/*` | Side panel, Intermediates/alts (`RecipeAltPicker`, `AltQuickSelects`), Seed popover, saved plans |
 
 ## Data flow
 
-1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks) and optional **off-site** intermediates.
-2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems`) and **`expansionRows`** for the Intermediates UI.
+1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks), optional **off-site** intermediates, and optional **alternate recipe** picks (`recipeOverrides`).
+2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems` + `recipeOverrides`) and **`expansionRows`** for **Intermediates & Alternates**.
 3. **`useAutoHeatmap`** (debounced) posts `ScoreGridInput` to the worker whenever demand, miner, scoring mode, or knobs change.
 4. Worker runs `createEngine().scoreGrid(input)` → `HeatmapResult` (grid + topSites with capacity tags).
 5. Map paints heat via `ImageOverlay` from the coarse grid; pins/lines from `topSites` / selection.
@@ -189,9 +193,9 @@ Rust: `crates/engine` + `crates/vendored/konsl_randomization`. Compile via `npm 
 
 ## Persistence & PWA
 
-- Zustand `persist` → localStorage key **`sf-heatmap-v5`**: mode, raw lines, product targets, miner, scoring mode, knobs, UI prefs.
-- Merge migrates legacy scoring mode names; ignores removed capacity-mode / scaleHeadroom fields.
-- **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~20–35 chars**. Binary packs flags, quantized knobs, and catalog-index demand lines for the **active mode only** (raw *or* products). Catalogs are append-only. On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced).
+- Zustand `persist` → localStorage key **`sf-heatmap-v9`**: mode, raw lines, product targets, `externalItems`, `recipeOverrides`, miner, scoring mode, knobs, UI prefs (incl. expansion sort order).
+- Merge migrates legacy scoring mode names / product ids; ignores removed capacity-mode / scaleHeadroom fields.
+- **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~20–35 chars** (grows with product targets + alt overrides). Binary packs flags, quantized knobs, catalog-index demand for the **active mode only** (raw *or* products), plus Mode B recipe overrides when present. Catalogs are append-only. On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced). Display-only prefs (heat paint, expansion sort) stay out of the hash.
 - **Reset clustering** → scoring options + heat opacity + show nodes.
 - **Reset all defaults** → extractors, scoring mode, knobs — **keeps** mode, raw demand, and products.
 - Export plan JSON from planner.

@@ -5,14 +5,14 @@
 file_include_globs = ".env*\n**/*.webp"
 
 # Preview URLs from the Conductor Open menu.
-# $CONDUCTOR_PORT is assigned per workspace so multiple worktrees can run Vite.
+# npm start binds a stable Vite default (5173) so browser localStorage survives
+# restarts. CONDUCTOR_PORT is ignored unless USE_CONDUCTOR_PORT=1 (see scripts/dev-start.mjs).
 [[preview_urls]]
 name = "localhost"
-url = "http://localhost:$CONDUCTOR_PORT/"
+url = "http://localhost:5173/"
 
 # Docker Compose host port (default 18547). For a second worktree, set
-# HEATMAP_PORT and update this URL or open the port manually — Conductor only
-# injects one dynamic port ($CONDUCTOR_PORT) for the run script today.
+# HEATMAP_PORT and update this URL or open the port manually.
 [[preview_urls]]
 name = "docker"
 url = "http://localhost:18547/"
@@ -23,6 +23,6 @@ url = "http://localhost:18547/"
 setup = "npm ci && npm run map:ensure && npm run wasm:build"
 # Drop gitignored tiles + WASM build artifacts when archiving the worktree
 archive = "npm run map:clean && npm run clean"
-# Start Vite on Conductor's port (pkg already built by setup)
+# Stable Vite port (5173); not CONDUCTOR_PORT — preserves localStorage origin
 run = "npm start"
 auto_run_after_setup = false

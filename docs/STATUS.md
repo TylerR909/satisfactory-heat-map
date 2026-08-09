@@ -1,6 +1,6 @@
 # Implementation status (handoff)
 
-**Last true-up:** 2026-08-04 — WASM hierarchical scorer + Konsl seed (`score_grid` / `apply_map_seed`); TS algorithms removed; timing badge breakdown; Dev Container / Docker-only rustc.
+**Last true-up:** 2026-08-09 — Mode B **Intermediates & Alternates** complete (picks, badges, quick selects, Minimize Input Types, sort, link highlights, Docs `producedIn`). Ready for PR / ship polish, not more alt scope.
 
 ## Repo layout
 
@@ -19,8 +19,9 @@ satisfactory-heat-map/
 ├── map-tiles/            committed v1.tar.gz pack for CF / npm build
 ├── src/
 │   ├── components/map|planner
-│   ├── hooks/            useAutoHeatmap, useHeatmapWorker
-│   ├── lib/…|engine|wasm|seed (thin wrappers) | heatmap (rasterize only)
+│   ├── hooks/            useAutoHeatmap, useHeatmapWorker, usePlanHash
+│   ├── lib/…|engine|wasm|seed | heatmap (rasterize only)
+│   │   └── production/   solve, badges, quickSelects, minimizeInputTypes, …
 │   ├── workers/heatmap.worker.ts
 │   ├── store/useAppStore.ts
 │   └── types/
@@ -36,9 +37,10 @@ satisfactory-heat-map/
 5. **Extractors:** miner Mk + independent clocks for miner / oil / water / well pressurizer; wells toggle (forced on if plan needs Nitrogen).
 6. **Water supply** = basemap open-water bodies (`open-water.json`) ∪ well satellites when wells enabled.
 7. **Mode B Water** can be marked off-site under Intermediates (only map raw treated that way).
-8. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
-9. **Nodes** own FModel extract (~626 via `extract-world-nodes`); **recipes** Docs compact extract.
-10. **Persist** `sf-heatmap-v9` (plan shelf + extractors; display knobs local).
+8. **Mode B alternates:** per-step `recipeOverrides` (share hash + persist); UI popover + deterministic badges; quick-select packs; greedy **Minimize Input Types**; list sort (deep/shallow) is display-only local pref; hover link highlights predicates (violet) + consumers (emerald).
+9. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
+10. **Nodes** own FModel extract (~626 via `extract-world-nodes`); **recipes** Docs compact extract with **`producedIn`** building ClassNames.
+11. **Persist** `sf-heatmap-v9` (plan + extractors + recipeOverrides + UI prefs incl. expansion sort; display knobs local).
 
 ## Verified
 
@@ -54,7 +56,8 @@ npm start         # Vite HMR
 
 - Open water is **basemap-approximated** (not game depth); shallow rivers may over-count.
 - Individual basemap WebPs are not in git; CF uses **`map-tiles/v1.tar.gz`** + `map:ensure`.
-- Mode B alternate-recipe toggles still incomplete in UI (alts in data).
+- Mode B alts are for **site selection**, not a full factory planner (no LP / belt graph / “best alt globally”).
+- **Minimize Input Types** is greedy unique-raw search (not exhaustive optimal).
 - Cave/elevation is soft notes only (no navmesh).
 - Peak emphasis / heat knobs are **display-only**.
 
@@ -65,9 +68,9 @@ npm start         # Vite HMR
 - **Toolchain:** Dev Container + Docker only — **never host rustc**. Conductor `setup` prebuilds WASM.
 - **Seed:** Full Konsl MIT algorithm in `konsl_randomization`; TS is thin cache/wrapper only.
 
-## Sensible next coding priorities
+## Sensible next priorities (post-alts)
 
-1. Operator: CF dashboard build command = rustup + wasm-pack + `npm run build` ([DEPLOY.md](DEPLOY.md)).
-2. Optional Mode B alternate recipe toggles on Intermediates rows.
-3. Basemap v2 ~8k FModel extract — `public/map/v1/README.md`.
-4. Re-run `extract-world-nodes` after game patches (FModel re-export).
+1. **PR phase** — first intentional PR → `main` + CF project / domain / GHCR public as needed ([DEPLOY.md](DEPLOY.md), [ROADMAP.md](ROADMAP.md) Phase 3).
+2. Operator CF build command = rustup + wasm-pack + `npm run build` if not already set.
+3. Re-run `extract-world-nodes` / `parse-docs` after game patches (FModel + Docs).
+4. Optional later (not alt blockers): blueprint paste, “alts unlock hotter regions” compare, cave flags, clearer per-resource breakdown.

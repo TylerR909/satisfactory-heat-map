@@ -26,13 +26,17 @@
 | Mode | User intent | Behavior |
 |------|-------------|----------|
 | **A. Raw demand** | “I need 1200 Iron, 600 Copper, 200 Sulfur /min” from another calculator | Multi-row resource + rate editor → demand vector is the input |
-| **B. Products** | “Best place for Steel Pipe 60 + Steel Beam 30 (and maybe more)” | Thin default-recipe expand; **multiple products stack** intermediates → same demand vector |
+| **B. Products** | “Best place for Steel Pipe 60 + Steel Beam 30 (and maybe more)” | Thin recipe expand (defaults + optional alts); **multiple products stack** intermediates → same demand vector |
 
 Both share extractors, site preference, capacity intent, heatmap engine, map, and top-N breakdown.
 
 Mode A is **not** a secondary escape hatch — power users who already solved ratios live there permanently. Mode B can **Send to raw** to hand-tune the expanded rates.
 
-Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. **Water** is the one map raw also listed under **Intermediates** so it can be imported off-site (piped extractors); other ores stay heatmap-only (off-site via their intermediate, e.g. Ingots). This is *not* a full recipe planner — only “what counts toward site selection.”
+Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imported / recycled / handled elsewhere so its ingredient subtree never becomes map raw demand. Packaging vessels (Empty Canister, Empty Fluid Tank) default off-site. **Water** is the one map raw also listed under **Intermediates** so it can be imported off-site (piped extractors); other ores stay heatmap-only (off-site via their intermediate, e.g. Ingots).
+
+Mode B **alternate recipes** (**Intermediates & Alternates**): each row has a squarish control (empty = default recipe). Open it to pick an alternate for that step; the expand re-runs so precursors and Raw demand update. Picks are encoded in the share hash (and local persist). Alternates are auto-badged by comparing expand-with-alt vs all-defaults (unavoidable **Adds** only; also Removes, Skips, Pure, Alloy, Screw-Free, High Throughput, Resource Efficient, real Docs **`producedIn`** machine swaps — Foundry / Refinery / Assembler / …). Hovering the recipe control highlights **predicates** (self + direct inputs, violet) and **consumers** (downstream steps that use this item, emerald). List order can flip ingredients-first ↔ products-first (display-only pref). **Quick selects** apply known packs to in-play steps only (Defaults, All Pure, Minimize Input Types, Polymer plastics, Recycled loop, Oil→recycled, Sloppy+Pure Al, Iron+Copper Alloy, No Screws, Resource Efficient). **Minimize Input Types** greedily re-expands the plan and keeps only picks that **strictly cut distinct map raws** (not tonnage-only swaps). Plastic/Rubber default is the game crude-oil recipe; **Polymer plastics** picks Residual Plastic/Rubber. Recycled Plastic↔Rubber cycles seed via Residual when expanding.
+
+This is *not* a full recipe planner — only “what counts toward site selection.”
 
 In Raw mode the “Raw demand” summary is omitted (the editor *is* the demand). In Products mode it shows the expanded raw list.
 
@@ -85,12 +89,14 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 
 - Mode A: multi-resource raw rates + extractors → live heatmap without recipes.
 - Mode B: multi-product rates → stacked derived raw list + same heatmap path; Send to raw.
+- Mode B: off-site intermediates (+ Water); alternate picks with live re-expand, share hash, badges, quick selects.
 - Unsatisfiable regions render cold / Shortfall labels.
 - Satisfiable clusters light up; top sites show assigned nodes + rates.
 - Centered vs Weighted change haul ranking meaningfully.
 - Capacity tags: Limited / Abundant inferred; huge plans are not all Abundant.
 - Changing miner Mk / clock visibly changes which regions work.
 - Map: pan, zoom, basemap tiles, heat overlay, demand-filtered nodes, top pins + assignment lines.
+- Map seed paste / random / saved seeds → reassigned nodes → heat.
 - `npm start`, `lint`, `test`, `build`, `clean`; Docker → nginx static; PWA-ready.
 - Docs explain data provenance and regeneration.
 
@@ -102,6 +108,6 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 
 **UI subtitle** (planner header; not the primary SEO signal):
 
-*Bring raw rates from another tool, or pick a product for a quick default-recipe estimate.*
+*Bring raw rates from another tool, or pick products and alternates for a quick site estimate.*
 
 **Version badge:** greyed `v1.2` next to the title (Satisfactory Update 1.2).
