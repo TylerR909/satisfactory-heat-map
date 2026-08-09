@@ -227,12 +227,14 @@ button:disabled {
 }
 
 /*
- * Demand nodes: hover tooltips only — not focusable controls.
+ * Demand / assigned nodes: hover tooltips only — not focusable controls.
  * Click focus on SVG paths drew a ring that looked like the dot “got bigger”.
  * !important: beat UA :focus-visible outline on SVG paths.
  */
 .sf-resource-node,
-.sf-resource-node.leaflet-interactive {
+.sf-resource-node.leaflet-interactive,
+.sf-assigned-node,
+.sf-assigned-node.leaflet-interactive {
   cursor: default;
   /* biome-ignore lint/complexity/noImportantStyles: kill SVG focus ring that looks like a selected/bigger node */
   outline: none !important;
@@ -242,7 +244,13 @@ button:disabled {
 .sf-resource-node:active,
 .sf-resource-node.leaflet-interactive:focus,
 .sf-resource-node.leaflet-interactive:focus-visible,
-.sf-resource-node.leaflet-interactive:active {
+.sf-resource-node.leaflet-interactive:active,
+.sf-assigned-node:focus,
+.sf-assigned-node:focus-visible,
+.sf-assigned-node:active,
+.sf-assigned-node.leaflet-interactive:focus,
+.sf-assigned-node.leaflet-interactive:focus-visible,
+.sf-assigned-node.leaflet-interactive:active {
   /* biome-ignore lint/complexity/noImportantStyles: kill SVG focus ring that looks like a selected/bigger node */
   outline: none !important;
 }

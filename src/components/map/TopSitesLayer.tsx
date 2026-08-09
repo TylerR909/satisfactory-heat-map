@@ -2,7 +2,8 @@ import { CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { ensureMapPanes } from "@/components/map/MapPanes";
 import { worldToLeaflet } from "@/lib/coords";
 import { elevOffsetShouldDash } from "@/lib/heatmap/heatRender";
-import { RESOURCE_COLORS, WATER_RESOURCE_ID } from "@/lib/resources";
+import { formatRate } from "@/lib/mining";
+import { RESOURCE_COLORS, resourceLabel, WATER_RESOURCE_ID } from "@/lib/resources";
 import type { CapacityTag, MapMeta, SiteScore } from "@/types";
 
 type Props = {
@@ -108,9 +109,11 @@ export function TopSitesLayer({
       {selected?.byResource.flatMap((ra) =>
         ra.nodes.map((n) => {
           const isWater = ra.resource === WATER_RESOURCE_ID;
+          const isOpenWater = n.nodeId.startsWith("ow_");
           const fill = isWater ? WATER_LINE : endpointFill(ra.resource);
           // Light border only on selected “draw” endpoints (not ambient demand nodes).
           const stroke = "#f8fafc";
+          const label = resourceLabel(ra.resource);
           return (
             <CircleMarker
               key={`end-${selectedIndex}-${ra.resource}-${n.nodeId}`}
@@ -123,10 +126,30 @@ export function TopSitesLayer({
                 fillOpacity: 1,
                 weight: 2,
                 opacity: 1,
-                // Decorative endpoint — selection is via site pins only.
-                interactive: false,
+                // Hoverable for tooltips only — sit above ambient nodes so must carry tips themselves.
+                interactive: true,
+                bubblingMouseEvents: true,
+                className: "sf-assigned-node",
               }}
-            />
+              eventHandlers={{
+                mousedown: (e) => {
+                  e.originalEvent.preventDefault();
+                },
+                click: (e) => {
+                  e.originalEvent.preventDefault();
+                  e.originalEvent.stopPropagation();
+                },
+              }}
+            >
+              <Tooltip direction="top" opacity={0.95} sticky={false}>
+                {label}
+                {isOpenWater ? " · open water" : ` · ${n.purity}`}
+                {n.caveRisk ? " · cave" : ""}
+                <br />
+                {n.rateUsed > 0 ? `${formatRate(n.rateUsed)}/min used` : "no extract rate"}
+                <br />({Math.round(n.x)}, {Math.round(n.y)})
+              </Tooltip>
+            </CircleMarker>
           );
         }),
       )}
