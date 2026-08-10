@@ -254,6 +254,22 @@ export const QUICK_SELECTS: QuickSelect[] = [
     }),
   },
   {
+    id: "caterium-computers",
+    label: "Caterium computers",
+    description:
+      "Caterium Computer + Caterium Circuit Board + Fused Quickwire — classic Caterium electronics line.",
+    applicable: (ctx) =>
+      inPlayCount(ctx, ["Desc_Computer_C", "Desc_CircuitBoard_C", "Desc_HighSpeedWire_C"]) >= 1,
+    resolve: (ctx) => ({
+      kind: "merge",
+      overrides: fixedOverrides(ctx, [
+        { productId: "Desc_Computer_C", recipeId: "Recipe_Alternate_Computer_1_C" },
+        { productId: "Desc_CircuitBoard_C", recipeId: "Recipe_Alternate_CircuitBoard_2_C" },
+        { productId: "Desc_HighSpeedWire_C", recipeId: "Recipe_Alternate_Quickwire_C" },
+      ]),
+    }),
+  },
+  {
     id: "polymer-plastics",
     label: "Polymer plastics",
     description:

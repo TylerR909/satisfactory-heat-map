@@ -191,18 +191,21 @@ export function AltQuickSelects({
             ref={panelRef}
             role="dialog"
             aria-labelledby={titleId}
-            className="fixed z-[6000] max-h-[min(70vh,22rem)] w-[min(280px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
+            className="fixed z-[6000] flex max-h-[min(70vh,22rem)] w-[min(280px,calc(100vw-1rem))] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
             style={{ left: pos.left, top: pos.top }}
           >
-            <div className="border-b border-slate-800/80 bg-slate-950/90 px-3 py-2">
+            <div className="shrink-0 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2">
               <p
                 id={titleId}
                 className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
               >
                 Quick selects
               </p>
+              <p className="mt-1 text-[10px] leading-snug text-slate-500">
+                Apply several — packs merge. Stack Caterium computers, Polymer plastics, Pure, …
+              </p>
             </div>
-            <ul className="max-h-[min(55vh,18rem)] space-y-0.5 overflow-y-auto p-1.5 pt-1">
+            <ul className="min-h-0 max-h-[min(55vh,18rem)] flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-1">
               {options.map((q) => (
                 <li key={q.id}>
                   <button

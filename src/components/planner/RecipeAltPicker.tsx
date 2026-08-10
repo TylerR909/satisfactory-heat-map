@@ -31,17 +31,19 @@ const GAP = 6;
 /** Recipe-control (◇ / −) summary tip — delayed so it doesn't fight link-highlight scanning. */
 const RECIPE_BUTTON_TIP_MS = 500;
 
-type Pos = { left: number; top: number; maxHeight: number };
+/**
+ * Panel position: pin to the anchor edge with a height budget so content scrolls
+ * inside the free space (never straddle the button — mobile double-tap needs it free).
+ * `top` OR `bottom` (CSS) so a short first paint does not freeze a tiny panel.
+ */
+type Pos = { left: number; maxHeight: number; top?: number; bottom?: number };
 
 /**
  * Position the alt popover so it never covers the anchor button.
- * (Covering the button breaks mobile: tap open → tap again to close while keeping
- * row highlights; outside tap clears highlights.)
- *
- * Prefer the side with more room; pin top/bottom to the anchor edge and cap height
- * instead of sliding the panel over the button when the viewport is tight.
+ * Height is always the available free space on the chosen side — the list scrolls
+ * inside that budget even when DevTools / bottom-of-page leave only ~120px.
  */
-function clampPanel(anchor: DOMRect, w: number, h: number, vw: number, vh: number): Pos {
+function clampPanel(anchor: DOMRect, w: number, vw: number, vh: number): Pos {
   const width = Math.min(w, vw - PAD * 2);
   // Prefer align to button right (column sits on the right edge of the row)
   let left = anchor.right - width;
@@ -49,22 +51,14 @@ function clampPanel(anchor: DOMRect, w: number, h: number, vw: number, vh: numbe
 
   const spaceBelow = Math.max(0, vh - anchor.bottom - PAD - GAP);
   const spaceAbove = Math.max(0, anchor.top - PAD - GAP);
-  // Prefer below only when it fully fits; otherwise prefer above when that fits;
-  // else use the roomier side with a height cap (still never straddling the button).
-  const placeBelow =
-    spaceBelow >= Math.min(h, 160)
-      ? true
-      : spaceAbove >= Math.min(h, 160)
-        ? false
-        : spaceBelow >= spaceAbove;
+  const placeBelow = spaceBelow >= spaceAbove;
+  const maxHeight = Math.max(100, placeBelow ? spaceBelow : spaceAbove);
 
   if (placeBelow) {
-    const maxHeight = Math.max(120, spaceBelow);
     return { left, top: anchor.bottom + GAP, maxHeight };
   }
-  const maxHeight = Math.max(120, spaceAbove);
-  const usedH = Math.min(h, maxHeight);
-  return { left, top: anchor.top - GAP - usedH, maxHeight };
+  // Pin panel bottom to just above the button; grows upward within maxHeight
+  return { left, bottom: vh - anchor.top + GAP, maxHeight };
 }
 
 type Props = {
@@ -184,14 +178,12 @@ export function RecipeAltPicker({
     }
     const place = () => {
       const anchor = anchorRef.current;
-      const panel = panelRef.current;
       if (!anchor) return;
       const r = anchor.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const h = panel?.offsetHeight ?? 280;
-      const w = panel?.offsetWidth ?? PANEL_W;
-      setPos(clampPanel(r, w, h, vw, vh));
+      const w = panelRef.current?.offsetWidth ?? PANEL_W;
+      setPos(clampPanel(r, w, vw, vh));
     };
     place();
     requestAnimationFrame(place);
@@ -359,14 +351,15 @@ export function RecipeAltPicker({
             ref={panelRef}
             role="dialog"
             aria-labelledby={titleId}
-            className="fixed z-[6000] w-[min(300px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
+            className="fixed z-[6000] flex w-[min(300px,calc(100vw-1rem))] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
             style={{
               left: pos.left,
-              top: pos.top,
               maxHeight: Math.min(pos.maxHeight, window.innerHeight * 0.7, 28 * 16),
+              ...(pos.top != null ? { top: pos.top } : {}),
+              ...(pos.bottom != null ? { bottom: pos.bottom } : {}),
             }}
           >
-            <div className="border-b border-slate-800 px-3 py-2">
+            <div className="shrink-0 border-b border-slate-800 px-3 py-2">
               <h3 id={titleId} className="text-xs font-medium text-slate-200">
                 Recipe for{" "}
                 <strong className="font-semibold text-white">
@@ -374,7 +367,8 @@ export function RecipeAltPicker({
                 </strong>
               </h3>
             </div>
-            <ul className="max-h-[min(55vh,22rem)] space-y-0.5 overflow-y-auto p-1.5">
+            {/* min-h-0 + flex-1: scroll inside the height budget even when only ~100px free */}
+            <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
               <li>
                 <RecipeOption
                   active={!isAlt}

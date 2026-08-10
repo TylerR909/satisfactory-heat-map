@@ -157,6 +157,19 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_SteelIngot_C).toBe("Recipe_Alternate_IngotSteel_1_C");
   });
 
+  it("Caterium computers wires Computer + Circuit Board + Fused Quickwire", () => {
+    const recipes = loadRecipes();
+    const c = ctx(recipes, ["Desc_Computer_C", "Desc_CircuitBoard_C", "Desc_HighSpeedWire_C"]);
+    const q = quickSelect("caterium-computers");
+    expect(q.applicable(c)).toBe(true);
+    const r = q.resolve(c);
+    expect(r.kind).toBe("merge");
+    if (r.kind !== "merge") return;
+    expect(r.overrides.Desc_Computer_C).toBe("Recipe_Alternate_Computer_1_C");
+    expect(r.overrides.Desc_CircuitBoard_C).toBe("Recipe_Alternate_CircuitBoard_2_C");
+    expect(r.overrides.Desc_HighSpeedWire_C).toBe("Recipe_Alternate_Quickwire_C");
+  });
+
   it("Minimize Input Types is replace-kind and cuts unique raws for Nuke Nobelisk", () => {
     const recipes = loadRecipes();
     const items = loadItems();
