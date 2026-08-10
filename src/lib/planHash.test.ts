@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   alternateRecipesToOverrides,
@@ -11,7 +14,10 @@ import {
   planHashEquals,
   RECIPE_IDS,
 } from "@/lib/planHash";
+import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
 import { DEFAULT_MINER_SETTINGS, DEFAULT_SCORING_OPTIONS } from "@/types";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function sample(partial: Partial<PlanHashSource> = {}): PlanHashSource {
   return {
@@ -380,6 +386,36 @@ describe("catalogs + stability", () => {
     expect(RECIPE_IDS.indexOf("Recipe_Alternate_PureIronIngot_C")).toBe(76);
     expect(RECIPE_IDS.indexOf("Recipe_ComputerSuper_C")).toBe(137);
     expect(RECIPE_IDS.length).toBeGreaterThanOrEqual(290);
+  });
+
+  it("keeps public/ and src/ share-hash catalogs identical", () => {
+    for (const name of ["itemIds.json", "recipeIds.json", "recipePrimaries.json"] as const) {
+      const pub = readFileSync(join(repoRoot, "public/data/recipes", name), "utf8");
+      const src = readFileSync(join(repoRoot, "src/data", name), "utf8");
+      expect(src, `${name} src/data drifted from public/`).toBe(pub);
+    }
+  });
+
+  /**
+   * Mode A wire `rawIndex` is this table’s order — reordering breaks every raw share
+   * and every hand-rolled Mode A encoder (no itemIds involved).
+   */
+  it("pins Mode A RAW_RESOURCE_OPTIONS order (wire rawIndex)", () => {
+    expect([...RAW_RESOURCE_OPTIONS]).toEqual([
+      "Desc_OreIron_C",
+      "Desc_OreCopper_C",
+      "Desc_Stone_C",
+      "Desc_Coal_C",
+      "Desc_OreGold_C",
+      "Desc_RawQuartz_C",
+      "Desc_Sulfur_C",
+      "Desc_OreBauxite_C",
+      "Desc_OreUranium_C",
+      "Desc_SAM_C",
+      "Desc_LiquidOil_C",
+      "Desc_Water_C",
+      "Desc_NitrogenGas_C",
+    ]);
   });
 
   it("showcase HMF defaults stay a stable short golden hash", () => {

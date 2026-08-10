@@ -7,5 +7,7 @@
   "automatableProductCount": 139,
   "recipeCount": 290,
   "defaultRecipes": 179,
-  "alternateRecipes": 111
+  "alternateRecipes": 111,
+  "shareHashItemIds": 168,
+  "shareHashRecipeIds": 290
 }
