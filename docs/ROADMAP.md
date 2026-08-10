@@ -43,7 +43,7 @@
   - [x] Squarish picker + popover (default + alts; Residual / non-HD paths selectable)
   - [x] Live re-expand + share-hash / persist `recipeOverrides`
   - [x] Deterministic badges (Removes / Skips / Pure / Alloy / Screw-Free / RE / High Throughput / machine via Docs `producedIn` / unavoidable Adds / …)
-  - [x] Quick selects (Defaults, All Pure, No Screws, RE, Polymer, Recycled, Oil→recycled, Al packs, …)
+  - [x] Quick selects (Defaults, All Pure, No Screws, RE, Polymer, Recycled loop, Al packs, …)
   - [x] **Minimize Input Types** (greedy unique-raw expand; not blind Removes badges)
   - [x] List sort (ingredients-first ↔ products-first; display-only local pref)
   - [x] Recipe-control hover: violet predicates + emerald consumers

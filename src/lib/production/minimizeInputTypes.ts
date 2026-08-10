@@ -5,6 +5,9 @@
  * full expand. Same-type efficiency swaps (Tempered Caterium: still Caterium,
  * oil already on the plan) are rejected — lower tonnage alone is not a win.
  *
+ * **Water is ignored** for unique-type scoring and the cut list — Pure paths and
+ * Resource Efficient regularly reintroduce it; fighting water is not this pack’s job.
+ *
  * Partial “almost Removes” (Iron Pipe while Black Powder still needs Coal) do
  * not reduce unique count, so they are skipped. Real Removes that zero a raw
  * globally (Plastic AI Limiter → no Copper) stick. If two alts must combine to
@@ -12,6 +15,7 @@
  */
 
 import { listProductionRecipes, solveProductsToRaw } from "@/lib/production/solve";
+import { WATER_RESOURCE_ID } from "@/lib/resources";
 import type { ItemDef, Recipe } from "@/types";
 
 const EPS = 1e-6;
@@ -31,8 +35,17 @@ export type MinimizeInputTypesResult = {
   baselineUnique: number;
   /** Unique map-raw types under chosen overrides. */
   finalUnique: number;
+  /**
+   * Map-raw resource ids present under defaults but gone after picks
+   * (sorted for stable UI). Empty when nothing was fully cut.
+   */
+  removedResources: string[];
 };
 
+/**
+ * Unique non-water map raws + non-water tonnage (tie-break only).
+ * Water extractors are plentiful; type-minimization never targets them.
+ */
 function demandStats(demand: Array<{ resource: string; itemsPerMinute: number }>): {
   unique: Set<string>;
   total: number;
@@ -40,10 +53,10 @@ function demandStats(demand: Array<{ resource: string; itemsPerMinute: number }>
   const unique = new Set<string>();
   let total = 0;
   for (const d of demand) {
-    if (d.itemsPerMinute > EPS) {
-      unique.add(d.resource);
-      total += d.itemsPerMinute;
-    }
+    if (d.itemsPerMinute <= EPS) continue;
+    if (d.resource === WATER_RESOURCE_ID) continue;
+    unique.add(d.resource);
+    total += d.itemsPerMinute;
   }
   return { unique, total };
 }
@@ -122,7 +135,7 @@ export function minimizeInputTypeOverrides(
     .filter((t) => t.productId && t.itemsPerMinute > EPS);
 
   if (targets.length === 0) {
-    return { overrides: {}, baselineUnique: 0, finalUnique: 0 };
+    return { overrides: {}, baselineUnique: 0, finalUnique: 0, removedResources: [] };
   }
 
   const expand = (overrides: Record<string, string>) =>
@@ -194,10 +207,15 @@ export function minimizeInputTypeOverrides(
     currentStats = best.stats;
   }
 
+  const removedResources = [...baselineStats.unique]
+    .filter((id) => !currentStats.unique.has(id))
+    .sort((a, b) => a.localeCompare(b));
+
   return {
     overrides,
     baselineUnique: baselineStats.unique.size,
     finalUnique: currentStats.unique.size,
+    removedResources,
   };
 }
 

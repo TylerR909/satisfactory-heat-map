@@ -553,8 +553,8 @@ export function badgeTooltip(badge: RecipeBadge): string | undefined {
       return badge.detail ?? "Different raw resources than the default recipe.";
     case "resource-efficient":
       return badge.score != null
-        ? `About ${Math.round(badge.score * 100)}% less total raw demand than default (same raw set, water OK).`
-        : "Less total raw demand than the default recipe.";
+        ? `About ${Math.round(badge.score * 100)}% less total raw ore than default. Same resources (water is fine).`
+        : "Less total raw ore than the default recipe.";
     case "high-throughput":
       return badge.score != null
         ? `${badge.score.toFixed(1)}× primary output rate vs default (items/min per machine).`
@@ -562,7 +562,7 @@ export function badgeTooltip(badge: RecipeBadge): string | undefined {
     case "pure":
       return "Water-boosted yield — more product per ore; plan for water.";
     case "shorter-chain":
-      return "Fewer crafting steps from this product to raws.";
+      return "Fewer crafting steps between this product and map resources.";
     case "simpler-machine":
       return badge.detail ?? `Simpler building than the default recipe (${badge.label}).`;
     case "heavier-machine":

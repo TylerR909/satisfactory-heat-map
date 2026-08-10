@@ -5,6 +5,7 @@ import {
   minimizeInputTypeOverrides,
 } from "@/lib/production/minimizeInputTypes";
 import { solveProductsToRaw } from "@/lib/production/solve";
+import { WATER_RESOURCE_ID } from "@/lib/resources";
 import type { ItemDef, Recipe } from "@/types";
 
 function loadDocs() {
@@ -17,8 +18,13 @@ function loadDocs() {
   return { recipes, items };
 }
 
+/** Non-water unique raws — matches minimize scoring. */
 function uniqueRaws(demand: Array<{ resource: string; itemsPerMinute: number }>): Set<string> {
-  return new Set(demand.filter((d) => d.itemsPerMinute > 1e-6).map((d) => d.resource));
+  return new Set(
+    demand
+      .filter((d) => d.itemsPerMinute > 1e-6 && d.resource !== WATER_RESOURCE_ID)
+      .map((d) => d.resource),
+  );
 }
 
 describe("minimizeInputTypeOverrides", () => {
@@ -43,6 +49,10 @@ describe("minimizeInputTypeOverrides", () => {
     if (result.finalUnique < result.baselineUnique) {
       expect(Object.keys(result.overrides).length).toBeGreaterThan(0);
     }
+    // removedResources = baseline − final (new raws may appear; length can exceed unique delta)
+    expect(result.removedResources).toEqual(
+      [...baseSet].filter((id) => !finalSet.has(id)).sort((a, b) => a.localeCompare(b)),
+    );
   });
 
   it("does not introduce brand-new raws without cutting unique count", () => {
@@ -106,6 +116,23 @@ describe("minimizeInputTypeOverrides", () => {
     // Plastic AI Limiter is the classic Copper-removing alt when in play
     if (baseline.has("Desc_OreCopper_C") && !final.has("Desc_OreCopper_C")) {
       expect(result.overrides.Desc_CircuitBoardHighSpeed_C).toMatch(/Plastic|AILimiter/i);
+    }
+  });
+
+  it("never lists Water in removedResources and never counts it as a type win", () => {
+    const { recipes, items } = loadDocs();
+    // Neural-Quantum-ish tree: Pure paths + alts often touch water
+    const targets = [{ productId: "Desc_TemporalProcessor_C", itemsPerMinute: 5 }];
+    const result = minimizeInputTypeOverrides({ recipes, items, productTargets: targets });
+    expect(result.removedResources).not.toContain(WATER_RESOURCE_ID);
+    // Cutting only water must not count: baselineUnique excludes it already
+    const baseline = solveProductsToRaw(targets, recipes, items);
+    const waterOnly = baseline.demand.some(
+      (d) => d.resource === WATER_RESOURCE_ID && d.itemsPerMinute > 1e-6,
+    );
+    // If plan has water, still no Water in the cut list
+    if (waterOnly) {
+      expect(result.removedResources.includes(WATER_RESOURCE_ID)).toBe(false);
     }
   });
 });

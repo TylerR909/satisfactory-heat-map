@@ -988,7 +988,7 @@ export function PlannerPanel() {
                       <li
                         key={b.itemId}
                         className="flex justify-between gap-2 text-red-300/90"
-                        title="Net excess from recipe secondary outputs — not heatmap demand"
+                        title="Extra output from multi-product recipes. Not part of heatmap demand."
                       >
                         <span>{resourceLabel(b.itemId, items)}</span>
                         <span className="font-mono tabular-nums">

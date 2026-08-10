@@ -79,6 +79,17 @@ function minimizeInput(ctx: QuickSelectContext) {
   });
 }
 
+/**
+ * Map-raw resource ids that Minimize Input Types would fully drop vs defaults.
+ * Empty when the pack isn’t applicable or nothing is fully cut.
+ */
+export function minimizeRemovedResourceIds(ctx: QuickSelectContext): string[] {
+  if (ctx.productTargetIds.size === 0 && !(ctx.productTargets && ctx.productTargets.length > 0)) {
+    return [];
+  }
+  return minimizeInput(ctx).removedResources;
+}
+
 function inPlay(ctx: QuickSelectContext, itemId: string): boolean {
   return ctx.expansionItemIds.has(itemId) || ctx.productTargetIds.has(itemId);
 }
@@ -194,8 +205,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
   {
     id: "no-screws",
     label: "No Screws",
-    description:
-      "Swap off screw recipes where an alt exists (Stitched RIP, Steel Rotor, Heavy Encased, Cast Screws, …).",
+    description: "Removes screws from default recipes where non-screw alternates exist.",
     chip: { kind: "badge", badgeKind: "screw-free", text: "Screw-Free" },
     applicable: (ctx) => {
       for (const id of [...ctx.expansionItemIds, ...ctx.productTargetIds]) {
@@ -217,7 +227,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "resource-efficient",
     label: "Resource Efficient",
     description:
-      "Prefer alts that use fewer map resources without introducing new ores (water is OK).",
+      "Picks alternates that need less raw ore overall, without adding new resource types. Water is fine.",
     chip: { kind: "badge", badgeKind: "resource-efficient", text: "Resource Efficient" },
     applicable: (ctx) => {
       for (const id of [...ctx.expansionItemIds, ...ctx.productTargetIds]) {
@@ -237,10 +247,9 @@ export const QUICK_SELECTS: QuickSelect[] = [
   },
   {
     id: "minimize-input-types",
-    label: "Minimize Input Types",
-    description:
-      "Pick alts that reduce how many different map resources you need (skips near-misses that don’t fully drop a resource).",
-    chip: { kind: "badge", badgeKind: "removes", text: "Fewer Raws" },
+    label: "Removes Types",
+    description: "Chooses alternates so your plan needs fewer kinds of raw inputs from the map.",
+    chip: { kind: "badge", badgeKind: "removes", text: "Removes Types" },
     applicable: (ctx) => {
       if (
         ctx.productTargetIds.size === 0 &&
@@ -296,7 +305,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "polymer-plastics",
     label: "Polymer plastics",
     description:
-      "Residual Plastic + Residual Rubber + Polymer Resin — usual early path off crude→plastic.",
+      "Residual Plastic, Residual Rubber, and Polymer Resin — make plastic and rubber from oil byproducts.",
     applicable: (ctx) =>
       inPlay(ctx, "Desc_Plastic_C") ||
       inPlay(ctx, "Desc_Rubber_C") ||
@@ -314,21 +323,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "recycled-loop",
     label: "Recycled loop",
     description:
-      "Recycled Plastic + Recycled Rubber (plastic↔rubber with fuel). Residual polymer is used when the loop needs a start.",
-    applicable: (ctx) => inPlay(ctx, "Desc_Plastic_C") || inPlay(ctx, "Desc_Rubber_C"),
-    resolve: (ctx) => ({
-      kind: "merge",
-      overrides: fixedOverrides(ctx, [
-        { productId: "Desc_Plastic_C", recipeId: "Recipe_Alternate_Plastic_1_C" },
-        { productId: "Desc_Rubber_C", recipeId: "Recipe_Alternate_RecycledRubber_C" },
-      ]),
-    }),
-  },
-  {
-    id: "oil-recycled-max",
-    label: "Oil → recycled",
-    description:
-      "Heavy Oil Residue + Diluted Fuel + Recycled Plastic/Rubber — more plastic and rubber per oil.",
+      "Heavy Oil Residue, Diluted Fuel, Recycled Plastic, and Recycled Rubber — more plastic and rubber per oil.",
     applicable: (ctx) =>
       inPlayCount(ctx, [
         "Desc_HeavyOilResidue_C",
@@ -380,9 +375,9 @@ function inPlayIds(ctx: QuickSelectContext): string[] {
  *
  * - **Defaults** — no in-play step has an override
  * - **merge / replace** — every product→recipe this pack would set is already set
- *   (and for replace: no extra in-play overrides beyond that set)
  *
- * Other packs can also be selected at the same time (e.g. Pure + Screw-Free).
+ * Extra overrides are OK (stack Resource Efficient / Pure after Removes Types).
+ * Apply for replace still clears first; Selected only checks this pack’s picks.
  */
 export function isQuickSelectSelected(
   q: QuickSelect,
@@ -403,13 +398,5 @@ export function isQuickSelectSelected(
     if (recipeOverrides[productId] !== desired[productId]) return false;
   }
 
-  if (result.kind === "replace") {
-    const desiredSet = new Set(keys);
-    for (const id of inPlayIds(ctx)) {
-      const cur = recipeOverrides[id];
-      if (!cur) continue;
-      if (!desiredSet.has(id) || desired[id] !== cur) return false;
-    }
-  }
   return true;
 }

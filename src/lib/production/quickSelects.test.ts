@@ -89,13 +89,20 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_AluminaSolution_C).toBe("Recipe_Alternate_SloppyAlumina_C");
   });
 
-  it("Recycled loop wires Plastic + Rubber alts", () => {
+  it("Recycled loop wires HOR + Diluted Fuel + Recycled Plastic/Rubber", () => {
     const recipes = loadRecipes();
-    const c = ctx(recipes, ["Desc_Plastic_C", "Desc_Rubber_C"]);
+    const c = ctx(recipes, [
+      "Desc_HeavyOilResidue_C",
+      "Desc_LiquidFuel_C",
+      "Desc_Plastic_C",
+      "Desc_Rubber_C",
+    ]);
     const q = quickSelect("recycled-loop");
     const r = q.resolve(c);
     expect(r.kind).toBe("merge");
     if (r.kind !== "merge") return;
+    expect(r.overrides.Desc_HeavyOilResidue_C).toBe("Recipe_Alternate_HeavyOilResidue_C");
+    expect(r.overrides.Desc_LiquidFuel_C).toBe("Recipe_Alternate_DilutedFuel_C");
     expect(r.overrides.Desc_Plastic_C).toBe("Recipe_Alternate_Plastic_1_C");
     expect(r.overrides.Desc_Rubber_C).toBe("Recipe_Alternate_RecycledRubber_C");
   });
@@ -290,7 +297,7 @@ describe("quickSelects", () => {
     ).toBe(true);
   });
 
-  it("isQuickSelectSelected: Oil → recycled when all in-play steps match", () => {
+  it("isQuickSelectSelected: Recycled loop when all in-play steps match", () => {
     const recipes = loadRecipes();
     const c = ctx(recipes, [
       "Desc_HeavyOilResidue_C",
@@ -298,7 +305,7 @@ describe("quickSelects", () => {
       "Desc_Plastic_C",
       "Desc_Rubber_C",
     ]);
-    const q = quickSelect("oil-recycled-max");
+    const q = quickSelect("recycled-loop");
     expect(
       isQuickSelectSelected(q, c, {
         Desc_HeavyOilResidue_C: "Recipe_Alternate_HeavyOilResidue_C",
@@ -307,7 +314,7 @@ describe("quickSelects", () => {
         Desc_Rubber_C: "Recipe_Alternate_RecycledRubber_C",
       }),
     ).toBe(true);
-    // Missing one step → not selected (no partial)
+    // Missing HOR / Diluted Fuel → not selected (no partial)
     expect(
       isQuickSelectSelected(q, c, {
         Desc_Plastic_C: "Recipe_Alternate_Plastic_1_C",
@@ -316,7 +323,7 @@ describe("quickSelects", () => {
     ).toBe(false);
   });
 
-  it("Minimize Input Types is replace-kind and cuts unique raws for Nuke Nobelisk", () => {
+  it("Removes Types is replace-kind and cuts unique raws for Nuke Nobelisk", () => {
     const recipes = loadRecipes();
     const items = loadItems();
     const c: QuickSelectContext = {
@@ -327,6 +334,8 @@ describe("quickSelects", () => {
       productTargets: [{ productId: "Desc_NobeliskNuke_C", itemsPerMinute: 10 }],
     };
     const q = quickSelect("minimize-input-types");
+    expect(q.label).toBe("Removes Types");
+    expect(q.chip).toEqual({ kind: "badge", badgeKind: "removes", text: "Removes Types" });
     expect(q.applicable(c)).toBe(true);
     const r = q.resolve(c);
     expect(r.kind).toBe("replace");
@@ -334,5 +343,33 @@ describe("quickSelects", () => {
     expect(Object.keys(r.overrides).length).toBeGreaterThan(0);
     // Plastic AI Limiter is the classic Copper cut on this tree
     expect(r.overrides.Desc_CircuitBoardHighSpeed_C).toBeDefined();
+  });
+
+  it("Removes Types stays Selected when extra RE-style overrides are stacked", () => {
+    const recipes = loadRecipes();
+    const items = loadItems();
+    const c: QuickSelectContext = {
+      recipes,
+      items,
+      expansionItemIds: new Set(),
+      productTargetIds: new Set(["Desc_NobeliskNuke_C"]),
+      productTargets: [{ productId: "Desc_NobeliskNuke_C", itemsPerMinute: 10 }],
+    };
+    const q = quickSelect("minimize-input-types");
+    const r = q.resolve(c);
+    expect(r.kind).toBe("replace");
+    if (r.kind !== "replace") return;
+    // Extra Pure Copper (Resource Efficient often stacks this) must not deselect
+    const stacked = {
+      ...r.overrides,
+      Desc_CopperIngot_C: "Recipe_Alternate_PureCopperIngot_C",
+    };
+    expect(isQuickSelectSelected(q, c, stacked)).toBe(true);
+    // Overwriting a pack pick does deselect
+    const firstKey = Object.keys(r.overrides)[0];
+    if (firstKey) {
+      const broken = { ...r.overrides, [firstKey]: "Recipe_DoesNotExist_C" };
+      expect(isQuickSelectSelected(q, c, broken)).toBe(false);
+    }
   });
 });

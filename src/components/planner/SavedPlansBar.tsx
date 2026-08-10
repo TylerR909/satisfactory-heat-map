@@ -32,13 +32,13 @@ import {
   subscribeSeedLibrary,
   upsertSavedSeed,
 } from "@/lib/savedSeeds";
-import { randomMapSeed } from "@/lib/seed";
+import { isDefaultSeed, randomMapSeed } from "@/lib/seed";
 import { newLineId, useAppStore } from "@/store/useAppStore";
 import { DEFAULT_SCORING_OPTIONS } from "@/types";
 
 /**
  * Attach the right shelf for the current URL / empty library.
- * Amber "ephemeral" UI is derived later: current map seed not in the library.
+ * Seed button amber is derived later: any non-Default map seed.
  */
 function resolveLibraryForSession(): SeedLibrary {
   let lib = loadSeedLibrary();
@@ -211,8 +211,10 @@ export function SavedPlansBar() {
   const activePt = getActiveSavedSeed(library);
   /** Detached from any named shelf (unsaved seed, or Random before Save). */
   const detached = library.activeId === null;
-  /** Amber UI: current map seed is not owned by any library entry. */
+  /** Popover Save CTA: current map seed is not owned by any library entry. */
   const ephemeral = !isMapSeedSaved(library, mapSeed);
+  /** Seed button highlight: any randomized world (not vanilla Default). */
+  const nonDefaultMap = !isDefaultSeed(mapSeed);
   const plans = detached ? ephemeralPlans : (activePt?.plans ?? []);
   const activePlanId = detached ? ephemeralActiveId : (activePt?.activePlanId ?? null);
 
@@ -716,12 +718,20 @@ export function SavedPlansBar() {
           ref={seedBtnRef}
           type="button"
           onClick={() => setSeedOpen((v) => !v)}
-          title="Map seed"
-          aria-label="Map seed"
+          title={
+            nonDefaultMap
+              ? `Map seed ${mapSeed} (not Default) — click to change`
+              : "Map seed (Default world)"
+          }
+          aria-label={
+            nonDefaultMap ? `Map seed ${mapSeed}, not Default` : "Map seed, Default world"
+          }
           aria-expanded={seedOpen}
           className={`inline-flex h-8 shrink-0 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition ${
-            ephemeral
-              ? "border-amber-500/60 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
+            nonDefaultMap
+              ? seedOpen
+                ? "border-amber-400 bg-amber-500/30 text-amber-100 ring-1 ring-amber-400/50"
+                : "border-amber-500/70 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"
               : seedOpen
                 ? "border-slate-500 bg-slate-800 text-slate-200"
                 : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200"

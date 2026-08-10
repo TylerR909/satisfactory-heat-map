@@ -4,10 +4,12 @@ import { recipeBadgeClassName } from "@/lib/production/badges";
 import {
   applicableQuickSelects,
   isQuickSelectSelected,
+  minimizeRemovedResourceIds,
   type QuickSelect,
   type QuickSelectChip,
   type QuickSelectContext,
 } from "@/lib/production/quickSelects";
+import { RESOURCE_COLORS, resourceLabel } from "@/lib/resources";
 import type { Recipe } from "@/types";
 
 const PAD = 8;
@@ -124,6 +126,15 @@ export function AltQuickSelects({
     }
     return m;
   }, [open, options, ctx, recipeOverrides]);
+
+  /** Resources Minimize would fully drop — only while open and pack is listed. */
+  const minimizeCuts = useMemo(() => {
+    if (!open) return [];
+    if (!options.some((q) => q.id === "minimize-input-types")) return [];
+    const ids = minimizeRemovedResourceIds(ctx);
+    return [...ids].sort((a, b) => resourceLabel(a, items).localeCompare(resourceLabel(b, items)));
+  }, [open, options, ctx, items]);
+
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Pos | null>(null);
@@ -194,7 +205,7 @@ export function AltQuickSelects({
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-7 items-center gap-1 rounded border border-slate-700 bg-slate-900/80 px-2 text-[11px] font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-800 hover:text-slate-100"
-        title="Apply groups of alternate recipes to in-play intermediates"
+        title="Apply common alternate recipe packs to steps in this plan"
       >
         Quick selects
         <span className="text-slate-500" aria-hidden>
@@ -230,7 +241,7 @@ export function AltQuickSelects({
                 Quick selects
               </p>
               <p className="mt-1 text-[10px] leading-snug text-slate-500">
-                Packs merge — stack Screw-Free, Resource Efficient, and Pure (and more) as you like.
+                Options stack. Combine Screw-Free, Resource Efficient, Pure, and others as you like.
               </p>
             </div>
             <ul className="min-h-0 max-h-[min(55vh,18rem)] flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-1">
@@ -266,6 +277,23 @@ export function AltQuickSelects({
                       <span className="text-[10px] leading-snug text-slate-500">
                         {q.description}
                       </span>
+                      {q.id === "minimize-input-types" && minimizeCuts.length > 0 && (
+                        <span className="text-[10px] leading-snug text-slate-500">
+                          Cuts{" "}
+                          {minimizeCuts.map((id, i) => (
+                            <span key={id}>
+                              {i > 0 && (i === minimizeCuts.length - 1 ? " and " : ", ")}
+                              <span
+                                className="font-semibold"
+                                style={{ color: RESOURCE_COLORS[id] ?? "#94a3b8" }}
+                              >
+                                {resourceLabel(id, items)}
+                              </span>
+                            </span>
+                          ))}{" "}
+                          from inputs.
+                        </span>
+                      )}
                     </button>
                   </li>
                 );
