@@ -202,7 +202,7 @@ export function AltQuickSelects({
                 Quick selects
               </p>
               <p className="mt-1 text-[10px] leading-snug text-slate-500">
-                Apply several — packs merge. Stack Caterium computers, Polymer plastics, Pure, …
+                Packs merge — stack Screw-Free, Resource Efficient, and Pure (and more) as you like.
               </p>
             </div>
             <ul className="min-h-0 max-h-[min(55vh,18rem)] flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-1">
