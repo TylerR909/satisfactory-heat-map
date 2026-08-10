@@ -44,4 +44,18 @@ describe("recipeButtonLabel collision handling", () => {
     if (!pure) return;
     expect(recipeButtonLabel(pure)).toBe("Pure");
   });
+
+  it("Dark Matter Trap / Crystallization → Trap / Crys (not Matt)", () => {
+    const recipes = loadRecipes();
+    const alts = listAlternateRecipes(recipes, "Desc_DarkMatter_C");
+    const trap = alts.find((a) => /Trap/i.test(a.name));
+    const crys = alts.find((a) => /Crystal/i.test(a.name));
+    expect(trap).toBeDefined();
+    expect(crys).toBeDefined();
+    if (!trap || !crys) return;
+    const labels = recipeButtonLabels(alts);
+    expect(labels.get(trap.id)).toMatch(/^Trap$/i);
+    expect(labels.get(crys.id)).toMatch(/^Crys$/i);
+    expect(labels.get(crys.id)?.toLowerCase()).not.toBe("matt");
+  });
 });

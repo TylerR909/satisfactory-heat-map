@@ -365,16 +365,18 @@ function cutButtonToken(word: string): string {
 
 /**
  * Candidate 4-char tokens for a recipe button.
- * Default order: first word first (Pure, Slop). When `skipSharedFirst`, later
- * words lead so peer collisions like Heavy Flexible / Heavy Encased → Flex / Enca.
+ * Prefer words unique to this recipe among peers (not shared prefixes like
+ * "Dark Matter …"), so Dark Matter Trap / Crystallization → Trap / Crys
+ * rather than Trap / Matt.
  */
-function buttonLabelCandidates(r: Recipe, skipSharedFirst = false): string[] {
+function buttonLabelCandidates(r: Recipe, sharedWords: ReadonlySet<string> = new Set()): string[] {
   const short = recipeShortName(r);
   const words = short.split(/\s+/).filter(Boolean);
   if (words.length === 0) return ["Alt"];
-  const firstWord = words[0];
-  const ordered =
-    skipSharedFirst && words.length > 1 && firstWord ? [...words.slice(1), firstWord] : words;
+  const unique = words.filter((w) => !sharedWords.has(w.toLowerCase()));
+  const shared = words.filter((w) => sharedWords.has(w.toLowerCase()));
+  // Unique words first (distinctive), then shared, then original order fallback
+  const ordered = unique.length > 0 ? [...unique, ...shared] : words;
   const out: string[] = [];
   const seen = new Set<string>();
   for (const w of ordered) {
@@ -401,21 +403,24 @@ function buttonLabelCandidates(r: Recipe, skipSharedFirst = false): string[] {
  * Stable by recipe id so the same set always maps the same way.
  */
 export function recipeButtonLabels(peers: readonly Recipe[]): Map<string, string> {
-  // First words that appear more than once among peers → skip them as primary pick
-  const firstCounts = new Map<string, number>();
+  // Words that appear in more than one peer name (e.g. Dark, Matter)
+  const wordCounts = new Map<string, number>();
   for (const r of peers) {
-    const w = recipeShortName(r).split(/\s+/).find(Boolean)?.toLowerCase();
-    if (!w) continue;
-    firstCounts.set(w, (firstCounts.get(w) ?? 0) + 1);
+    const seenInRecipe = new Set<string>();
+    for (const w of recipeShortName(r).split(/\s+/).filter(Boolean)) {
+      const key = w.toLowerCase();
+      if (seenInRecipe.has(key)) continue;
+      seenInRecipe.add(key);
+      wordCounts.set(key, (wordCounts.get(key) ?? 0) + 1);
+    }
   }
-  const sharedFirst = new Set([...firstCounts.entries()].filter(([, n]) => n > 1).map(([w]) => w));
+  const sharedWords = new Set([...wordCounts.entries()].filter(([, n]) => n > 1).map(([w]) => w));
 
   const used = new Set<string>();
   const out = new Map<string, string>();
   const sorted = [...peers].sort((a, b) => a.id.localeCompare(b.id));
   for (const r of sorted) {
-    const first = recipeShortName(r).split(/\s+/).find(Boolean)?.toLowerCase() ?? "";
-    const cands = buttonLabelCandidates(r, sharedFirst.has(first));
+    const cands = buttonLabelCandidates(r, sharedWords);
     let pick = cands.find((c) => !used.has(c.toLowerCase())) ?? cands[0] ?? "Alt";
     // Last ditch: pad with unique suffix char from id
     if (used.has(pick.toLowerCase())) {
