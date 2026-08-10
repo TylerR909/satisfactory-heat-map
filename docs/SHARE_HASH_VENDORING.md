@@ -50,7 +50,7 @@ Optional: `seed`, miner clocks, scoring knobs (see builder opts on `encodeRawPla
 
 ### Hand-rolled (any language)
 
-1. Pin a release of `itemIds.json` is **not** required for Mode A raw lines — use the fixed raw table order from `RAW_RESOURCE_OPTIONS` / [SHARE_HASH.md](./SHARE_HASH.md).
+1. Pinning `itemIds.json` is **not** required for Mode A raw lines — use the fixed raw table order from `RAW_RESOURCE_OPTIONS` / [SHARE_HASH.md](./SHARE_HASH.md).
 2. Pack header + raw triples as documented.
 3. base64url-encode (no padding).
 4. Prefix `v1.` and put in the URL fragment.
@@ -76,10 +76,19 @@ const hash = encodeProductPlanHash(
 );
 ```
 
-- `item` / recipe ids are **Docs ClassNames** (`Desc_*_C`, `Recipe_*_C`).
+- Prefer **canonical Docs ClassNames** (`Desc_*_C`, `Recipe_*_C`) as used in Coffee Stain Docs / our catalogs.
 - Each alternate is applied to its **primary product** via `recipePrimaries.json`.
 - Byproduct-selectable paths: pass explicit  
   `recipeOverrides: { Desc_HeavyOilResidue_C: "Recipe_…_C" }` instead of guessing.
+
+### ClassName aliases (Mode B hand-rolls)
+
+Our encoder runs product ids through `canonicalizeProductId` ([`src/lib/productIdAliases.ts`](../src/lib/productIdAliases.ts)) so wiki-ish / legacy names (e.g. `Desc_Supercomputer_C` → `Desc_ComputerSuper_C`) still resolve.
+
+- **Vendoring our TS module:** you get this for free.
+- **Hand-rolled Mode B in another language:** if inputs might use aliased ClassNames, **replicate that map** (or normalize to Docs ids yourself) before index lookup. Missed aliases silently drop items from the hash.
+
+Mode A raw lines use the fixed raw table only — aliases are rarely relevant there.
 
 ### What you do **not** encode
 
@@ -102,15 +111,18 @@ Copy from a **tagged commit** or release of this repo:
 | `public/data/recipes/itemIds.json` | Item index table (**append-only**) |
 | `public/data/recipes/recipeIds.json` | Recipe index table (**append-only**) |
 | `public/data/recipes/recipePrimaries.json` | Mode B builder helper |
+| `public/data/recipes/docs-meta.json` | Source stamp / counts — **revision marker** for the cut you pinned (`generatedAt`, item/recipe counts) |
 | `src/lib/planHash.ts` (+ its small deps) **or** reimplement from SHARE_HASH.md | Encoder |
+| `src/lib/productIdAliases.ts` | Required for Mode B if inputs may use legacy/wiki ClassNames |
 
-**Do not renumber** catalog entries. When Coffee Stain adds items/recipes, new ids are **appended** by `npm run parse-docs`. Old links keep working only if indices stay stable.
+Catalog JSON files do **not** embed a revision field themselves. Record the git tag / commit **and** copy `docs-meta.json` so a vendored tree can self-identify which Docs cut it was built from.
 
-Optional deps if you vendor the TS module as-is:
+**Do not renumber** catalog entries. When Coffee Stain adds items/recipes, new ids are **appended** by `npm run parse-docs`. Old links keep working only if indices stay stable. CI in this repo pins known ClassName → index slots so accidental reordering fails tests.
 
-- `canonicalizeProductId` / aliases (`src/lib/productIdAliases.ts`) — legacy id renames
-- `RAW_RESOURCE_OPTIONS` (`src/lib/resources.ts`) — Mode A raw indices
-- `DEFAULT_MINER_SETTINGS` / scoring defaults (`src/types`) — “omit when default” tails
+Other deps if you vendor the TS module as-is:
+
+- `RAW_RESOURCE_OPTIONS` (`src/lib/resources.ts`) — Mode A raw indices  
+- `DEFAULT_MINER_SETTINGS` / scoring defaults (`src/types`) — “omit when default” tails  
 
 For a minimal foreign encoder, **Mode A only** + SHARE_HASH.md is enough.
 
@@ -134,7 +146,7 @@ Suggested link text: **Open in Heatmap** / **View sites on map**.
 | Rule | Detail |
 |------|--------|
 | Prefix | `v1.` is the public format (beta may hard-cut older private layouts) |
-| Catalogs | Append-only; pin game/data revision in your integration notes |
+| Catalogs | Append-only; pin git tag/commit + ship `docs-meta.json` as the revision stamp |
 | Breaking wire changes | New prefix (`v2.`) + doc bump — rare |
 | Questions | Prefer issues on this repo with a sample hash + intended demand |
 

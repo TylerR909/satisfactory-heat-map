@@ -32,7 +32,8 @@ The algorithm is intentional open-source surface area: other Satisfactory tools 
 | `recipeIds.json` | Ordered recipe ClassNames | index as **u16** LE |
 | `recipePrimaries.json` | recipe → primary product (builder helper) | not on wire |
 
-**Stability rule:** existing indices never change. `npm run parse-docs` **appends** new ClassNames only. Do not re-sort the whole table.
+**Stability rule:** existing indices never change. `npm run parse-docs` **appends** new ClassNames only. Do not re-sort the whole table.  
+CI pins known ClassName → index slots in `src/lib/planHash.test.ts` (“append-only contract”) so accidental renumber fails loudly.
 
 Raw Mode A resources also use the fixed picker table in `RAW_RESOURCE_OPTIONS` (`src/lib/resources.ts`) — same order as the Raw mode UI (~13 ores/fluids).
 

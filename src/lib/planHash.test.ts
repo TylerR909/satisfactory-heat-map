@@ -360,6 +360,28 @@ describe("catalogs + stability", () => {
     expect(RECIPE_IDS).toContain("Recipe_Alternate_OCSupercomputer_C");
   });
 
+  /**
+   * Append-only guard: renumbering these slots silently breaks every shared and
+   * vendored link. If parse-docs or a bad edit reorders catalogs, fail loudly.
+   * New items/recipes must only **append** (indices may grow; existing must not move).
+   */
+  it("pins known item/recipe indices (append-only contract)", () => {
+    expect(ITEM_IDS[0]).toBe("BP_ItemDescriptorPortableMiner_C");
+    expect(ITEM_IDS.indexOf("Desc_ComputerSuper_C")).toBe(23);
+    expect(ITEM_IDS.indexOf("Desc_IronPlate_C")).toBe(63);
+    expect(ITEM_IDS.indexOf("Desc_ModularFrameHeavy_C")).toBe(74);
+    expect(ITEM_IDS.indexOf("Desc_OreIron_C")).toBe(92);
+    expect(ITEM_IDS.indexOf("Desc_Water_C")).toBe(156);
+    // Length may grow when Docs add items; never shrink below the frozen prefix.
+    expect(ITEM_IDS.length).toBeGreaterThanOrEqual(168);
+
+    expect(RECIPE_IDS[0]).toBe("Recipe_AILimiter_C");
+    expect(RECIPE_IDS.indexOf("Recipe_Alternate_OCSupercomputer_C")).toBe(68);
+    expect(RECIPE_IDS.indexOf("Recipe_Alternate_PureIronIngot_C")).toBe(76);
+    expect(RECIPE_IDS.indexOf("Recipe_ComputerSuper_C")).toBe(137);
+    expect(RECIPE_IDS.length).toBeGreaterThanOrEqual(290);
+  });
+
   it("showcase HMF defaults stay a stable short golden hash", () => {
     const h = encodePlanHash(
       sample({
