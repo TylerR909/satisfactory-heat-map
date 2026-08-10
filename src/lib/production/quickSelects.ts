@@ -7,8 +7,10 @@ import {
   canMinimizeInputTypes,
   minimizeInputTypeOverrides,
 } from "@/lib/production/minimizeInputTypes";
-import { listAlternateRecipes, primaryProductId, recipeShortName } from "@/lib/production/solve";
+import { listProductionRecipes, primaryProductId, recipeShortName } from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
+
+const SCREW_ID = "Desc_IronScrew_C";
 
 export type QuickSelectContext = {
   recipes: Recipe[];
@@ -101,10 +103,22 @@ function fixedOverrides(
   return out;
 }
 
-/** Prefer a single screw-free alt per product (stable pick). */
+/**
+ * Prefer a single screw-free alt per product (stable pick).
+ * Only when the **default** recipe actually uses screws (or this product *is* Screws) —
+ * otherwise every non-screw alt (Coated Plate, Recycled Plastic, …) would get rewritten
+ * and Selected could never stick after the expand reshuffles.
+ */
 function preferredScrewFreeAlt(recipes: Recipe[], productId: string): Recipe | undefined {
-  const alts = listAlternateRecipes(recipes, productId);
-  const screwFree = alts.filter((r) => !r.ingredients.some((i) => i.item === "Desc_IronScrew_C"));
+  const all = listProductionRecipes(recipes, productId);
+  const defaultRecipe = all[0];
+  if (!defaultRecipe || all.length <= 1) return undefined;
+
+  const defaultUsesScrews =
+    productId === SCREW_ID || defaultRecipe.ingredients.some((i) => i.item === SCREW_ID);
+  if (!defaultUsesScrews) return undefined;
+
+  const screwFree = all.slice(1).filter((r) => !r.ingredients.some((i) => i.item === SCREW_ID));
   if (screwFree.length === 0) return undefined;
   // Prefer Encased HMF / Stitched RIP / Steel Rotor by name, else first by id
   screwFree.sort((a, b) => {
@@ -172,7 +186,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "no-screws",
     label: "No Screws",
     description:
-      "Prefer screw-free alts for in-play steps (Stitched RIP, Steel Rotor, Heavy Encased, …).",
+      "Where the default recipe uses screws, prefer a screw-free alt (Stitched RIP, Steel Rotor, Heavy Encased, Cast Screws, …).",
     chip: { kind: "badge", badgeKind: "screw-free", text: "Screw-Free" },
     applicable: (ctx) => {
       for (const id of [...ctx.expansionItemIds, ...ctx.productTargetIds]) {

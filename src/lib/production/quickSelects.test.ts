@@ -8,7 +8,11 @@ import {
   type QuickSelect,
   type QuickSelectContext,
 } from "@/lib/production/quickSelects";
-import { listProductionRecipes } from "@/lib/production/solve";
+import {
+  DEFAULT_EXTERNAL_ITEM_IDS,
+  listProductionRecipes,
+  solveProductsToRaw,
+} from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
 
 function loadRecipes(): Recipe[] {
@@ -121,6 +125,9 @@ describe("quickSelects", () => {
     if (r.kind !== "merge") return;
     expect(r.overrides.Desc_IronPlateReinforced_C).toBeDefined();
     expect(r.overrides.Desc_ModularFrameHeavy_C).toBeDefined();
+    // Does not rewrite products whose default never used screws
+    expect(r.overrides.Desc_IronPlate_C).toBeUndefined();
+    expect(r.overrides.Desc_IronIngot_C).toBeUndefined();
     // Chosen alts must not use screws
     for (const rid of Object.values(r.overrides)) {
       const rec = recipes.find((x) => x.id === rid);
@@ -128,6 +135,42 @@ describe("quickSelects", () => {
       if (!rec) continue;
       expect(rec.ingredients.some((i) => i.item === "Desc_IronScrew_C")).toBe(false);
     }
+  });
+
+  it("No Screws stays Selected after apply on HMF expand", () => {
+    const recipes = loadRecipes();
+    const items = loadItems();
+    const targets = [{ productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }];
+    const { expansion } = solveProductsToRaw(targets, recipes, items, {
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    });
+    const c0: QuickSelectContext = {
+      recipes,
+      items,
+      expansionItemIds: new Set(expansion.map((e) => e.itemId)),
+      productTargetIds: new Set(["Desc_ModularFrameHeavy_C"]),
+      productTargets: targets,
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    };
+    const q = quickSelect("no-screws");
+    const r = q.resolve(c0);
+    expect(r.kind).toBe("merge");
+    if (r.kind !== "merge") return;
+    const overrides = r.overrides;
+    // Re-expand as the app would after apply
+    const after = solveProductsToRaw(targets, recipes, items, {
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+      recipeOverrides: overrides,
+    });
+    const c1: QuickSelectContext = {
+      recipes,
+      items,
+      expansionItemIds: new Set(after.expansion.map((e) => e.itemId)),
+      productTargetIds: new Set(["Desc_ModularFrameHeavy_C"]),
+      productTargets: targets,
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    };
+    expect(isQuickSelectSelected(q, c1, overrides)).toBe(true);
   });
 
   it("applicableQuickSelects pins Defaults, All Pure, No Screws first", () => {
