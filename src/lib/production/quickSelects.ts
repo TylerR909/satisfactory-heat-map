@@ -173,7 +173,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
   {
     id: "all-pure",
     label: "All Pure",
-    description: "Pick every Pure-* alt for items in this expand (water-boosted ingots/crystals).",
+    description: "Use Pure recipes wherever they apply (more product per ore; plan for water).",
     chip: { kind: "badge", badgeKind: "pure", text: "Pure" },
     applicable: (ctx) => {
       const pure = pureAltByProduct(ctx.recipes);
@@ -195,7 +195,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "no-screws",
     label: "No Screws",
     description:
-      "Where the default recipe uses screws, prefer a screw-free alt (Stitched RIP, Steel Rotor, Heavy Encased, Cast Screws, …).",
+      "Swap off screw recipes where an alt exists (Stitched RIP, Steel Rotor, Heavy Encased, Cast Screws, …).",
     chip: { kind: "badge", badgeKind: "screw-free", text: "Screw-Free" },
     applicable: (ctx) => {
       for (const id of [...ctx.expansionItemIds, ...ctx.productTargetIds]) {
@@ -217,7 +217,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "resource-efficient",
     label: "Resource Efficient",
     description:
-      "Per in-play product, the alt with the best raw-savings score (skips swaps that only look efficient by introducing new ores).",
+      "Prefer alts that use fewer map resources without introducing new ores (water is OK).",
     chip: { kind: "badge", badgeKind: "resource-efficient", text: "Resource Efficient" },
     applicable: (ctx) => {
       for (const id of [...ctx.expansionItemIds, ...ctx.productTargetIds]) {
@@ -239,7 +239,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "minimize-input-types",
     label: "Minimize Input Types",
     description:
-      "Greedy expand search: only keeps alts that strictly cut distinct map raws (not tonnage-only swaps like Tempered Caterium). Partial Removes that leave a raw elsewhere are skipped.",
+      "Pick alts that reduce how many different map resources you need (skips near-misses that don’t fully drop a resource).",
     chip: { kind: "badge", badgeKind: "removes", text: "Fewer Raws" },
     applicable: (ctx) => {
       if (
@@ -296,7 +296,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "polymer-plastics",
     label: "Polymer plastics",
     description:
-      "Residual Plastic + Residual Rubber + dedicated Polymer Resin (130/min) — polymer path off crude→plastic.",
+      "Residual Plastic + Residual Rubber + Polymer Resin — usual early path off crude→plastic.",
     applicable: (ctx) =>
       inPlay(ctx, "Desc_Plastic_C") ||
       inPlay(ctx, "Desc_Rubber_C") ||
@@ -314,7 +314,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "recycled-loop",
     label: "Recycled loop",
     description:
-      "Recycled Plastic + Recycled Rubber (fuel loop). Expand seeds the cycle via Residual polymer when needed.",
+      "Recycled Plastic + Recycled Rubber (plastic↔rubber with fuel). Residual polymer is used when the loop needs a start.",
     applicable: (ctx) => inPlay(ctx, "Desc_Plastic_C") || inPlay(ctx, "Desc_Rubber_C"),
     resolve: (ctx) => ({
       kind: "merge",
@@ -328,7 +328,7 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "oil-recycled-max",
     label: "Oil → recycled",
     description:
-      "HOR + Diluted Fuel + Recycled Plastic/Rubber — max oil plastics; polymer seed breaks the recycle cycle.",
+      "Heavy Oil Residue + Diluted Fuel + Recycled Plastic/Rubber — more plastic and rubber per oil.",
     applicable: (ctx) =>
       inPlayCount(ctx, [
         "Desc_HeavyOilResidue_C",
