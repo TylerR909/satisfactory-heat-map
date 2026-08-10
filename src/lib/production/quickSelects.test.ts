@@ -76,7 +76,7 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_Plastic_C).toBeUndefined();
   });
 
-  it("Sloppy + Pure Al applies both when either is in play", () => {
+  it("Sloppy + Pure Al applies full pack when either is in play", () => {
     const recipes = loadRecipes();
     const c = ctx(recipes, ["Desc_AluminumIngot_C"]);
     const q = quickSelect("sloppy-pure-al");
@@ -84,9 +84,9 @@ describe("quickSelects", () => {
     const r = q.resolve(c);
     expect(r.kind).toBe("merge");
     if (r.kind !== "merge") return;
-    // Only in-play products get overrides
+    // Full harmony — including steps not yet on the expand (one-click packs)
     expect(r.overrides.Desc_AluminumIngot_C).toBe("Recipe_PureAluminumIngot_C");
-    expect(r.overrides.Desc_AluminaSolution_C).toBeUndefined();
+    expect(r.overrides.Desc_AluminaSolution_C).toBe("Recipe_Alternate_SloppyAlumina_C");
   });
 
   it("Recycled loop wires Plastic + Rubber alts", () => {
@@ -212,6 +212,49 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_Computer_C).toBe("Recipe_Alternate_Computer_1_C");
     expect(r.overrides.Desc_CircuitBoard_C).toBe("Recipe_Alternate_CircuitBoard_2_C");
     expect(r.overrides.Desc_HighSpeedWire_C).toBe("Recipe_Alternate_Quickwire_C");
+  });
+
+  it("Caterium computers sets Quickwire even when only Computer is in play (one click)", () => {
+    const recipes = loadRecipes();
+    const items = loadItems();
+    // Adaptive Control Unit default expand has Computer + Circuit Board, not Quickwire yet
+    const targets = [{ productId: "Desc_SpaceElevatorPart_5_C", itemsPerMinute: 5 }];
+    const base = solveProductsToRaw(targets, recipes, items, {
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    });
+    expect(base.expansion.some((e) => e.itemId === "Desc_Computer_C")).toBe(true);
+    expect(base.expansion.some((e) => e.itemId === "Desc_HighSpeedWire_C")).toBe(false);
+
+    const c: QuickSelectContext = {
+      recipes,
+      items,
+      expansionItemIds: new Set(base.expansion.map((e) => e.itemId)),
+      productTargetIds: new Set(["Desc_SpaceElevatorPart_5_C"]),
+      productTargets: targets,
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    };
+    const q = quickSelect("caterium-computers");
+    const r = q.resolve(c);
+    expect(r.kind).toBe("merge");
+    if (r.kind !== "merge") return;
+    // Full pack in one resolve — including Quickwire not yet on the expand
+    expect(r.overrides.Desc_Computer_C).toBe("Recipe_Alternate_Computer_1_C");
+    expect(r.overrides.Desc_CircuitBoard_C).toBe("Recipe_Alternate_CircuitBoard_2_C");
+    expect(r.overrides.Desc_HighSpeedWire_C).toBe("Recipe_Alternate_Quickwire_C");
+
+    const after = solveProductsToRaw(targets, recipes, items, {
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+      recipeOverrides: r.overrides,
+    });
+    const c1: QuickSelectContext = {
+      recipes,
+      items,
+      expansionItemIds: new Set(after.expansion.map((e) => e.itemId)),
+      productTargetIds: new Set(["Desc_SpaceElevatorPart_5_C"]),
+      productTargets: targets,
+      externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+    };
+    expect(isQuickSelectSelected(q, c1, r.overrides)).toBe(true);
   });
 
   it("isQuickSelectSelected: Defaults when no in-play overrides", () => {

@@ -87,15 +87,18 @@ function findRecipe(recipes: Recipe[], id: string): Recipe | undefined {
 }
 
 /**
- * Fixed product → recipe override, only if product is in-play and recipe exists.
+ * Fixed harmony pack: if **any** member is in-play, apply **all** valid pairs
+ * (even products not yet on the expand). Downstream steps often appear only after
+ * the first alts apply (e.g. Fused Quickwire after Caterium Computer) — requiring
+ * in-play for every pair forced a double-click.
  */
 function fixedOverrides(
   ctx: QuickSelectContext,
   pairs: Array<{ productId: string; recipeId: string }>,
 ): Record<string, string> {
+  if (!pairs.some((p) => inPlay(ctx, p.productId))) return {};
   const out: Record<string, string> = {};
   for (const { productId, recipeId } of pairs) {
-    if (!inPlay(ctx, productId)) continue;
     const r = findRecipe(ctx.recipes, recipeId);
     if (!r || primaryProductId(r) !== productId) continue;
     out[productId] = recipeId;
