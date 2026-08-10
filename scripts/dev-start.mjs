@@ -79,11 +79,35 @@ function ensureBasemapTiles() {
 await ensureWasm();
 const basemap = ensureBasemapTiles();
 
-// Conductor (and other hosts) may inject CONDUCTOR_PORT / PORT for multi-worktree previews.
-const port = process.env.CONDUCTOR_PORT || process.env.PORT || process.env.VITE_PORT;
-const viteArgs = ["vite"];
-if (port) {
-  viteArgs.push("--port", String(port), "--strictPort");
+/**
+ * Port policy: keep a **stable origin** so browser localStorage survives restarts.
+ *
+ * Conductor injects CONDUCTOR_PORT into integrated terminals (new high port per
+ * workspace/session). Binding that every `npm start` made localhost:55xxx jump
+ * around and wiped app state for no local conflict.
+ *
+ * Prefer:
+ *   1. Explicit VITE_PORT / PORT (you opted in)
+ *   2. CONDUCTOR_PORT only if USE_CONDUCTOR_PORT=1 (preview / multi-instance opt-in)
+ *   3. Else Vite default 5173 — no --strictPort, so a second concurrent start
+ *      can auto-bump (5174…) instead of failing
+ */
+const explicit = process.env.VITE_PORT || process.env.PORT;
+const useConductorPort =
+  process.env.USE_CONDUCTOR_PORT === "1" || process.env.USE_CONDUCTOR_PORT === "true";
+const conductorPort = process.env.CONDUCTOR_PORT;
+
+const port = explicit || (useConductorPort ? conductorPort : null) || "5173";
+const viteArgs = ["vite", "--port", String(port)];
+
+if (explicit || useConductorPort) {
+  // Caller asked for a specific port — fail if taken rather than silently moving.
+  viteArgs.push("--strictPort");
+} else if (conductorPort && conductorPort !== String(port)) {
+  console.log(
+    `[start] Using port ${port} (stable). Ignoring CONDUCTOR_PORT=${conductorPort} — ` +
+      `set USE_CONDUCTOR_PORT=1 to bind Conductor's port.`,
+  );
 }
 
 const env = { ...process.env };

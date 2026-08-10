@@ -7,7 +7,11 @@ import {
 } from "@/lib/heatmap/heatRender";
 import type { PlanSnapshot } from "@/lib/planHash";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
-import { DEFAULT_EXTERNAL_ITEM_IDS, solveProductsToRaw } from "@/lib/production/solve";
+import {
+  DEFAULT_EXTERNAL_ITEM_IDS,
+  recipeProducesItem,
+  solveProductsToRaw,
+} from "@/lib/production/solve";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
 import { clearNodeSeedCache, getNodesForSeed, type MapSeed } from "@/lib/seed";
 import type {
@@ -34,6 +38,15 @@ export function newLineId(): string {
   return `line-${lineId}-${Date.now()}`;
 }
 
+/** Sorted multiset of product ClassNames — detects product-set changes vs rate-only edits. */
+function productIdSetKey(targets: Array<{ productId: string }>): string {
+  return targets
+    .map((t) => t.productId)
+    .filter(Boolean)
+    .sort()
+    .join("\0");
+}
+
 /** Mode B expand row: on-site intermediate or off-site (external) input. */
 export type ExpansionRow = {
   itemId: string;
@@ -41,6 +54,19 @@ export type ExpansionRow = {
   /** True when this item is treated as imported / not expanded into map raws. */
   external: boolean;
 };
+
+/** Excess secondary outputs from Mode B expand (display under Raw demand). */
+export type ByproductRow = {
+  itemId: string;
+  itemsPerMinute: number;
+};
+
+/**
+ * Intermediates list order (display-only, localStorage).
+ * - deep-first: raws/precursors at top → product targets at bottom (default)
+ * - shallow-first: product targets at top → deep precursors at bottom
+ */
+export type ExpansionSortOrder = "deep-first" | "shallow-first";
 
 export type AppState = {
   mode: InputMode;
@@ -52,6 +78,11 @@ export type AppState = {
    * Crafted intermediates + Water. Share-hash + plan intent.
    */
   externalItems: string[];
+  /**
+   * Mode B: product itemId → recipe ClassName for non-default production picks.
+   * Empty = all defaults. Share-hash + plan intent.
+   */
+  recipeOverrides: Record<string, string>;
   miner: MinerSettings;
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
@@ -62,6 +93,8 @@ export type AppState = {
   advancedOpen: boolean;
   /** Mode B Intermediates accordion (off-site intermediate toggles). */
   expansionOpen: boolean;
+  /** Intermediates list sort (display-only; shared across plans in this browser). */
+  expansionSortOrder: ExpansionSortOrder;
   heatOpacity: number;
   showNodes: boolean;
   selectedSiteIndex: number | null;
@@ -71,6 +104,11 @@ export type AppState = {
    * Resource Toggle UI. Empty in raw mode.
    */
   expansionRows: ExpansionRow[];
+  /**
+   * Mode B: net excess byproducts from expand (HOR, Polymer Resin, Silica, …).
+   * Display under Raw demand. Ephemeral — not persisted.
+   */
+  byproductRows: ByproductRow[];
   heatmap: HeatmapResult | null;
   /**
    * Last main-thread canvas PNG bake for the heat overlay (not part of badge ms).
@@ -102,6 +140,22 @@ export type AppState = {
   removeProductLine: (id: string) => void;
   /** Mark / unmark an Intermediates row as off-site for Mode B expand (incl. Water). */
   setItemExternal: (itemId: string, external: boolean) => void;
+  /**
+   * Set production recipe for a product/intermediate (Mode B).
+   * Pass null/undefined recipeId to clear (use default).
+   */
+  setRecipeOverride: (itemId: string, recipeId: string | null) => void;
+  /**
+   * Bulk alt picks for quick-selects.
+   * - `clear: true` → empty overrides (all defaults)
+   * - else merge `overrides` (productId → recipeId) into the current map
+   */
+  applyRecipeOverrides: (opts: {
+    clear?: boolean;
+    /** Drop existing overrides before applying `overrides` (expand optimizers). */
+    replace?: boolean;
+    overrides?: Record<string, string>;
+  }) => void;
   setMiner: (m: Partial<MinerSettings>) => void;
   setScoringMode: (mode: ScoringMode) => void;
   setScoringOptions: (patch: Partial<ScoringOptions>) => void;
@@ -110,6 +164,7 @@ export type AppState = {
   setExtractorsOpen: (v: boolean) => void;
   setAdvancedOpen: (v: boolean) => void;
   setExpansionOpen: (v: boolean) => void;
+  setExpansionSortOrder: (order: ExpansionSortOrder) => void;
   setHeatOpacity: (n: number) => void;
   setShowNodes: (v: boolean) => void;
   setSelectedSiteIndex: (i: number | null) => void;
@@ -142,31 +197,48 @@ export type AppState = {
 function recompute(
   state: Pick<
     AppState,
-    "mode" | "rawDemand" | "productTargets" | "externalItems" | "items" | "recipes"
+    | "mode"
+    | "rawDemand"
+    | "productTargets"
+    | "externalItems"
+    | "recipeOverrides"
+    | "items"
+    | "recipes"
   >,
-): { demand: RawDemand[]; expansionRows: ExpansionRow[] } {
+): { demand: RawDemand[]; expansionRows: ExpansionRow[]; byproductRows: ByproductRow[] } {
   if (state.mode === "raw") {
     return {
       demand: state.rawDemand
         .filter((d) => d.itemsPerMinute > 0 && d.resource)
         .map(({ resource, itemsPerMinute }) => ({ resource, itemsPerMinute })),
       expansionRows: [],
+      byproductRows: [],
     };
   }
   const targets = state.productTargets
     .filter((t) => t.productId && t.itemsPerMinute > 0)
     .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
-  if (targets.length === 0) return { demand: [], expansionRows: [] };
-  const { demand, expansion } = solveProductsToRaw(targets, state.recipes, state.items, {
-    externalItems: state.externalItems,
-  });
+  if (targets.length === 0) return { demand: [], expansionRows: [], byproductRows: [] };
+  const { demand, expansion, byproducts } = solveProductsToRaw(
+    targets,
+    state.recipes,
+    state.items,
+    {
+      externalItems: state.externalItems,
+      recipeOverrides: state.recipeOverrides,
+    },
+  );
   // Solver already orders deep → … → direct inputs → targets (min-depth merge)
   const expansionRows: ExpansionRow[] = expansion.map((e) => ({
     itemId: e.itemId,
     itemsPerMinute: e.itemsPerMinute,
     external: e.external,
   }));
-  return { demand, expansionRows };
+  const byproductRows: ByproductRow[] = byproducts.map((b) => ({
+    itemId: b.itemId,
+    itemsPerMinute: b.itemsPerMinute,
+  }));
+  return { demand, expansionRows, byproductRows };
 }
 
 export const useAppStore = create<AppState>()(
@@ -188,6 +260,7 @@ export const useAppStore = create<AppState>()(
       ],
       // Packaging vessels: fair default for packaged recipes (user can re-enable)
       externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
+      recipeOverrides: {},
       miner: { ...DEFAULT_MINER_SETTINGS },
       scoringMode: "centered",
       scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
@@ -196,11 +269,13 @@ export const useAppStore = create<AppState>()(
       extractorsOpen: false,
       advancedOpen: false,
       expansionOpen: false,
+      expansionSortOrder: "deep-first",
       heatOpacity: DEFAULT_HEAT_OPACITY,
       showNodes: true,
       selectedSiteIndex: null,
       activeDemand: [],
       expansionRows: [],
+      byproductRows: [],
       heatmap: null,
       lastRasterizeMs: null,
       computing: false,
@@ -246,10 +321,16 @@ export const useAppStore = create<AppState>()(
         get().recomputeActiveDemand();
       },
       updateProductLine: (id, patch) => {
-        const productTargets = get().productTargets.map((line) =>
-          line.id === id ? { ...line, ...patch } : line,
-        );
-        set({ productTargets });
+        const prev = get().productTargets;
+        const productTargets = prev.map((line) => (line.id === id ? { ...line, ...patch } : line));
+        // Alt picks are plan-local for now: changing *which* products are targeted
+        // clears overrides (rate-only edits keep them).
+        const productSetChanged =
+          patch.productId != null && productIdSetKey(prev) !== productIdSetKey(productTargets);
+        set({
+          productTargets,
+          ...(productSetChanged ? { recipeOverrides: {} } : {}),
+        });
         get().recomputeActiveDemand();
       },
       addProductLine: () => {
@@ -264,11 +345,16 @@ export const useAppStore = create<AppState>()(
             ...get().productTargets,
             { id: newLineId(), productId: next.id, itemsPerMinute: 60 },
           ],
+          // New product line = new plan intent; don't carry intermediate alts forward
+          recipeOverrides: {},
         });
         get().recomputeActiveDemand();
       },
       removeProductLine: (id) => {
-        set({ productTargets: get().productTargets.filter((line) => line.id !== id) });
+        set({
+          productTargets: get().productTargets.filter((line) => line.id !== id),
+          recipeOverrides: {},
+        });
         get().recomputeActiveDemand();
       },
       setItemExternal: (itemId, external) => {
@@ -284,6 +370,51 @@ export const useAppStore = create<AppState>()(
           ? [...prev, id].sort((a, b) => a.localeCompare(b))
           : prev.filter((x) => x !== id);
         set({ externalItems });
+        get().recomputeActiveDemand();
+      },
+      setRecipeOverride: (itemId, recipeId) => {
+        const id = canonicalizeProductId(itemId);
+        if (!id) return;
+        const prev = get().recipeOverrides;
+        if (!recipeId) {
+          if (!(id in prev)) return;
+          const { [id]: _removed, ...rest } = prev;
+          set({ recipeOverrides: rest });
+          get().recomputeActiveDemand();
+          return;
+        }
+        const rid = recipeId.trim();
+        if (!rid || prev[id] === rid) return;
+        // Validate recipe primarily produces this item when catalog is loaded
+        const recipes = get().recipes;
+        if (recipes.length > 0) {
+          const r = recipes.find((x) => x.id === rid);
+          // Allow byproduct producers (Fuel/HOR → Polymer Resin, Quartz Purification → Dissolved Silica)
+          if (!r || !recipeProducesItem(r, id)) return;
+        }
+        set({ recipeOverrides: { ...prev, [id]: rid } });
+        get().recomputeActiveDemand();
+      },
+      applyRecipeOverrides: (opts) => {
+        const recipes = get().recipes;
+        const prev = get().recipeOverrides;
+        const next: Record<string, string> = opts.clear || opts.replace ? {} : { ...prev };
+        for (const [rawProduct, rawRecipe] of Object.entries(opts.overrides ?? {})) {
+          const productId = canonicalizeProductId(rawProduct);
+          const recipeId = rawRecipe.trim();
+          if (!productId || !recipeId) continue;
+          if (recipes.length > 0) {
+            const r = recipes.find((x) => x.id === recipeId);
+            if (!r || !recipeProducesItem(r, productId)) continue;
+          }
+          next[productId] = recipeId;
+        }
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length === nextKeys.length && nextKeys.every((k) => prev[k] === next[k])) {
+          return;
+        }
+        set({ recipeOverrides: next });
         get().recomputeActiveDemand();
       },
       setMiner: (m) => {
@@ -333,6 +464,7 @@ export const useAppStore = create<AppState>()(
       setExtractorsOpen: (extractorsOpen) => set({ extractorsOpen }),
       setAdvancedOpen: (advancedOpen) => set({ advancedOpen }),
       setExpansionOpen: (expansionOpen) => set({ expansionOpen }),
+      setExpansionSortOrder: (expansionSortOrder) => set({ expansionSortOrder }),
       setHeatOpacity: (heatOpacity) => set({ heatOpacity }),
       setShowNodes: (showNodes) => set({ showNodes }),
       setSelectedSiteIndex: (selectedSiteIndex) => set({ selectedSiteIndex }),
@@ -377,6 +509,7 @@ export const useAppStore = create<AppState>()(
         }
         const { demand } = solveProductsToRaw(targets, state.recipes, state.items, {
           externalItems: state.externalItems,
+          recipeOverrides: state.recipeOverrides,
         });
         if (demand.length === 0) {
           set({ error: "Could not expand products to raw demand." });
@@ -392,6 +525,7 @@ export const useAppStore = create<AppState>()(
           rawDemand,
           activeDemand: demand,
           expansionRows: [],
+          byproductRows: [],
           error: null,
         });
       },
@@ -429,14 +563,19 @@ export const useAppStore = create<AppState>()(
             ? getNodesForSeed(prev.baseSlots, nextSeed)
             : prev.nodes;
 
-        // Older hashes omit externalItems → []; prefer snapshot list when present
         const externalItems = (snap.externalItems ?? []).map((id) => canonicalizeProductId(id));
+        const recipeOverrides: Record<string, string> = {};
+        for (const [pid, rid] of Object.entries(snap.recipeOverrides ?? {})) {
+          const p = canonicalizeProductId(pid);
+          if (p && rid) recipeOverrides[p] = rid;
+        }
 
         set({
           mode: snap.mode,
           rawDemand,
           productTargets,
           externalItems,
+          recipeOverrides,
           miner: {
             ...DEFAULT_MINER_SETTINGS,
             ...snap.miner,
@@ -473,8 +612,8 @@ export const useAppStore = create<AppState>()(
       },
       selectSite: (_site, index) => set({ selectedSiteIndex: index }),
       recomputeActiveDemand: () => {
-        const { demand, expansionRows } = recompute(get());
-        set({ activeDemand: demand, expansionRows });
+        const { demand, expansionRows, byproductRows } = recompute(get());
+        set({ activeDemand: demand, expansionRows, byproductRows });
       },
       loadGameData: async () => {
         try {
@@ -520,13 +659,13 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      // v9: externalItems (Mode B off-site prune); seed still null = Default
       name: "sf-heatmap-v9",
       partialize: (s) => ({
         mode: s.mode,
         rawDemand: s.rawDemand,
         productTargets: s.productTargets,
         externalItems: s.externalItems,
+        recipeOverrides: s.recipeOverrides,
         miner: s.miner,
         scoringMode: s.scoringMode,
         scoringOptions: s.scoringOptions,
@@ -535,6 +674,7 @@ export const useAppStore = create<AppState>()(
         extractorsOpen: s.extractorsOpen,
         advancedOpen: s.advancedOpen,
         expansionOpen: s.expansionOpen,
+        expansionSortOrder: s.expansionSortOrder,
         heatOpacity: s.heatOpacity,
         showNodes: s.showNodes,
         seed: s.seed,
@@ -545,6 +685,7 @@ export const useAppStore = create<AppState>()(
           productId?: string;
           productRate?: number;
           heatRender?: Partial<HeatRenderOptions>;
+          expansionSortOrder?: string;
         };
         const rawDemand = (p.rawDemand ?? current.rawDemand).map((line, i) => ({
           id: "id" in line && typeof line.id === "string" ? line.id : `migrated-${i}`,
@@ -566,10 +707,18 @@ export const useAppStore = create<AppState>()(
           productId: canonicalizeProductId(line.productId),
           itemsPerMinute: line.itemsPerMinute,
         }));
-        // Pre-v9 localStorage has no externalItems → keep packaging vessel defaults
         const externalItems = Array.isArray(p.externalItems)
           ? p.externalItems.map((id) => canonicalizeProductId(id)).filter(Boolean)
           : [...DEFAULT_EXTERNAL_ITEM_IDS];
+        const recipeOverrides: Record<string, string> = {};
+        if (p.recipeOverrides && typeof p.recipeOverrides === "object") {
+          for (const [pid, rid] of Object.entries(p.recipeOverrides)) {
+            const productId = canonicalizeProductId(pid);
+            if (productId && typeof rid === "string" && rid) {
+              recipeOverrides[productId] = rid;
+            }
+          }
+        }
         const rawMode = String(p.scoringMode ?? current.scoringMode);
         const scoringMode: ScoringMode =
           rawMode === "weighted" || rawMode === "volume" ? "weighted" : "centered";
@@ -623,17 +772,21 @@ export const useAppStore = create<AppState>()(
             : typeof rawSeed === "number" && Number.isFinite(rawSeed)
               ? rawSeed | 0
               : null;
+        const expansionSortOrder: ExpansionSortOrder =
+          p.expansionSortOrder === "shallow-first" ? "shallow-first" : "deep-first";
         return {
           ...current,
           ...p,
           rawDemand,
           productTargets,
           externalItems,
+          recipeOverrides,
           miner,
           scoringMode,
           scoringOptions,
           heatRender,
           seed,
+          expansionSortOrder,
         };
       },
     },

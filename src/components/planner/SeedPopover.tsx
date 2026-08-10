@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   createSavedSeed,
   defaultNameForSeed,
+  ensureDefaultSavedSeed,
   formatSeedLabel,
   gcEmptyAutoNamed,
   getActiveSavedSeed,
@@ -41,13 +42,14 @@ type Props = {
   onLibraryChange: (lib: SeedLibrary) => void;
   /** Snapshot current saved-seed plan shelf before seed mutations. */
   snapshotActiveShelf: () => SeedLibrary;
+  /** Current map seed is not owned by any library entry (derived; amber Save CTA). */
   ephemeral: boolean;
   /** Save current seed under the given name (inline form, no browser prompt). */
   onSaveSeed: (name: string) => void;
   /** Apply seed + optional auto-save; parent handles plan shelf. */
   onPasteSeed: (seed: number) => void;
   onRandomSeed: () => void;
-  /** Switch to vanilla Default map (seed null), ephemeral like Random. */
+  /** Switch to vanilla Default map (seed null) and re-attach the Default shelf. */
   onDefaultMap: () => void;
   onSelectSavedSeed: (pt: SavedSeed, opts?: { keepOpen?: boolean }) => void;
 };
@@ -219,12 +221,15 @@ export function SeedPopover({
     let lib = snapshotActiveShelf();
     const { library: next, next: activate } = removeSavedSeed(lib, pt.id);
     lib = gcEmptyAutoNamed(next, activate?.id);
-    onLibraryChange(lib);
     setDeleteConfirmId(null);
     // Keep popover open after delete
     if (activate) {
+      onLibraryChange(lib);
       onSelectSavedSeed(activate, { keepOpen: true });
     } else {
+      // No shelves left → re-home on Default
+      lib = ensureDefaultSavedSeed(lib);
+      onLibraryChange(lib);
       useAppStore.getState().setSeed(null);
     }
   };

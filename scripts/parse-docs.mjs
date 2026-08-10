@@ -34,6 +34,27 @@ const OUT_DIR = path.join(root, "public/data/recipes");
 const FACTORY_RE =
   /Constructor|Assembler|Manufacturer|Smelter|Foundry|OilRefinery|Blender|HadronCollider|Converter|Packager|QuantumEncoder|ParticleAccelerator/i;
 
+/**
+ * Pick the primary factory building ClassName from Docs `mProducedIn`.
+ * Docs list UE soft paths, e.g. `.../Build_OilRefinery.Build_OilRefinery_C`.
+ * Dual workshop+factory recipes prefer the factory machine.
+ * @param {string} producedIn
+ * @returns {string | null} e.g. `Build_OilRefinery_C`
+ */
+function primaryProducedIn(producedIn) {
+  if (!producedIn || typeof producedIn !== "string") return null;
+  /** @type {string[]} */
+  const ids = [];
+  // Docs paths look like: "/Game/.../Build_OilRefinery.Build_OilRefinery_C"
+  // (no soft-object quotes). Take the ClassName after the final '.' of each path.
+  for (const m of producedIn.matchAll(/\.([A-Za-z][A-Za-z0-9_]*_C)/g)) {
+    if (m[1] && !ids.includes(m[1])) ids.push(m[1]);
+  }
+  if (ids.length === 0) return null;
+  const factory = ids.find((id) => FACTORY_RE.test(id));
+  return factory ?? ids[0] ?? null;
+}
+
 function readUtf16Json(filePath) {
   const buf = fs.readFileSync(filePath);
   // UTF-16 LE BOM FF FE
@@ -152,6 +173,7 @@ function buildRecipes(docs) {
    *   ingredients: { item: string; amount: number }[];
    *   products: { item: string; amount: number }[];
    *   alternate: boolean;
+   *   producedIn: string;
    * }>} */
   const recipes = [];
 
@@ -159,6 +181,9 @@ function buildRecipes(docs) {
     const id = c.ClassName;
     if (!id) continue;
     if (!isFactoryProduced(c.mProducedIn ?? "")) continue;
+
+    const producedIn = primaryProducedIn(c.mProducedIn ?? "");
+    if (!producedIn) continue;
 
     const ingredients = parseItemAmounts(c.mIngredients ?? "", fluidIds);
     const products = parseItemAmounts(c.mProduct ?? "", fluidIds);
@@ -178,6 +203,7 @@ function buildRecipes(docs) {
       ingredients,
       products,
       alternate: isAlternate(id, name),
+      producedIn,
     });
   }
 
@@ -293,7 +319,7 @@ function main() {
         source: "Coffee Stain CommunityResources/Docs/en-US.json",
         note: "Derived compact extract only — full Docs not shipped. Re-run: npm run parse-docs",
         filter:
-          "Factory-building recipes only (not Equipment Workshop-only). Products list uses automatable=default factory product.",
+          "Factory-building recipes only (not Equipment Workshop-only). Each recipe includes producedIn (Build_*_C). Products list uses automatable=default factory product.",
         generatedAt: new Date().toISOString(),
         itemCount: Object.keys(items).length,
         automatableProductCount: automatable,

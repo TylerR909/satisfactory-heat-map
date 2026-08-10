@@ -1,6 +1,8 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Attributions } from "@/components/Attributions";
+import { AltQuickSelects } from "@/components/planner/AltQuickSelects";
+import { RecipeAltPicker } from "@/components/planner/RecipeAltPicker";
 import { SavedPlansBar } from "@/components/planner/SavedPlansBar";
 import { useAutoHeatmap } from "@/hooks/useAutoHeatmap";
 import { formatDistCm } from "@/lib/coords";
@@ -22,14 +24,25 @@ import {
   wellClockRateLabel,
 } from "@/lib/mining";
 import { encodePlanHash } from "@/lib/planHash";
+import { classifyExpansionLink, type ExpansionLinkKind } from "@/lib/production/expansionLinks";
+import { listProductionRecipes, resolveProductionRecipe } from "@/lib/production/solve";
 import {
   RAW_RESOURCE_OPTIONS,
   resourceLabel,
   WATER_RESOURCE_ID,
   WELL_ONLY_RESOURCE_IDS,
 } from "@/lib/resources";
-import { useAppStore } from "@/store/useAppStore";
-import type { CapacityTag, HeatmapResult, MinerMk, ScoringMode, SiteScore } from "@/types";
+import { type ExpansionRow, type ExpansionSortOrder, useAppStore } from "@/store/useAppStore";
+import type {
+  CapacityTag,
+  HeatmapResult,
+  ItemDef,
+  MinerMk,
+  ProductTargetLine,
+  Recipe,
+  ScoringMode,
+  SiteScore,
+} from "@/types";
 import { DEFAULT_HEAT_OPACITY } from "@/types";
 
 /**
@@ -357,6 +370,324 @@ function RateInput({
   );
 }
 
+/** Icon button: toggle deep-first (precursors → targets) vs shallow-first (targets → precursors). */
+function ExpansionSortButton({
+  order,
+  onToggle,
+}: {
+  order: ExpansionSortOrder;
+  onToggle: () => void;
+}) {
+  const deepFirst = order === "deep-first";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-900/80 text-slate-400 transition hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200"
+      title={
+        deepFirst
+          ? "Sorted ingredients first, then finished products. Click to reverse."
+          : "Sorted finished products first, then ingredients. Click to reverse."
+      }
+      aria-label={
+        deepFirst
+          ? "Intermediates sorted ingredients first. Click to show finished products first."
+          : "Intermediates sorted finished products first. Click to show ingredients first."
+      }
+      aria-pressed={!deepFirst}
+    >
+      {/* Sort glyph: bar stack with direction arrow */}
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        className="shrink-0"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          d="M3 4h6M3 8h4M3 12h2"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        {deepFirst ? (
+          <path
+            d="M12 3v9M12 12l-2-2M12 12l2-2"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <path
+            d="M12 13V4M12 4l-2 2M12 4l2 2"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+/** Active production recipe for an expand row (respects overrides). */
+function rowProductionRecipe(
+  itemId: string,
+  recipes: Recipe[],
+  recipeOverrides: Record<string, string>,
+): Recipe | undefined {
+  return resolveProductionRecipe(
+    itemId,
+    recipes,
+    undefined,
+    undefined,
+    recipeOverrides[itemId] ?? null,
+  );
+}
+
+/** Recipe-link hover styles: violet upstream, emerald downstream, red for dead import links. */
+function linkHighlightClasses(
+  kind: ExpansionLinkKind,
+  onSite: boolean,
+): { row: string; rate: string; strike: string; slice: string; muted: string } {
+  if (kind === "predicate" || kind === "self") {
+    return onSite
+      ? {
+          row: "bg-violet-500/12 text-slate-100",
+          rate: "text-violet-200/90",
+          strike: "line-through decoration-red-500/45",
+          slice: "text-violet-100",
+          muted: "text-violet-300/50",
+        }
+      : {
+          // Self/import row while off-site (hovering a disabled item)
+          row: "bg-red-500/10 text-slate-500",
+          rate: "text-red-400/80",
+          strike: "line-through decoration-red-500/45",
+          slice: "text-red-300",
+          muted: "text-red-400/45",
+        };
+  }
+  if (kind === "consumer") {
+    return {
+      row: "bg-emerald-500/12 text-slate-100",
+      rate: "text-emerald-200/90",
+      strike: "line-through decoration-slate-600",
+      slice: "text-emerald-100",
+      muted: "text-emerald-300/45",
+    };
+  }
+  if (kind === "ghost-consumer") {
+    // Off-site row that would use hover if produced here — site does not feed it
+    return {
+      row: "bg-red-500/10 text-slate-500",
+      rate: "text-red-400/80",
+      strike: "line-through decoration-red-500/45",
+      slice: "text-red-300",
+      muted: "text-red-400/45",
+    };
+  }
+  return onSite
+    ? {
+        row: "text-slate-200 hover:bg-slate-800/80",
+        rate: "text-slate-300",
+        strike: "line-through decoration-slate-600",
+        slice: "text-slate-200",
+        muted: "text-slate-500",
+      }
+    : {
+        row: "text-slate-500 hover:bg-slate-800/50",
+        rate: "text-slate-500",
+        strike: "line-through decoration-slate-600",
+        slice: "text-slate-400",
+        muted: "text-slate-600",
+      };
+}
+
+/** Rate cell: plain total, or hover slice (portion/total or ↑inflow + total). */
+function ExpansionRateCell({
+  kind,
+  total,
+  attributed,
+  sliceClass,
+  mutedClass,
+  rateClass,
+}: {
+  kind: ExpansionLinkKind;
+  total: number;
+  attributed: number | null;
+  sliceClass: string;
+  mutedClass: string;
+  rateClass: string;
+}) {
+  const totalLabel = `${formatRate(total)}/min`;
+
+  if (kind === "predicate" && attributed != null) {
+    return (
+      <span className={`font-mono text-xs tabular-nums ${rateClass}`}>
+        <span className={`font-semibold ${sliceClass}`}>{formatRate(attributed)}</span>
+        <span className={mutedClass}>/{totalLabel}</span>
+      </span>
+    );
+  }
+
+  // Consumer (on-site) and ghost-consumer (off-site): hover flows *into* this row
+  if ((kind === "consumer" || kind === "ghost-consumer") && attributed != null) {
+    return (
+      <span className={`font-mono text-xs tabular-nums ${rateClass}`}>
+        <span className={`font-semibold ${sliceClass}`}>(↑{formatRate(attributed)}/min)</span>
+        <span className={`ml-1 ${mutedClass}`}>{totalLabel}</span>
+      </span>
+    );
+  }
+
+  return <span className={`font-mono text-xs tabular-nums ${rateClass}`}>{totalLabel}</span>;
+}
+
+function ExpansionRowList({
+  expansionRows,
+  productTargets,
+  externalItems,
+  items,
+  recipes,
+  recipeOverrides,
+  sortOrder,
+  setItemExternal,
+  setRecipeOverride,
+}: {
+  expansionRows: ExpansionRow[];
+  productTargets: ProductTargetLine[];
+  externalItems: string[];
+  items: Record<string, ItemDef>;
+  recipes: Recipe[];
+  recipeOverrides: Record<string, string>;
+  sortOrder: ExpansionSortOrder;
+  setItemExternal: (itemId: string, external: boolean) => void;
+  setRecipeOverride: (itemId: string, recipeId: string | null) => void;
+}) {
+  /**
+   * Only the hovered item id — each row derives predicate/consumer + rate slice
+   * from expand-aware link classification while re-rendering.
+   */
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const targetIds = useMemo(
+    () => new Set(productTargets.map((t) => t.productId)),
+    [productTargets],
+  );
+  // Prefer solver `row.external` (expand truth); fall back to toggle set
+  const externalSet = useMemo(() => new Set(externalItems), [externalItems]);
+  // Solver emits deep-first; reverse for targets-first (shallow-first)
+  const orderedRows = useMemo(
+    () => (sortOrder === "shallow-first" ? [...expansionRows].reverse() : expansionRows),
+    [expansionRows, sortOrder],
+  );
+  // One resolve per row per override change — shared by consumer checks + stable for map
+  const activeRecipeByItem = useMemo(() => {
+    const m = new Map<string, Recipe | undefined>();
+    for (const row of expansionRows) {
+      m.set(row.itemId, rowProductionRecipe(row.itemId, recipes, recipeOverrides));
+    }
+    return m;
+  }, [expansionRows, recipes, recipeOverrides]);
+
+  // Catalog defaults — off-site ghost links ignore hidden alts (e.g. Caterium Computer)
+  const defaultRecipeByItem = useMemo(() => {
+    const m = new Map<string, Recipe | undefined>();
+    for (const row of expansionRows) {
+      m.set(row.itemId, listProductionRecipes(recipes, row.itemId)[0]);
+    }
+    return m;
+  }, [expansionRows, recipes]);
+
+  const hoveredRow = hoveredItemId
+    ? expansionRows.find((r) => r.itemId === hoveredItemId)
+    : undefined;
+  const hoveredOnSite = hoveredRow ? !hoveredRow.external : false;
+  const hoveredRate = hoveredRow?.itemsPerMinute ?? 0;
+  const hoveredRecipe = hoveredItemId
+    ? (activeRecipeByItem.get(hoveredItemId) ??
+      rowProductionRecipe(hoveredItemId, recipes, recipeOverrides))
+    : undefined;
+
+  return (
+    <ul className="space-y-0.5 text-sm">
+      {orderedRows.map((row) => {
+        const isTarget = targetIds.has(row.itemId);
+        // Expand truth (row.external); toggle set covers any transient mismatch
+        const onSite = !(row.external || externalSet.has(row.itemId));
+        const label = resourceLabel(row.itemId, items);
+
+        const link =
+          hoveredItemId != null
+            ? classifyExpansionLink({
+                row: {
+                  itemId: row.itemId,
+                  itemsPerMinute: row.itemsPerMinute,
+                  external: !onSite,
+                },
+                hoveredItemId,
+                hoveredRate,
+                hoveredOnSite,
+                hoveredRecipe,
+                rowRecipe: activeRecipeByItem.get(row.itemId),
+                rowDefaultRecipe: defaultRecipeByItem.get(row.itemId),
+              })
+            : { kind: "none" as const, attributed: null };
+
+        const hl = linkHighlightClasses(link.kind, onSite);
+
+        return (
+          <li
+            key={row.itemId}
+            className={`flex items-center justify-between gap-2 rounded-md px-1.5 py-1 transition-colors ${hl.row}`}
+          >
+            <span className={`min-w-0 truncate ${onSite ? "" : hl.strike}`}>{label}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <ExpansionRateCell
+                kind={link.kind}
+                total={row.itemsPerMinute}
+                attributed={link.attributed}
+                sliceClass={hl.slice}
+                mutedClass={hl.muted}
+                rateClass={hl.rate}
+              />
+              {isTarget ? (
+                <span className="inline-flex w-9 justify-end text-[10px] text-slate-600">
+                  target
+                </span>
+              ) : (
+                <ToggleSwitch
+                  checked={onSite}
+                  onChange={(on) => setItemExternal(row.itemId, !on)}
+                  aria-label={`${label}: ${onSite ? "included" : "disabled (off-site)"}`}
+                  title={
+                    onSite
+                      ? "Included on the heatmap — click to treat as off-site import"
+                      : "Off-site import — click to include on the heatmap"
+                  }
+                />
+              )}
+              <RecipeAltPicker
+                itemId={row.itemId}
+                recipes={recipes}
+                items={items}
+                selectedRecipeId={recipeOverrides[row.itemId] ?? null}
+                onSelect={(recipeId) => setRecipeOverride(row.itemId, recipeId)}
+                dimmed={!onSite}
+                onHighlightChange={(active) => setHoveredItemId(active ? row.itemId : null)}
+              />
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function PlannerPanel() {
   useAutoHeatmap(160);
 
@@ -372,8 +703,11 @@ export function PlannerPanel() {
     addProductLine,
     removeProductLine,
     externalItems,
+    recipeOverrides,
     expansionRows,
     setItemExternal,
+    setRecipeOverride,
+    applyRecipeOverrides,
     miner,
     setMiner,
     scoringMode,
@@ -393,8 +727,12 @@ export function PlannerPanel() {
     setAdvancedOpen,
     expansionOpen,
     setExpansionOpen,
+    expansionSortOrder,
+    setExpansionSortOrder,
     activeDemand,
+    byproductRows,
     items,
+    recipes,
     computing,
     error,
     heatmap,
@@ -443,6 +781,7 @@ export function PlannerPanel() {
       scoringOptions,
       seed,
       externalItems,
+      recipeOverrides,
     });
     try {
       await navigator.clipboard.writeText(hash);
@@ -456,6 +795,18 @@ export function PlannerPanel() {
 
   const selected =
     heatmap && selectedSiteIndex != null ? heatmap.topSites[selectedSiteIndex] : null;
+
+  // Stable props for AltQuickSelects (content changes only — not every store re-render)
+  const expansionItemIds = useMemo(() => expansionRows.map((r) => r.itemId), [expansionRows]);
+  const productTargetIds = useMemo(() => productTargets.map((t) => t.productId), [productTargets]);
+  const quickSelectProductTargets = useMemo(
+    () =>
+      productTargets.map((t) => ({
+        productId: t.productId,
+        itemsPerMinute: t.itemsPerMinute,
+      })),
+    [productTargets],
+  );
 
   return (
     <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto overscroll-contain border-slate-800 bg-slate-950/95 p-4 text-slate-100 [-webkit-overflow-scrolling:touch] md:border-r">
@@ -474,7 +825,7 @@ export function PlannerPanel() {
               </span>
             </div>
             <p className="mt-1 text-xs leading-snug text-slate-400">
-              Bring raw rates from another tool, or pick a product for a quick default-recipe
+              Bring raw rates from another tool, or pick products and alternates for a quick site
               estimate.
             </p>
           </div>
@@ -621,7 +972,7 @@ export function PlannerPanel() {
             aria-expanded={expansionOpen}
           >
             <span className="font-medium">
-              Intermediates
+              Intermediates &amp; Alternates
               <span className="ml-2 font-normal text-slate-500">
                 {expansionRows.length} item{expansionRows.length === 1 ? "" : "s"}
                 {externalItems.length > 0
@@ -635,50 +986,39 @@ export function PlannerPanel() {
             <div className="space-y-2 border-t border-slate-800 px-3 py-3">
               <p className="text-[11px] leading-snug text-slate-500">
                 Disabling a product removes it from the heatmap. Use that when an intermediate is
-                produced off-site (piping in water, trucking in Polymer, recycling canisters, …).
+                produced off-site (piping in water, trucking in Polymer, recycling canisters, etc.).
               </p>
-              <ul className="space-y-0.5 text-sm">
-                {expansionRows.map((row) => {
-                  const isTarget = productTargets.some((t) => t.productId === row.itemId);
-                  const onSite = !externalItems.includes(row.itemId);
-                  const label = resourceLabel(row.itemId, items);
-                  return (
-                    <li
-                      key={row.itemId}
-                      className={`flex items-center justify-between gap-2 rounded-md px-1.5 py-1 transition-colors ${
-                        onSite ? "text-slate-200" : "text-slate-500"
-                      } hover:bg-slate-800/80`}
-                    >
-                      <span
-                        className={`min-w-0 truncate ${onSite ? "" : "line-through decoration-slate-600"}`}
-                      >
-                        {label}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        <span
-                          className={`font-mono text-xs ${onSite ? "text-slate-300" : "text-slate-500"}`}
-                        >
-                          {formatRate(row.itemsPerMinute)}/min
-                        </span>
-                        {isTarget ? (
-                          <span className="w-9 text-right text-[10px] text-slate-600">target</span>
-                        ) : (
-                          <ToggleSwitch
-                            checked={onSite}
-                            onChange={(on) => setItemExternal(row.itemId, !on)}
-                            aria-label={`${label}: ${onSite ? "included" : "disabled (off-site)"}`}
-                            title={
-                              onSite
-                                ? "Included on the heatmap — click to treat as off-site import"
-                                : "Off-site import — click to include on the heatmap"
-                            }
-                          />
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="flex items-center justify-end gap-1.5">
+                <ExpansionSortButton
+                  order={expansionSortOrder}
+                  onToggle={() =>
+                    setExpansionSortOrder(
+                      expansionSortOrder === "deep-first" ? "shallow-first" : "deep-first",
+                    )
+                  }
+                />
+                <AltQuickSelects
+                  recipes={recipes}
+                  items={items}
+                  expansionItemIds={expansionItemIds}
+                  productTargetIds={productTargetIds}
+                  productTargets={quickSelectProductTargets}
+                  externalItems={externalItems}
+                  recipeOverrides={recipeOverrides}
+                  onApply={applyRecipeOverrides}
+                />
+              </div>
+              <ExpansionRowList
+                expansionRows={expansionRows}
+                productTargets={productTargets}
+                externalItems={externalItems}
+                items={items}
+                recipes={recipes}
+                recipeOverrides={recipeOverrides}
+                sortOrder={expansionSortOrder}
+                setItemExternal={setItemExternal}
+                setRecipeOverride={setRecipeOverride}
+              />
             </div>
           )}
         </section>
@@ -699,19 +1039,44 @@ export function PlannerPanel() {
               </button>
             )}
           </div>
-          {activeDemand.length === 0 ? (
+          {activeDemand.length === 0 && byproductRows.length === 0 ? (
             <p className="text-xs text-slate-500">No demand yet — set a product rate above.</p>
           ) : (
-            <ul className="space-y-1 text-sm">
-              {activeDemand.map((d) => (
-                <li key={d.resource} className="flex justify-between gap-2">
-                  <span>{resourceLabel(d.resource, items)}</span>
-                  <span className="font-mono text-slate-300">
-                    {formatRate(d.itemsPerMinute)}/min
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              {activeDemand.length > 0 && (
+                <ul className="space-y-1 text-sm">
+                  {activeDemand.map((d) => (
+                    <li key={d.resource} className="flex justify-between gap-2">
+                      <span>{resourceLabel(d.resource, items)}</span>
+                      <span className="font-mono text-slate-300">
+                        {formatRate(d.itemsPerMinute)}/min
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {byproductRows.length > 0 && (
+                <div className="space-y-1.5 border-t border-slate-800/80 pt-2">
+                  <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">
+                    Byproducts
+                  </p>
+                  <ul className="space-y-1 text-sm">
+                    {byproductRows.map((b) => (
+                      <li
+                        key={b.itemId}
+                        className="flex justify-between gap-2 text-red-300/90"
+                        title="Extra output from multi-product recipes. Not part of heatmap demand."
+                      >
+                        <span>{resourceLabel(b.itemId, items)}</span>
+                        <span className="font-mono tabular-nums">
+                          {formatRate(b.itemsPerMinute)}/min
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}

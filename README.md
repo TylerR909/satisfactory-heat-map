@@ -2,7 +2,7 @@
 
 **Answers “Where to build” in Satisfactory (v1.2).** Paste raw resource rates or product targets and get capacity-aware factory sites on the map — under your extractor settings and map seed.
 
-> Not a full production calculator or collectible map. Bring ratios from [Satisfactory Calculator](https://www.satisfactory-calculator.com/) (or any planner), or pick products here for a quick default-recipe estimate.
+> Not a full production calculator or collectible map. Bring ratios from [Satisfactory Calculator](https://www.satisfactory-calculator.com/) (or any planner), or pick products and alternates here for a quick site estimate.
 
 ## Try it
 
@@ -32,7 +32,7 @@ Image: [`ghcr.io/tylerr909/satisfactory-heat-map`](https://github.com/TylerR909/
 | You bring…                                                         | You get…                                                                       |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | **Raw demand** (e.g. 1200 iron / 600 copper /min)                  | A live heatmap of where that demand is easiest to feed                         |
-| **Product targets** (e.g. HMF 10/min, multi-product stacks)        | Default-recipe expand → same heat engine; **off-site** intermediate prune; **Send to raw** to hand-tune |
+| **Product targets** (e.g. HMF 10/min, multi-product stacks)        | Recipe expand (defaults + **alternates** / quick selects) → same heat engine; **off-site** intermediate prune; **Send to raw** to hand-tune |
 | Extractor settings (Mk + clock, oil/water/wells modeled correctly) | Capacity that matches _your_ extractors                                        |
 
 ## Map seeds (1.2+)

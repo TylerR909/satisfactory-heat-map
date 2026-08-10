@@ -46,6 +46,8 @@ export type PlanLabelSource = {
   recipes: Recipe[];
   /** Mode B off-site intermediates (affects expand for chip demand tooltips). */
   externalItems?: string[];
+  /** Mode B alternate recipe picks (affects expand for chip demand tooltips). */
+  recipeOverrides?: Record<string, string>;
 };
 
 function newId(): string {
@@ -108,6 +110,7 @@ function expandDemand(src: PlanLabelSource): RawDemand[] {
   if (targets.length === 0) return [];
   return solveProductsToRaw(targets, src.recipes, src.items, {
     externalItems: src.externalItems,
+    recipeOverrides: src.recipeOverrides,
   }).demand;
 }
 
@@ -152,7 +155,7 @@ export function buildSavedPlan(
   };
 }
 
-/** Prefer full local snapshot; fall back to hash decode for older shelves / imports. */
+/** Prefer full local snapshot; fall back to hash decode for imports. */
 export function planSnapshotFromSaved(
   plan: SavedPlan,
   decodeHash: (hash: string) => PlanSnapshot | null,

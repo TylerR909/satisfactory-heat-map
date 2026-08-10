@@ -15,6 +15,13 @@ export type SolveOptions = {
    * Does not apply to top-level product targets (those always expand one level).
    */
   externalItems?: ReadonlySet<string> | readonly string[];
+  /**
+   * Mode B recipe picks: product itemId → recipe ClassName.
+   * Only applied when the recipe primarily produces that item; invalid ids fall
+   * back to the default production recipe. Defaults (no override) use the
+   * preference-scored non-alternate when one exists.
+   */
+  recipeOverrides?: ReadonlyMap<string, string> | Readonly<Record<string, string>>;
 };
 
 /** One row in the Mode B Intermediates list (crafted only — map raws stay on Raw demand). */
@@ -44,11 +51,41 @@ export type SolveResult = {
    */
   expansion: ExpansionEntry[];
   /**
+   * Net excess secondary outputs from expanded recipes (HOR, Polymer Resin, Silica, …)
+   * after subtracting amounts consumed back into the chain. Display-only — not heatmap demand.
+   */
+  byproducts: Array<{ itemId: string; itemsPerMinute: number }>;
+  /**
    * Crafted items we could not expand to map raws (missing recipe / alt not chosen).
    * Not placed on the heatmap as node demand.
    */
   unresolved: Array<{ itemId: string; itemsPerMinute: number; reason: string }>;
 };
+
+/** Dedicated Polymer Resin recipe (~130/min at 100%). */
+export const POLYMER_RESIN_ID = "Desc_PolymerResin_C";
+export const POLYMER_RESIN_DEFAULT_RECIPE_ID = "Recipe_Alternate_PolymerResin_C";
+
+/**
+ * Items that may be **selected** via secondary product slots as alternate production
+ * paths, while default remains a primary-product recipe when one exists.
+ *
+ * Included: oil/fuel chain (HOR, Polymer Resin, Compacted Coal), nuclear (Sulfuric
+ * Acid), late-game (Dark Matter Residue).
+ *
+ * Excluded on purpose:
+ * - **Silica** via Alumina (cycle / dual-use with Al chain — hard to reason about)
+ * - **Water** (map raw; already on Raw demand)
+ * - **Empty Canister / Empty Fluid Tank** (packaging vessels; default off-site)
+ * - Unpackage recipes (filtered separately)
+ */
+export const BYPRODUCT_SELECTABLE_ITEM_IDS: ReadonlySet<string> = new Set([
+  POLYMER_RESIN_ID, // Fuel, HOR alt
+  "Desc_HeavyOilResidue_C", // Plastic, Rubber, Polymer Resin alt
+  "Desc_CompactedCoal_C", // Rocket Fuel, Ionized Fuel, …
+  "Desc_SulfuricAcid_C", // Encased Uranium Cell
+  "Desc_DarkEnergy_C", // Dark Matter Residue — quantum / Ficsonium line
+]);
 
 /** Packaging vessels usually produced/recycled off the factory site. */
 export const DEFAULT_EXTERNAL_ITEM_IDS = ["Desc_FluidCanister_C", "Desc_GasTank_C"] as const;
@@ -74,18 +111,38 @@ export function isMapRawResource(itemId: string, items: Record<string, ItemDef>)
  * Secondary byproducts (silica from alumina, HOR from plastic) must not steal
  * the default recipe slot for that byproduct item.
  */
-function primaryProductId(r: Recipe): string | null {
+export function primaryProductId(r: Recipe): string | null {
   return r.products[0]?.item ?? null;
+}
+
+export function isUnpackageRecipe(r: Recipe): boolean {
+  return /Unpackage/i.test(r.id) || /Unpackage/i.test(r.name);
+}
+
+/** Polymer-resin Residual Plastic / Residual Rubber (preferred over crude→plastic). */
+export function isResidualPlasticOrRubber(r: Recipe): boolean {
+  return (
+    /ResidualPlastic|ResidualRubber/i.test(r.id) || /^Residual (Plastic|Rubber)$/i.test(r.name)
+  );
 }
 
 /**
  * Score candidate recipes for a given product (higher wins).
  * Prefer mainline production over unpackaging / residual / alien-remains paths.
+ *
+ * Residual Plastic/Rubber is a first-class selectable path (Polymer plastics
+ * quick-select) but is **not** preferred over crude-oil Plastic/Rubber for the
+ * catalog default — so Defaults = game crude recipe and Residual lights up when
+ * picked. Cycle-breaking still prefers Residual via {@link pickCycleBreakerRecipe}.
  */
-function recipePreferenceScore(r: Recipe): number {
+export function recipePreferenceScore(r: Recipe): number {
   let s = 0;
-  if (/Unpackage/i.test(r.id) || /Unpackage/i.test(r.name)) s -= 100;
-  if (/Residual|Recycled/i.test(r.id + r.name)) s -= 25;
+  if (isUnpackageRecipe(r)) s -= 100;
+  // Residual Plastic/Rubber: no penalty (selectable non-HD path). Other Residual/
+  // Recycled names still demoted vs mainline.
+  if (!isResidualPlasticOrRubber(r) && /Residual|Recycled/i.test(r.id + r.name)) {
+    s -= 25;
+  }
   // Prefer non-alternate when both are candidates
   if (r.alternate) s -= 15;
   const ingBlob = r.ingredients.map((i) => i.item).join(" ");
@@ -105,34 +162,294 @@ function recipePreferenceScore(r: Recipe): number {
 }
 
 /**
- * Map itemId → best recipe that **primarily** produces it.
+ * When a craft cycle is hit (e.g. Recycled Plastic ↔ Recycled Rubber), pick a
+ * different recipe for this product whose ingredients are not already on the
+ * visit stack — Residual Plastic/Rubber preferred (polymer seed into the loop).
+ */
+export function pickCycleBreakerRecipe(
+  itemId: string,
+  recipes: Recipe[],
+  visiting: ReadonlySet<string>,
+  avoidRecipeId?: string | null,
+): Recipe | undefined {
+  const list = recipesForProduction(recipes, itemId).filter((r) => !isUnpackageRecipe(r));
+  const usable = list.filter((r) => {
+    if (avoidRecipeId && r.id === avoidRecipeId) return false;
+    // All ingredients free of the active cycle stack
+    return r.ingredients.every((ing) => !visiting.has(ing.item));
+  });
+  if (usable.length === 0) return undefined;
+  usable.sort(
+    (a, b) =>
+      // Residual polymer path first, then general preference
+      (isResidualPlasticOrRubber(b) ? 100 : 0) - (isResidualPlasticOrRubber(a) ? 100 : 0) ||
+      recipePreferenceScore(b) - recipePreferenceScore(a) ||
+      a.id.localeCompare(b.id),
+  );
+  return usable[0];
+}
+
+/** All recipes whose primary product is `itemId` (includes unpackage). */
+export function recipesForPrimaryProduct(recipes: Recipe[], itemId: string): Recipe[] {
+  return recipes.filter((r) => primaryProductId(r) === itemId);
+}
+
+/** True if any product line is `itemId` (primary or byproduct). */
+export function recipeProducesItem(r: Recipe, itemId: string): boolean {
+  return r.products.some((p) => p.item === itemId);
+}
+
+/**
+ * Recipes that can supply `itemId` for expand / picker:
+ * - Prefer recipes where it is the **primary** product (Docs first product line)
+ * - If none exist (byproduct-only items, e.g. Dissolved Silica), fall back to any
+ *   recipe that outputs it in a secondary product slot
+ * - Items in {@link BYPRODUCT_SELECTABLE_ITEM_IDS}: primary recipes **plus**
+ *   secondary-slot producers as selectable alts (default stays primary)
+ *
+ * Silica via Alumina is **not** in the allowlist (Al-chain dual-use / cycles).
+ */
+export function recipesForProduction(recipes: Recipe[], itemId: string): Recipe[] {
+  const asPrimary = recipesForPrimaryProduct(recipes, itemId);
+  if (asPrimary.length === 0) {
+    return recipes.filter((r) => recipeProducesItem(r, itemId) && !isUnpackageRecipe(r));
+  }
+  if (BYPRODUCT_SELECTABLE_ITEM_IDS.has(itemId)) {
+    const asByproduct = recipes.filter(
+      (r) =>
+        recipeProducesItem(r, itemId) && primaryProductId(r) !== itemId && !isUnpackageRecipe(r),
+    );
+    const seen = new Set(asPrimary.map((r) => r.id));
+    return [...asPrimary, ...asByproduct.filter((r) => !seen.has(r.id))];
+  }
+  return asPrimary;
+}
+
+/**
+ * Production recipes a user may pick for an intermediate/product:
+ * default (preference-scored) first, then alternates. Unpackage paths are
+ * omitted unless they are the only way to make the item.
+ * Default is always chosen among **primary** producers when any exist (so
+ * Polymer Resin / HOR / Compacted Coal defaults are never “as byproduct of X”).
+ */
+export function listProductionRecipes(recipes: Recipe[], itemId: string): Recipe[] {
+  const list = recipesForProduction(recipes, itemId);
+  if (list.length === 0) return [];
+
+  const nonUnpkg = list.filter((r) => !isUnpackageRecipe(r));
+  const pool = nonUnpkg.length > 0 ? nonUnpkg : list;
+  const primaryOnly = pool.filter((r) => primaryProductId(r) === itemId);
+  const defaultRecipe = pickDefaultRecipe(primaryOnly.length > 0 ? primaryOnly : pool);
+  if (!defaultRecipe) return [];
+
+  const alts = pool
+    .filter((r) => r.id !== defaultRecipe.id)
+    .sort(
+      (a, b) =>
+        // Prefer true hard-drive alts, then byproduct paths, then name
+        (a.alternate === b.alternate ? 0 : a.alternate ? -1 : 1) ||
+        (primaryProductId(a) === itemId ? 0 : 1) - (primaryProductId(b) === itemId ? 0 : 1) ||
+        recipePreferenceScore(b) - recipePreferenceScore(a) ||
+        a.name.localeCompare(b.name),
+    );
+  return [defaultRecipe, ...alts];
+}
+
+/** Alternates only (excludes the default production recipe). */
+export function listAlternateRecipes(recipes: Recipe[], itemId: string): Recipe[] {
+  const all = listProductionRecipes(recipes, itemId);
+  if (all.length <= 1) return [];
+  return all.slice(1);
+}
+
+function pickDefaultRecipe(pool: Recipe[]): Recipe | undefined {
+  const nonAlt = pool.filter((r) => !r.alternate && !isUnpackageRecipe(r));
+  const nonUnpkg = pool.filter((r) => !isUnpackageRecipe(r));
+  const candidates = nonAlt.length > 0 ? nonAlt : nonUnpkg.length > 0 ? nonUnpkg : pool;
+  const sorted = [...candidates].sort(
+    (a, b) => recipePreferenceScore(b) - recipePreferenceScore(a) || a.id.localeCompare(b.id),
+  );
+  return sorted[0];
+}
+
+/**
+ * Map itemId → best recipe that produces it (primary preferred; byproduct-only fallback).
  * Includes alternates only when no suitable non-alt recipe exists (e.g. turbofuel).
+ * Byproduct-only items (Dissolved Silica) resolve to the recipe that outputs them.
  */
 export function indexProductionRecipes(recipes: Recipe[]): Map<string, Recipe> {
   /** itemId → recipes where this item is the primary product */
   const byPrimary = new Map<string, Recipe[]>();
+  /** itemId → recipes that output it in any product slot */
+  const byAny = new Map<string, Recipe[]>();
 
   for (const r of recipes) {
-    const primary = primaryProductId(r);
-    if (!primary) continue;
-    // Skip pure unpackage as primary production unless nothing else exists (handled in pick)
-    const list = byPrimary.get(primary) ?? [];
-    list.push(r);
-    byPrimary.set(primary, list);
+    for (let i = 0; i < r.products.length; i++) {
+      const item = r.products[i]?.item;
+      if (!item) continue;
+      const anyList = byAny.get(item) ?? [];
+      anyList.push(r);
+      byAny.set(item, anyList);
+      if (i === 0) {
+        const primList = byPrimary.get(item) ?? [];
+        primList.push(r);
+        byPrimary.set(item, primList);
+      }
+    }
   }
 
   const byProduct = new Map<string, Recipe>();
-  for (const [item, list] of byPrimary) {
-    const nonAlt = list.filter((r) => !r.alternate && !/Unpackage/i.test(r.id));
-    const nonUnpkg = list.filter((r) => !/Unpackage/i.test(r.id));
-    const pool = nonAlt.length > 0 ? nonAlt : nonUnpkg.length > 0 ? nonUnpkg : list;
-    pool.sort(
-      (a, b) => recipePreferenceScore(b) - recipePreferenceScore(a) || a.id.localeCompare(b.id),
-    );
-    const best = pool[0];
+  for (const item of byAny.keys()) {
+    const pool = byPrimary.get(item) ?? byAny.get(item) ?? [];
+    const best = pickDefaultRecipe(pool);
     if (best) byProduct.set(item, best);
   }
   return byProduct;
+}
+
+/** recipe ClassName → Recipe */
+export function indexRecipesById(recipes: Recipe[]): Map<string, Recipe> {
+  const m = new Map<string, Recipe>();
+  for (const r of recipes) m.set(r.id, r);
+  return m;
+}
+
+function toOverrideMap(
+  overrides?: ReadonlyMap<string, string> | Readonly<Record<string, string>> | null,
+): Map<string, string> {
+  if (!overrides) return new Map();
+  if (overrides instanceof Map) return new Map(overrides);
+  return new Map(Object.entries(overrides));
+}
+
+/**
+ * Resolve the production recipe for a product item, honoring an optional override.
+ * Invalid overrides (recipe does not output the item) fall back to default.
+ * Accepts primary or byproduct product lines.
+ */
+export function resolveProductionRecipe(
+  itemId: string,
+  recipes: Recipe[],
+  byProduct?: Map<string, Recipe>,
+  byId?: Map<string, Recipe>,
+  overrideRecipeId?: string | null,
+): Recipe | undefined {
+  const defaults = byProduct ?? indexProductionRecipes(recipes);
+  const recipeById = byId ?? indexRecipesById(recipes);
+  if (overrideRecipeId) {
+    const forced = recipeById.get(overrideRecipeId);
+    if (forced && recipeProducesItem(forced, itemId) && !isUnpackageRecipe(forced)) {
+      return forced;
+    }
+    // Allow unpackage override only when it is the default path
+    if (forced && recipeProducesItem(forced, itemId)) {
+      const def = defaults.get(itemId);
+      if (def?.id === forced.id) return forced;
+    }
+  }
+  return defaults.get(itemId);
+}
+
+/** Short display name for alt UI: strip "Alternate: " prefix. */
+export function recipeShortName(r: Recipe): string {
+  return r.name.replace(/^Alternate:\s*/i, "").trim() || r.name;
+}
+
+/** Max chars drawn inside the 28px alt picker button (hard cut, no ellipsis). */
+const RECIPE_BUTTON_LABEL_MAX = 4;
+
+function cutButtonToken(word: string): string {
+  if (word.length <= RECIPE_BUTTON_LABEL_MAX) return word;
+  return word.slice(0, RECIPE_BUTTON_LABEL_MAX);
+}
+
+/**
+ * Candidate 4-char tokens for a recipe button.
+ * Prefer words unique to this recipe among peers (not shared prefixes like
+ * "Dark Matter …"), so Dark Matter Trap / Crystallization → Trap / Crys
+ * rather than Trap / Matt.
+ */
+function buttonLabelCandidates(r: Recipe, sharedWords: ReadonlySet<string> = new Set()): string[] {
+  const short = recipeShortName(r);
+  const words = short.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return ["Alt"];
+  const unique = words.filter((w) => !sharedWords.has(w.toLowerCase()));
+  const shared = words.filter((w) => sharedWords.has(w.toLowerCase()));
+  // Unique words first (distinctive), then shared, then original order fallback
+  const ordered = unique.length > 0 ? [...unique, ...shared] : words;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const w of ordered) {
+    const t = cutButtonToken(w);
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  // Sliding 4-char windows on compacted name as last resort (disambiguation)
+  const compact = short.replace(/\s+/g, "");
+  for (let i = 0; i + RECIPE_BUTTON_LABEL_MAX <= compact.length; i++) {
+    const t = compact.slice(i, i + RECIPE_BUTTON_LABEL_MAX);
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out.length > 0 ? out : ["Alt"];
+}
+
+/**
+ * Assign non-colliding button labels for a peer group (alts for one product).
+ * Stable by recipe id so the same set always maps the same way.
+ */
+export function recipeButtonLabels(peers: readonly Recipe[]): Map<string, string> {
+  // Words that appear in more than one peer name (e.g. Dark, Matter)
+  const wordCounts = new Map<string, number>();
+  for (const r of peers) {
+    const seenInRecipe = new Set<string>();
+    for (const w of recipeShortName(r).split(/\s+/).filter(Boolean)) {
+      const key = w.toLowerCase();
+      if (seenInRecipe.has(key)) continue;
+      seenInRecipe.add(key);
+      wordCounts.set(key, (wordCounts.get(key) ?? 0) + 1);
+    }
+  }
+  const sharedWords = new Set([...wordCounts.entries()].filter(([, n]) => n > 1).map(([w]) => w));
+
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  const sorted = [...peers].sort((a, b) => a.id.localeCompare(b.id));
+  for (const r of sorted) {
+    const cands = buttonLabelCandidates(r, sharedWords);
+    let pick = cands.find((c) => !used.has(c.toLowerCase())) ?? cands[0] ?? "Alt";
+    // Last ditch: pad with unique suffix char from id
+    if (used.has(pick.toLowerCase())) {
+      for (let n = 0; n < 36; n++) {
+        const suffix = n.toString(36);
+        const trial = `${pick.slice(0, RECIPE_BUTTON_LABEL_MAX - 1)}${suffix}`;
+        if (!used.has(trial.toLowerCase())) {
+          pick = trial;
+          break;
+        }
+      }
+    }
+    used.add(pick.toLowerCase());
+    out.set(r.id, pick);
+  }
+  return out;
+}
+
+/**
+ * Compact label for the squarish alt button.
+ * Pass `peers` (other alts for the same product) so collisions like
+ * "Heavy Flexible" / "Heavy Encased" become Flex / Enca instead of both Heav.
+ */
+export function recipeButtonLabel(r: Recipe, peers?: readonly Recipe[]): string {
+  if (peers && peers.length > 0) {
+    const group = peers.some((p) => p.id === r.id) ? peers : [r, ...peers];
+    return recipeButtonLabels(group).get(r.id) ?? buttonLabelCandidates(r)[0] ?? "Alt";
+  }
+  return buttonLabelCandidates(r)[0] ?? "Alt";
 }
 
 /**
@@ -153,12 +470,18 @@ export function solveProductsToRaw(
   options?: SolveOptions,
 ): SolveResult {
   const externalSet = toExternalItemSet(options?.externalItems);
+  const overrideMap = toOverrideMap(options?.recipeOverrides);
   const byProduct = indexProductionRecipes(recipes);
+  const byId = indexRecipesById(recipes);
   const rawNeed = new Map<string, number>();
   const intermediates: Record<string, number> = {};
   /** On-site map raws that also appear under Intermediates (currently Water only). */
   const expansionRaws = new Map<string, number>();
   const externalNeed = new Map<string, number>();
+  /** Secondary outputs emitted while expanding (before netting consumption). */
+  const byproductOut = new Map<string, number>();
+  /** Total non-raw need() rates (for netting excess byproducts). */
+  const totalNeed = new Map<string, number>();
   const unresolvedMap = new Map<string, { rate: number; reason: string }>();
   const visiting = new Set<string>();
   /**
@@ -203,6 +526,7 @@ export function solveProductsToRaw(
     // Map raws stop expansion (heatmap node demand). Water is special: listed in
     // Intermediates so the user can mark it off-site without inventing a fake intermediate.
     if (isMapRawResource(itemId, items)) {
+      totalNeed.set(itemId, (totalNeed.get(itemId) ?? 0) + rate);
       if (itemId === WATER_RESOURCE_ID) {
         if (!asTarget && externalSet.has(itemId)) {
           addExternal(itemId, rate, depth);
@@ -217,6 +541,8 @@ export function solveProductsToRaw(
       return;
     }
 
+    totalNeed.set(itemId, (totalNeed.get(itemId) ?? 0) + rate);
+
     // Off-site / imported crafted input — do not pull ingredient raws into the site
     if (!asTarget && externalSet.has(itemId)) {
       addExternal(itemId, rate, depth);
@@ -224,12 +550,25 @@ export function solveProductsToRaw(
     }
 
     if (visiting.has(itemId)) {
-      // Cycle in crafted chain — do not invent map nodes for intermediates
+      // Cycle (classic: Recycled Plastic ↔ Recycled Rubber). Try a seed recipe
+      // whose inputs are not on the stack (Residual Plastic/Rubber from polymer).
+      const cyclingRecipeId = overrideMap.get(itemId) ?? byProduct.get(itemId)?.id;
+      const breaker = pickCycleBreakerRecipe(itemId, recipes, visiting, cyclingRecipeId);
+      if (breaker) {
+        expandWithRecipe(itemId, rate, breaker, depth);
+        return;
+      }
       addUnresolved(itemId, rate, "recipe cycle");
       return;
     }
 
-    const recipe = byProduct.get(itemId);
+    const recipe = resolveProductionRecipe(
+      itemId,
+      recipes,
+      byProduct,
+      byId,
+      overrideMap.get(itemId),
+    );
     if (!recipe) {
       // Crafted item with no production recipe we accept — not a map raw
       addUnresolved(itemId, rate, "no production recipe");
@@ -237,22 +576,30 @@ export function solveProductsToRaw(
     }
 
     visiting.add(itemId);
+    expandWithRecipe(itemId, rate, recipe, depth);
+    visiting.delete(itemId);
+  }
+
+  /** Expand one recipe hop; caller owns `visiting` for the product item. */
+  function expandWithRecipe(itemId: string, rate: number, recipe: Recipe, depth: number) {
     intermediates[itemId] = (intermediates[itemId] ?? 0) + rate;
     notePlace(itemId, depth);
 
     const productLine = recipe.products.find((p) => p.item === itemId);
     if (!productLine || productLine.amount <= 0) {
-      visiting.delete(itemId);
       addUnresolved(itemId, rate, "recipe missing product line");
       return;
     }
 
     const craftsPerMin = rate / productLine.amount;
-    // Recipe ingredient order → sibling seq among the next depth band
+    // Secondary product slots = byproducts relative to the item we're expanding for
+    for (const p of recipe.products) {
+      if (p.item === itemId || p.amount <= 0) continue;
+      byproductOut.set(p.item, (byproductOut.get(p.item) ?? 0) + craftsPerMin * p.amount);
+    }
     for (const ing of recipe.ingredients) {
       need(ing.item, craftsPerMin * ing.amount, false, depth + 1);
     }
-    visiting.delete(itemId);
   }
 
   for (const t of targets) {
@@ -298,7 +645,18 @@ export function solveProductsToRaw(
     }))
     .sort((a, b) => b.itemsPerMinute - a.itemsPerMinute);
 
-  return { demand, intermediates, external, expansion, unresolved };
+  // Net excess byproducts: emitted as secondary outputs minus chain consumption
+  const byproducts: Array<{ itemId: string; itemsPerMinute: number }> = [];
+  for (const [itemId, produced] of byproductOut) {
+    const consumed = totalNeed.get(itemId) ?? 0;
+    const excess = produced - consumed;
+    if (excess > 1e-6) byproducts.push({ itemId, itemsPerMinute: excess });
+  }
+  byproducts.sort(
+    (a, b) => b.itemsPerMinute - a.itemsPerMinute || a.itemId.localeCompare(b.itemId),
+  );
+
+  return { demand, intermediates, external, expansion, byproducts, unresolved };
 }
 
 /** @deprecated Prefer {@link solveProductsToRaw} for multi-target plans. */

@@ -121,6 +121,12 @@ export type Recipe = {
   ingredients: RecipeIO[];
   products: RecipeIO[];
   alternate: boolean;
+  /**
+   * Primary factory building ClassName from Docs `mProducedIn`
+   * (e.g. `Build_OilRefinery_C`, `Build_FoundryMk1_C`).
+   * Present on compact extracts from `npm run parse-docs`.
+   */
+  producedIn?: string;
 };
 
 export type MapMeta = {
