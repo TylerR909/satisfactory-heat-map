@@ -32,33 +32,32 @@ const GAP = 6;
 const RECIPE_BUTTON_TIP_MS = 500;
 
 /**
- * Panel position: pin to the anchor edge with a height budget so content scrolls
- * inside the free space (never straddle the button — mobile double-tap needs it free).
- * `top` OR `bottom` (CSS) so a short first paint does not freeze a tiny panel.
+ * Panel position: prefer **right of the button** (over the map) so Intermediates
+ * stay visible. `top` OR `bottom` + maxHeight so a short viewport still scrolls.
+ * Side placement never covers the anchor (mobile double-tap stays free).
  */
 type Pos = { left: number; maxHeight: number; top?: number; bottom?: number };
 
-/**
- * Position the alt popover so it never covers the anchor button.
- * Height is always the available free space on the chosen side — the list scrolls
- * inside that budget even when DevTools / bottom-of-page leave only ~120px.
- */
 function clampPanel(anchor: DOMRect, w: number, vw: number, vh: number): Pos {
   const width = Math.min(w, vw - PAD * 2);
-  // Prefer align to button right (column sits on the right edge of the row)
-  let left = anchor.right - width;
+  const spaceRight = vw - anchor.right - PAD - GAP;
+  const spaceLeft = anchor.left - PAD - GAP;
+  // Prefer right (map); fall back left only if right is too tight
+  const placeRight = spaceRight >= Math.min(width, 160) || spaceRight >= spaceLeft;
+
+  let left = placeRight ? anchor.right + GAP : anchor.left - GAP - width;
   left = Math.min(vw - PAD - width, Math.max(PAD, left));
 
-  const spaceBelow = Math.max(0, vh - anchor.bottom - PAD - GAP);
-  const spaceAbove = Math.max(0, anchor.top - PAD - GAP);
-  const placeBelow = spaceBelow >= spaceAbove;
-  const maxHeight = Math.max(100, placeBelow ? spaceBelow : spaceAbove);
-
-  if (placeBelow) {
-    return { left, top: anchor.bottom + GAP, maxHeight };
+  // Align top with button; if little room below that, pin bottom to button bottom
+  const spaceBelowTop = vh - anchor.top - PAD;
+  if (spaceBelowTop >= 120) {
+    return { left, top: anchor.top, maxHeight: Math.max(100, spaceBelowTop) };
   }
-  // Pin panel bottom to just above the button; grows upward within maxHeight
-  return { left, bottom: vh - anchor.top + GAP, maxHeight };
+  return {
+    left,
+    bottom: vh - anchor.bottom,
+    maxHeight: Math.max(100, anchor.bottom - PAD),
+  };
 }
 
 type Props = {

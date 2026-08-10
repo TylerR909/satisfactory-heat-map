@@ -12,19 +12,30 @@ import type { Recipe } from "@/types";
 
 const PAD = 8;
 const PANEL_W = 280;
+const GAP = 6;
 
-type Pos = { left: number; top: number };
+/** Pin beside the button (prefer right → over the map), height-capped for scroll. */
+type Pos = { left: number; maxHeight: number; top?: number; bottom?: number };
 
-function clampPanel(anchor: DOMRect, w: number, h: number, vw: number, vh: number): Pos {
+function clampPanelBeside(anchor: DOMRect, w: number, vw: number, vh: number): Pos {
   const width = Math.min(w, vw - PAD * 2);
-  let left = anchor.left;
+  const spaceRight = vw - anchor.right - PAD - GAP;
+  const spaceLeft = anchor.left - PAD - GAP;
+  const placeRight = spaceRight >= Math.min(width, 160) || spaceRight >= spaceLeft;
+
+  let left = placeRight ? anchor.right + GAP : anchor.left - GAP - width;
   left = Math.min(vw - PAD - width, Math.max(PAD, left));
-  const spaceBelow = vh - anchor.bottom - PAD;
-  const spaceAbove = anchor.top - PAD;
-  const placeBelow = spaceBelow >= Math.min(h, 160) || spaceBelow >= spaceAbove;
-  let top = placeBelow ? anchor.bottom + 6 : anchor.top - 6 - h;
-  top = Math.min(vh - PAD - h, Math.max(PAD, top));
-  return { left, top };
+
+  // Align top with button; if little room below, pin bottom to button bottom
+  const spaceBelowTop = vh - anchor.top - PAD;
+  if (spaceBelowTop >= 120) {
+    return { left, top: anchor.top, maxHeight: Math.max(100, spaceBelowTop) };
+  }
+  return {
+    left,
+    bottom: vh - anchor.bottom,
+    maxHeight: Math.max(100, anchor.bottom - PAD),
+  };
 }
 
 type Props = {
@@ -125,12 +136,10 @@ export function AltQuickSelects({
     }
     const place = () => {
       const anchor = anchorRef.current;
-      const panel = panelRef.current;
       if (!anchor) return;
       const r = anchor.getBoundingClientRect();
-      const h = panel?.offsetHeight ?? 240;
-      const w = panel?.offsetWidth ?? PANEL_W;
-      setPos(clampPanel(r, w, h, window.innerWidth, window.innerHeight));
+      const w = panelRef.current?.offsetWidth ?? PANEL_W;
+      setPos(clampPanelBeside(r, w, window.innerWidth, window.innerHeight));
     };
     place();
     requestAnimationFrame(place);
@@ -173,7 +182,7 @@ export function AltQuickSelects({
     } else {
       onApply({ overrides: result.overrides });
     }
-    setOpen(false);
+    // Stay open so packs can stack without re-opening
   }
 
   return (
@@ -205,8 +214,13 @@ export function AltQuickSelects({
             ref={panelRef}
             role="dialog"
             aria-labelledby={titleId}
-            className="fixed z-[6000] flex max-h-[min(70vh,22rem)] w-[min(280px,calc(100vw-1rem))] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
-            style={{ left: pos.left, top: pos.top }}
+            className="fixed z-[6000] flex w-[min(280px,calc(100vw-1rem))] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/50"
+            style={{
+              left: pos.left,
+              maxHeight: Math.min(pos.maxHeight, window.innerHeight * 0.7, 22 * 16),
+              ...(pos.top != null ? { top: pos.top } : {}),
+              ...(pos.bottom != null ? { bottom: pos.bottom } : {}),
+            }}
           >
             <div className="shrink-0 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2">
               <p
