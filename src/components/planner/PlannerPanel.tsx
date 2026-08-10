@@ -909,8 +909,6 @@ export function PlannerPanel() {
               <p className="text-[11px] leading-snug text-slate-500">
                 Disabling a product removes it from the heatmap. Use that when an intermediate is
                 produced off-site (piping in water, trucking in Polymer, recycling canisters, etc.).
-                Quick selects stack — e.g. Caterium computers, Polymer plastics, and All Pure
-                together.
               </p>
               <div className="flex items-center justify-end gap-1.5">
                 <ExpansionSortButton
