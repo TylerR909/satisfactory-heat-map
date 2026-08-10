@@ -926,6 +926,7 @@ export function PlannerPanel() {
                   productTargetIds={productTargetIds}
                   productTargets={quickSelectProductTargets}
                   externalItems={externalItems}
+                  recipeOverrides={recipeOverrides}
                   onApply={applyRecipeOverrides}
                 />
               </div>

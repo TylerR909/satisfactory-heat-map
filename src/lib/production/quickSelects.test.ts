@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   applicableQuickSelects,
+  matchQuickSelect,
   pureAltByProduct,
   QUICK_SELECTS,
   type QuickSelect,
@@ -168,6 +169,55 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_Computer_C).toBe("Recipe_Alternate_Computer_1_C");
     expect(r.overrides.Desc_CircuitBoard_C).toBe("Recipe_Alternate_CircuitBoard_2_C");
     expect(r.overrides.Desc_HighSpeedWire_C).toBe("Recipe_Alternate_Quickwire_C");
+  });
+
+  it("matchQuickSelect: Defaults full when no in-play overrides", () => {
+    const recipes = loadRecipes();
+    const c = ctx(recipes, ["Desc_IronIngot_C", "Desc_Plastic_C"]);
+    const def = quickSelect("defaults");
+    expect(matchQuickSelect(def, c, {})).toBe("full");
+    expect(matchQuickSelect(def, c, { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" })).toBe(
+      "none",
+    );
+  });
+
+  it("matchQuickSelect: Pure full / partial / none", () => {
+    const recipes = loadRecipes();
+    const c = ctx(recipes, ["Desc_IronIngot_C", "Desc_CopperIngot_C"]);
+    const q = quickSelect("all-pure");
+    const r = q.resolve(c);
+    expect(r.kind).toBe("merge");
+    if (r.kind !== "merge") return;
+    const iron = r.overrides.Desc_IronIngot_C;
+    const copper = r.overrides.Desc_CopperIngot_C;
+    expect(typeof iron).toBe("string");
+    expect(typeof copper).toBe("string");
+    if (typeof iron !== "string" || typeof copper !== "string") return;
+    expect(matchQuickSelect(q, c, {})).toBe("none");
+    expect(matchQuickSelect(q, c, { Desc_IronIngot_C: iron })).toBe("partial");
+    expect(
+      matchQuickSelect(q, c, {
+        Desc_IronIngot_C: iron,
+        Desc_CopperIngot_C: copper,
+      }),
+    ).toBe("full");
+  });
+
+  it("matchQuickSelect: fixed pack (polymer) full when both set", () => {
+    const recipes = loadRecipes();
+    const c = ctx(recipes, ["Desc_Plastic_C", "Desc_Rubber_C"]);
+    const q = quickSelect("polymer-plastics");
+    expect(
+      matchQuickSelect(q, c, {
+        Desc_Plastic_C: "Recipe_ResidualPlastic_C",
+        Desc_Rubber_C: "Recipe_ResidualRubber_C",
+      }),
+    ).toBe("full");
+    expect(
+      matchQuickSelect(q, c, {
+        Desc_Plastic_C: "Recipe_ResidualPlastic_C",
+      }),
+    ).toBe("partial");
   });
 
   it("Minimize Input Types is replace-kind and cuts unique raws for Nuke Nobelisk", () => {

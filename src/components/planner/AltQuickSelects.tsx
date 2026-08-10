@@ -3,9 +3,11 @@ import { createPortal } from "react-dom";
 import { recipeBadgeClassName } from "@/lib/production/badges";
 import {
   applicableQuickSelects,
+  matchQuickSelect,
   type QuickSelect,
   type QuickSelectChip,
   type QuickSelectContext,
+  type QuickSelectMatch,
 } from "@/lib/production/quickSelects";
 import type { Recipe } from "@/types";
 
@@ -34,6 +36,8 @@ type Props = {
   /** Rates for expand-based presets (Minimize Input Types). */
   productTargets?: Array<{ productId: string; itemsPerMinute: number }>;
   externalItems?: string[];
+  /** Live Mode B recipe picks — used for Selected / Partial affordances. */
+  recipeOverrides?: Record<string, string>;
   onApply: (opts: {
     clear?: boolean;
     replace?: boolean;
@@ -74,6 +78,7 @@ export function AltQuickSelects({
   productTargetIds,
   productTargets,
   externalItems,
+  recipeOverrides = {},
   onApply,
 }: Props) {
   // Stabilize against fresh `.map()` arrays each parent render (rate keystrokes, heat, …).
@@ -99,6 +104,16 @@ export function AltQuickSelects({
   const hasMoreThanDefaults = options.some((q) => q.id !== "defaults");
 
   const [open, setOpen] = useState(false);
+
+  // Selected/Partial only while open — resolve() for RE / Minimize is non-trivial
+  const matchById = useMemo(() => {
+    const m = new Map<string, QuickSelectMatch>();
+    if (!open) return m;
+    for (const q of options) {
+      m.set(q.id, matchQuickSelect(q, ctx, recipeOverrides));
+    }
+    return m;
+  }, [open, options, ctx, recipeOverrides]);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Pos | null>(null);
@@ -206,21 +221,53 @@ export function AltQuickSelects({
               </p>
             </div>
             <ul className="min-h-0 max-h-[min(55vh,18rem)] flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-1">
-              {options.map((q) => (
-                <li key={q.id}>
-                  <button
-                    type="button"
-                    onClick={() => run(q)}
-                    className="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-slate-800/90"
-                  >
-                    <span className="flex items-center gap-2">
-                      {q.chip && <QuickSelectChipView chip={q.chip} />}
-                      <span className="text-xs font-medium text-slate-200">{q.label}</span>
-                    </span>
-                    <span className="text-[10px] leading-snug text-slate-500">{q.description}</span>
-                  </button>
-                </li>
-              ))}
+              {options.map((q) => {
+                const match = matchById.get(q.id) ?? "none";
+                const full = match === "full";
+                const partial = match === "partial";
+                return (
+                  <li key={q.id}>
+                    <button
+                      type="button"
+                      onClick={() => run(q)}
+                      aria-pressed={full || partial}
+                      className={`flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+                        full
+                          ? "bg-sky-500/15 ring-1 ring-sky-500/40"
+                          : partial
+                            ? "bg-sky-500/8 ring-1 ring-sky-500/25 hover:bg-sky-500/12"
+                            : "hover:bg-slate-800/90"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          {q.chip && <QuickSelectChipView chip={q.chip} />}
+                          <span
+                            className={`text-xs font-medium ${
+                              full ? "text-sky-200" : partial ? "text-sky-100/90" : "text-slate-200"
+                            }`}
+                          >
+                            {q.label}
+                          </span>
+                        </span>
+                        {full && (
+                          <span className="shrink-0 text-[10px] font-medium text-sky-400">
+                            Selected
+                          </span>
+                        )}
+                        {partial && (
+                          <span className="shrink-0 text-[10px] font-medium text-sky-500/80">
+                            Partial
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] leading-snug text-slate-500">
+                        {q.description}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>,
           document.body,
