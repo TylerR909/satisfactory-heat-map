@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   applicableQuickSelects,
-  matchQuickSelect,
+  isQuickSelectSelected,
   pureAltByProduct,
   QUICK_SELECTS,
   type QuickSelect,
@@ -171,17 +171,17 @@ describe("quickSelects", () => {
     expect(r.overrides.Desc_HighSpeedWire_C).toBe("Recipe_Alternate_Quickwire_C");
   });
 
-  it("matchQuickSelect: Defaults full when no in-play overrides", () => {
+  it("isQuickSelectSelected: Defaults when no in-play overrides", () => {
     const recipes = loadRecipes();
     const c = ctx(recipes, ["Desc_IronIngot_C", "Desc_Plastic_C"]);
     const def = quickSelect("defaults");
-    expect(matchQuickSelect(def, c, {})).toBe("full");
-    expect(matchQuickSelect(def, c, { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" })).toBe(
-      "none",
-    );
+    expect(isQuickSelectSelected(def, c, {})).toBe(true);
+    expect(
+      isQuickSelectSelected(def, c, { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" }),
+    ).toBe(false);
   });
 
-  it("matchQuickSelect: Pure full / partial / none", () => {
+  it("isQuickSelectSelected: Pure only when every pure pick is set", () => {
     const recipes = loadRecipes();
     const c = ctx(recipes, ["Desc_IronIngot_C", "Desc_CopperIngot_C"]);
     const q = quickSelect("all-pure");
@@ -193,31 +193,40 @@ describe("quickSelects", () => {
     expect(typeof iron).toBe("string");
     expect(typeof copper).toBe("string");
     if (typeof iron !== "string" || typeof copper !== "string") return;
-    expect(matchQuickSelect(q, c, {})).toBe("none");
-    expect(matchQuickSelect(q, c, { Desc_IronIngot_C: iron })).toBe("partial");
+    expect(isQuickSelectSelected(q, c, {})).toBe(false);
+    expect(isQuickSelectSelected(q, c, { Desc_IronIngot_C: iron })).toBe(false);
     expect(
-      matchQuickSelect(q, c, {
+      isQuickSelectSelected(q, c, {
         Desc_IronIngot_C: iron,
         Desc_CopperIngot_C: copper,
       }),
-    ).toBe("full");
+    ).toBe(true);
   });
 
-  it("matchQuickSelect: fixed pack (polymer) full when both set", () => {
+  it("isQuickSelectSelected: Oil → recycled when all in-play steps match", () => {
     const recipes = loadRecipes();
-    const c = ctx(recipes, ["Desc_Plastic_C", "Desc_Rubber_C"]);
-    const q = quickSelect("polymer-plastics");
+    const c = ctx(recipes, [
+      "Desc_HeavyOilResidue_C",
+      "Desc_LiquidFuel_C",
+      "Desc_Plastic_C",
+      "Desc_Rubber_C",
+    ]);
+    const q = quickSelect("oil-recycled-max");
     expect(
-      matchQuickSelect(q, c, {
-        Desc_Plastic_C: "Recipe_ResidualPlastic_C",
-        Desc_Rubber_C: "Recipe_ResidualRubber_C",
+      isQuickSelectSelected(q, c, {
+        Desc_HeavyOilResidue_C: "Recipe_Alternate_HeavyOilResidue_C",
+        Desc_LiquidFuel_C: "Recipe_Alternate_DilutedFuel_C",
+        Desc_Plastic_C: "Recipe_Alternate_Plastic_1_C",
+        Desc_Rubber_C: "Recipe_Alternate_RecycledRubber_C",
       }),
-    ).toBe("full");
+    ).toBe(true);
+    // Missing one step → not selected (no partial)
     expect(
-      matchQuickSelect(q, c, {
-        Desc_Plastic_C: "Recipe_ResidualPlastic_C",
+      isQuickSelectSelected(q, c, {
+        Desc_Plastic_C: "Recipe_Alternate_Plastic_1_C",
+        Desc_Rubber_C: "Recipe_Alternate_RecycledRubber_C",
       }),
-    ).toBe("partial");
+    ).toBe(false);
   });
 
   it("Minimize Input Types is replace-kind and cuts unique raws for Nuke Nobelisk", () => {

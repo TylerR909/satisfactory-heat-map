@@ -343,55 +343,46 @@ export function applicableQuickSelects(ctx: QuickSelectContext): QuickSelect[] {
   return QUICK_SELECTS.filter((q) => q.id === "defaults" || q.applicable(ctx));
 }
 
-/** How fully current overrides already match a quick-select pack. */
-export type QuickSelectMatch = "none" | "partial" | "full";
-
 function inPlayIds(ctx: QuickSelectContext): string[] {
   return [...new Set([...ctx.expansionItemIds, ...ctx.productTargetIds])];
 }
 
 /**
- * Compare this pack's resolve() result to live recipeOverrides.
- * Scales to all packs: fixed harmonies, Pure / Screw-Free / RE scanners, Defaults, Minimize.
+ * True when this pack is already fully applied for the current expand.
+ * Works for every pack (fixed harmonies, Pure / Screw-Free / RE, Defaults, Minimize).
  *
- * - **full** — every step this pack would set is already that recipe
- * - **partial** — some of those steps match, not all
- * - **none** — no overlap (or pack would set nothing)
+ * - **Defaults** — no in-play step has an override
+ * - **merge / replace** — every product→recipe this pack would set is already set
+ *   (and for replace: no extra in-play overrides beyond that set)
  *
- * Does not require *only* this pack (other merges can still be full for Pure if all pures are on).
+ * Other packs can also be selected at the same time (e.g. Pure + Screw-Free).
  */
-export function matchQuickSelect(
+export function isQuickSelectSelected(
   q: QuickSelect,
   ctx: QuickSelectContext,
   recipeOverrides: Readonly<Record<string, string>>,
-): QuickSelectMatch {
+): boolean {
   const result = q.resolve(ctx);
 
   if (result.kind === "clear") {
-    // Defaults: "selected" when no in-play step has an override
-    const any = inPlayIds(ctx).some((id) => Boolean(recipeOverrides[id]));
-    return any ? "none" : "full";
+    return !inPlayIds(ctx).some((id) => Boolean(recipeOverrides[id]));
   }
 
   const desired = result.overrides;
   const keys = Object.keys(desired);
-  if (keys.length === 0) return "none";
+  if (keys.length === 0) return false;
 
-  let matched = 0;
   for (const productId of keys) {
-    if (recipeOverrides[productId] === desired[productId]) matched++;
+    if (recipeOverrides[productId] !== desired[productId]) return false;
   }
-  if (matched === 0) return "none";
-  if (matched < keys.length) return "partial";
 
-  // Full match on desired keys. For replace packs, extra in-play overrides mean not exact.
   if (result.kind === "replace") {
     const desiredSet = new Set(keys);
     for (const id of inPlayIds(ctx)) {
       const cur = recipeOverrides[id];
       if (!cur) continue;
-      if (!desiredSet.has(id) || desired[id] !== cur) return "partial";
+      if (!desiredSet.has(id) || desired[id] !== cur) return false;
     }
   }
-  return "full";
+  return true;
 }

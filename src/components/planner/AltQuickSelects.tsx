@@ -3,11 +3,10 @@ import { createPortal } from "react-dom";
 import { recipeBadgeClassName } from "@/lib/production/badges";
 import {
   applicableQuickSelects,
-  matchQuickSelect,
+  isQuickSelectSelected,
   type QuickSelect,
   type QuickSelectChip,
   type QuickSelectContext,
-  type QuickSelectMatch,
 } from "@/lib/production/quickSelects";
 import type { Recipe } from "@/types";
 
@@ -105,12 +104,12 @@ export function AltQuickSelects({
 
   const [open, setOpen] = useState(false);
 
-  // Selected/Partial only while open — resolve() for RE / Minimize is non-trivial
-  const matchById = useMemo(() => {
-    const m = new Map<string, QuickSelectMatch>();
+  // Selected only while open — resolve() for RE / Minimize is non-trivial
+  const selectedById = useMemo(() => {
+    const m = new Map<string, boolean>();
     if (!open) return m;
     for (const q of options) {
-      m.set(q.id, matchQuickSelect(q, ctx, recipeOverrides));
+      m.set(q.id, isQuickSelectSelected(q, ctx, recipeOverrides));
     }
     return m;
   }, [open, options, ctx, recipeOverrides]);
@@ -222,21 +221,15 @@ export function AltQuickSelects({
             </div>
             <ul className="min-h-0 max-h-[min(55vh,18rem)] flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-1">
               {options.map((q) => {
-                const match = matchById.get(q.id) ?? "none";
-                const full = match === "full";
-                const partial = match === "partial";
+                const selected = selectedById.get(q.id) === true;
                 return (
                   <li key={q.id}>
                     <button
                       type="button"
                       onClick={() => run(q)}
-                      aria-pressed={full || partial}
+                      aria-pressed={selected}
                       className={`flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left transition-colors ${
-                        full
-                          ? "bg-sky-500/15 ring-1 ring-sky-500/40"
-                          : partial
-                            ? "bg-sky-500/8 ring-1 ring-sky-500/25 hover:bg-sky-500/12"
-                            : "hover:bg-slate-800/90"
+                        selected ? "bg-sky-500/15 ring-1 ring-sky-500/40" : "hover:bg-slate-800/90"
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2">
@@ -244,20 +237,15 @@ export function AltQuickSelects({
                           {q.chip && <QuickSelectChipView chip={q.chip} />}
                           <span
                             className={`text-xs font-medium ${
-                              full ? "text-sky-200" : partial ? "text-sky-100/90" : "text-slate-200"
+                              selected ? "text-sky-200" : "text-slate-200"
                             }`}
                           >
                             {q.label}
                           </span>
                         </span>
-                        {full && (
+                        {selected && (
                           <span className="shrink-0 text-[10px] font-medium text-sky-400">
                             Selected
-                          </span>
-                        )}
-                        {partial && (
-                          <span className="shrink-0 text-[10px] font-medium text-sky-500/80">
-                            Partial
                           </span>
                         )}
                       </span>
