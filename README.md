@@ -59,7 +59,7 @@ OSS notices for redistributed or ported material live under [`third_party/`](thi
 
 **Water:** Open-water extractors aren’t discrete game nodes, but the heatmap models them from basemap open-water pockets (plus optional Tier 8 resource wells). In Products mode, mark **Water** off-site under **Intermediates** if you pipe it from elsewhere.
 
-**Share and save plans.** Copy the plan hash from the Products/Raw header, paste to import, or use the plan chips to save/switch builds. The URL hash is the same compact computation payload (display settings stay local).
+**Share and save plans.** Copy the plan hash from the Products/Raw header, paste to import, or use the plan chips to save/switch builds. The URL hash is a compact `#v1.…` computation payload (display settings stay local). Wire format and **Open in Heatmap** notes for other tools: [`docs/SHARE_HASH.md`](docs/SHARE_HASH.md), [`docs/SHARE_HASH_VENDORING.md`](docs/SHARE_HASH_VENDORING.md).
 
 **Not affiliated** with Coffee Stain Studios. Node positions from our FModel world extract; recipes are a compact extract from official Docs — see in-app **Attributions**.
 

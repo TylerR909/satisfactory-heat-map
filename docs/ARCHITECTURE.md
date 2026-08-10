@@ -196,7 +196,7 @@ Rust: `crates/engine` + `crates/vendored/konsl_randomization`. Compile via `npm 
 
 - Zustand `persist` → localStorage key **`sf-heatmap-v9`**: mode, raw lines, product targets, `externalItems`, `recipeOverrides`, miner, scoring mode, knobs, UI prefs (incl. expansion sort order).
 - Merge migrates legacy scoring mode names / product ids; ignores removed capacity-mode / scaleHeadroom fields.
-- **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~20–35 chars** (grows with product targets + alt overrides). Binary packs flags, quantized knobs, catalog-index demand for the **active mode only** (raw *or* products), plus Mode B recipe overrides when present. Catalogs are append-only. On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced). Display-only prefs (heat paint, expansion sort) stay out of the hash.
+- **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~15–80 chars** (indexed item/recipe catalogs; grows slowly with alts). Spec: [SHARE_HASH.md](./SHARE_HASH.md). Binary packs flags, quantized knobs, catalog-index demand for the **active mode only** (raw *or* products), plus Mode B recipe overrides when present. Catalogs are append-only (`itemIds` / `recipeIds`). On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced). Display-only prefs (heat paint, expansion sort) stay out of the hash.
 - **Reset clustering** → scoring options + heat opacity + show nodes.
 - **Reset all defaults** → extractors, scoring mode, knobs — **keeps** mode, raw demand, and products.
 - Export plan JSON from planner.

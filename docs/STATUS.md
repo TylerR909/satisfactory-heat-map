@@ -1,12 +1,12 @@
 # Implementation status (handoff)
 
-**Last true-up:** 2026-08-10 — Mode B **Intermediates & Alternates** ship-ready (picks, badges, quick selects / Removes Types, hover rate slices, byproducts, Docs `producedIn`). Merge candidate.
+**Last true-up:** 2026-08-10 — Indexed share hash `#v1.…` (item/recipe catalogs, open wire spec + vendoring guide); Mode B **Intermediates & Alternates** ship-ready.
 
 ## Repo layout
 
 ```
 satisfactory-heat-map/
-├── docs/                 PRODUCT, ARCHITECTURE, TOOLING, DATA, DEPLOY, ROADMAP, STATUS
+├── docs/                 PRODUCT, ARCHITECTURE, TOOLING, DATA, DEPLOY, ROADMAP, STATUS, SHARE_HASH*
 ├── .devcontainer/        Node 24 + Rust + wasm-pack (no host rustc)
 ├── crates/               engine (WASM) + vendored/konsl_randomization
 ├── deploy/nginx.conf
@@ -41,6 +41,7 @@ satisfactory-heat-map/
 9. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
 10. **Nodes** own FModel extract (~626 via `extract-world-nodes`); **recipes** Docs compact extract with **`producedIn`** building ClassNames.
 11. **Persist** `sf-heatmap-v9` (plan + extractors + recipeOverrides + UI prefs incl. expansion sort; display knobs local).
+12. **Share hash** `#v1.<base64url>`: append-only `itemIds` / `recipeIds` catalogs; sparse Mode B overrides; Mode A `encodeRawPlanHash` for external tools ([SHARE_HASH.md](./SHARE_HASH.md), [SHARE_HASH_VENDORING.md](./SHARE_HASH_VENDORING.md)).
 
 ## Verified
 
