@@ -1018,7 +1018,7 @@ describe("expansion order (live Docs — plutonium fuel rod)", () => {
   });
 });
 
-describe("polymer resin byproduct alts + excess byproducts", () => {
+describe("byproduct-selectable production + excess byproducts", () => {
   it("lists dedicated Polymer Resin as default and Fuel/HOR as alts", async () => {
     const { readFileSync } = await import("node:fs");
     const recipes = JSON.parse(
@@ -1029,6 +1029,40 @@ describe("polymer resin byproduct alts + excess byproducts", () => {
     const ids = list.map((r) => r.id);
     expect(ids).toContain("Recipe_LiquidFuel_C");
     expect(ids).toContain("Recipe_Alternate_HeavyOilResidue_C");
+  });
+
+  it("lists HOR with Plastic/Rubber as byproduct alts (primary default not Plastic)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const list = listProductionRecipes(recipes, "Desc_HeavyOilResidue_C");
+    // Default should be a primary HOR recipe, not Plastic
+    expect(list[0]?.products[0]?.item).toBe("Desc_HeavyOilResidue_C");
+    const ids = list.map((r) => r.id);
+    expect(ids).toContain("Recipe_Plastic_C");
+    expect(ids).toContain("Recipe_Rubber_C");
+  });
+
+  it("lists Compacted Coal with Rocket/Ionized Fuel byproduct alts", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const list = listProductionRecipes(recipes, "Desc_CompactedCoal_C");
+    expect(list[0]?.products[0]?.item).toBe("Desc_CompactedCoal_C");
+    const names = list.map((r) => r.name);
+    expect(names.some((n) => /Rocket Fuel/i.test(n))).toBe(true);
+    expect(names.some((n) => /Ionized Fuel/i.test(n))).toBe(true);
+  });
+
+  it("does not offer Alumina as Silica production (cycle)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const list = listProductionRecipes(recipes, "Desc_Silica_C");
+    expect(list.some((r) => /Alumina/i.test(r.name))).toBe(false);
   });
 
   it("reports HOR byproduct from default Rubber expand", async () => {

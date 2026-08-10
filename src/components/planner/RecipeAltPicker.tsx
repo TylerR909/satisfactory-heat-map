@@ -19,11 +19,19 @@ import {
 import {
   listAlternateRecipes,
   listProductionRecipes,
+  primaryProductId,
   recipeButtonLabel,
   recipeShortName,
   resolveProductionRecipe,
 } from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
+
+/** Picker label: mark secondary-slot producers so "Fuel" on Polymer Resin is obvious. */
+function recipePickerName(recipe: Recipe, forItemId: string): string {
+  const short = recipeShortName(recipe);
+  if (primaryProductId(recipe) === forItemId) return short;
+  return `${short} (byproduct)`;
+}
 
 const PAD = 8;
 const PANEL_W = 300;
@@ -381,13 +389,14 @@ export function RecipeAltPicker({
                 />
               </li>
               {alts.map((alt) => {
-                const badges = badgeAlternate(alt, recipes, items);
+                // Badges only for hard-drive alts (byproduct paths compare poorly to primary default)
+                const badges = alt.alternate ? badgeAlternate(alt, recipes, items) : [];
                 const active = selectedRecipeId === alt.id;
                 return (
                   <li key={alt.id}>
                     <RecipeOption
                       active={active}
-                      name={recipeShortName(alt)}
+                      name={recipePickerName(alt, itemId)}
                       summary={formatRecipeSummary(alt, items)}
                       badges={badges}
                       onClick={() => {

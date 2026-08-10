@@ -62,9 +62,30 @@ export type SolveResult = {
   unresolved: Array<{ itemId: string; itemsPerMinute: number; reason: string }>;
 };
 
-/** Dedicated Polymer Resin recipe (~130/min at 100%) + oil-chain byproduct paths. */
+/** Dedicated Polymer Resin recipe (~130/min at 100%). */
 export const POLYMER_RESIN_ID = "Desc_PolymerResin_C";
 export const POLYMER_RESIN_DEFAULT_RECIPE_ID = "Recipe_Alternate_PolymerResin_C";
+
+/**
+ * Items that may be **selected** via secondary product slots as alternate production
+ * paths, while default remains a primary-product recipe when one exists.
+ *
+ * Included: oil/fuel chain (HOR, Polymer Resin, Compacted Coal), nuclear (Sulfuric
+ * Acid), late-game (Dark Matter Residue).
+ *
+ * Excluded on purpose:
+ * - **Silica** via Alumina (cycle / dual-use with Al chain — hard to reason about)
+ * - **Water** (map raw; already on Raw demand)
+ * - **Empty Canister / Empty Fluid Tank** (packaging vessels; default off-site)
+ * - Unpackage recipes (filtered separately)
+ */
+export const BYPRODUCT_SELECTABLE_ITEM_IDS: ReadonlySet<string> = new Set([
+  POLYMER_RESIN_ID, // Fuel, HOR alt
+  "Desc_HeavyOilResidue_C", // Plastic, Rubber, Polymer Resin alt
+  "Desc_CompactedCoal_C", // Rocket Fuel, Ionized Fuel, …
+  "Desc_SulfuricAcid_C", // Encased Uranium Cell
+  "Desc_DarkEnergy_C", // Dark Matter Residue — quantum / Ficsonium line
+]);
 
 /** Packaging vessels usually produced/recycled off the factory site. */
 export const DEFAULT_EXTERNAL_ITEM_IDS = ["Desc_FluidCanister_C", "Desc_GasTank_C"] as const;
@@ -183,19 +204,17 @@ export function recipeProducesItem(r: Recipe, itemId: string): boolean {
  * - Prefer recipes where it is the **primary** product (Docs first product line)
  * - If none exist (byproduct-only items, e.g. Dissolved Silica), fall back to any
  *   recipe that outputs it in a secondary product slot
- * - **Polymer Resin** special case: primary dedicated recipe plus Fuel / HOR
- *   byproduct paths (selectable alts) — without promoting Fuel to default
+ * - Items in {@link BYPRODUCT_SELECTABLE_ITEM_IDS}: primary recipes **plus**
+ *   secondary-slot producers as selectable alts (default stays primary)
  *
- * This keeps Silica from using Alumina Solution (byproduct) when a primary Silica
- * recipe exists, while still expanding Distilled Silica → Dissolved Silica via
- * Quartz Purification.
+ * Silica via Alumina is **not** in the allowlist (Al-chain dual-use / cycles).
  */
 export function recipesForProduction(recipes: Recipe[], itemId: string): Recipe[] {
   const asPrimary = recipesForPrimaryProduct(recipes, itemId);
   if (asPrimary.length === 0) {
     return recipes.filter((r) => recipeProducesItem(r, itemId) && !isUnpackageRecipe(r));
   }
-  if (itemId === POLYMER_RESIN_ID) {
+  if (BYPRODUCT_SELECTABLE_ITEM_IDS.has(itemId)) {
     const asByproduct = recipes.filter(
       (r) =>
         recipeProducesItem(r, itemId) && primaryProductId(r) !== itemId && !isUnpackageRecipe(r),
@@ -211,7 +230,7 @@ export function recipesForProduction(recipes: Recipe[], itemId: string): Recipe[
  * default (preference-scored) first, then alternates. Unpackage paths are
  * omitted unless they are the only way to make the item.
  * Default is always chosen among **primary** producers when any exist (so
- * Polymer Resin defaults to the dedicated 130/min recipe, not Fuel-as-byproduct).
+ * Polymer Resin / HOR / Compacted Coal defaults are never “as byproduct of X”).
  */
 export function listProductionRecipes(recipes: Recipe[], itemId: string): Recipe[] {
   const list = recipesForProduction(recipes, itemId);
@@ -226,7 +245,12 @@ export function listProductionRecipes(recipes: Recipe[], itemId: string): Recipe
   const alts = pool
     .filter((r) => r.id !== defaultRecipe.id)
     .sort(
-      (a, b) => recipePreferenceScore(b) - recipePreferenceScore(a) || a.name.localeCompare(b.name),
+      (a, b) =>
+        // Prefer true hard-drive alts, then byproduct paths, then name
+        (a.alternate === b.alternate ? 0 : a.alternate ? -1 : 1) ||
+        (primaryProductId(a) === itemId ? 0 : 1) - (primaryProductId(b) === itemId ? 0 : 1) ||
+        recipePreferenceScore(b) - recipePreferenceScore(a) ||
+        a.name.localeCompare(b.name),
     );
   return [defaultRecipe, ...alts];
 }
