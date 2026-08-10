@@ -263,5 +263,5 @@ Adaptive scale / Limited checks use a **pure permanent node** of each demanded r
 - [ ] Diff Konsl/default-world tables if randomization changed  
 - [ ] Bump `meta.json` `gameVersion`  
 - [ ] If map art changed: `map:generate` + `map:pack` + commit `map-tiles/v1.tar.gz` **and** `public/data/water/open-water.json`  
-- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Intermediates off-site Water + alt pick / quick select + Send to raw, capacity tags, seed mode when present  
+- [ ] Smoke: Mode A multi-resource (incl. water), Mode B multi-product + Intermediates off-site Water + alt pick / quick select (Removes Types, Recycled loop) + hover rate slices + byproducts + Send to raw, capacity tags, seed mode when present  
 

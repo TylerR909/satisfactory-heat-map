@@ -1,6 +1,6 @@
 # Implementation status (handoff)
 
-**Last true-up:** 2026-08-09 — Mode B **Intermediates & Alternates** complete (picks, badges, quick selects, Minimize Input Types, sort, link highlights, Docs `producedIn`). Ready for PR / ship polish, not more alt scope.
+**Last true-up:** 2026-08-10 — Mode B **Intermediates & Alternates** ship-ready (picks, badges, quick selects / Removes Types, hover rate slices, byproducts, Docs `producedIn`). Merge candidate.
 
 ## Repo layout
 
@@ -21,7 +21,7 @@ satisfactory-heat-map/
 │   ├── components/map|planner
 │   ├── hooks/            useAutoHeatmap, useHeatmapWorker, usePlanHash
 │   ├── lib/…|engine|wasm|seed | heatmap (rasterize only)
-│   │   └── production/   solve, badges, quickSelects, minimizeInputTypes, …
+│   │   └── production/   solve, badges, quickSelects, minimizeInputTypes, expansionLinks, …
 │   ├── workers/heatmap.worker.ts
 │   ├── store/useAppStore.ts
 │   └── types/
@@ -37,7 +37,7 @@ satisfactory-heat-map/
 5. **Extractors:** miner Mk + independent clocks for miner / oil / water / well pressurizer; wells toggle (forced on if plan needs Nitrogen).
 6. **Water supply** = basemap open-water bodies (`open-water.json`) ∪ well satellites when wells enabled.
 7. **Mode B Water** can be marked off-site under Intermediates (only map raw treated that way).
-8. **Mode B alternates:** per-step `recipeOverrides` (share hash + persist); UI popover + deterministic badges; quick-select packs; greedy **Minimize Input Types**; list sort (deep/shallow) is display-only local pref; hover link highlights predicates (violet) + consumers (emerald).
+8. **Mode B alternates:** per-step `recipeOverrides` (share hash + persist); UI popover + deterministic badges; quick-select packs incl. **Removes Types** (greedy unique map-raws, water ignored, type-colored cut list) and **Recycled loop** (HOR + Diluted Fuel + Recycled Plastic/Rubber); list sort (deep/shallow) is display-only local pref; expand-aware hover links with rate slices (`expansionLinks`); off-site × still highlights consumers; disabled ghost consumers use the **default** recipe only; Raw demand lists net **byproducts**.
 9. **Leaflet CRS.Simple** community-calibrated; self-hosted basemap tiles; heat `ImageOverlay`.
 10. **Nodes** own FModel extract (~626 via `extract-world-nodes`); **recipes** Docs compact extract with **`producedIn`** building ClassNames.
 11. **Persist** `sf-heatmap-v9` (plan + extractors + recipeOverrides + UI prefs incl. expansion sort; display knobs local).
@@ -57,7 +57,7 @@ npm start         # Vite HMR
 - Open water is **basemap-approximated** (not game depth); shallow rivers may over-count.
 - Individual basemap WebPs are not in git; CF uses **`map-tiles/v1.tar.gz`** + `map:ensure`.
 - Mode B alts are for **site selection**, not a full factory planner (no LP / belt graph / “best alt globally”).
-- **Minimize Input Types** is greedy unique-raw search (not exhaustive optimal).
+- **Removes Types** is greedy unique-raw search (not exhaustive optimal); water is not a type win.
 - Cave/elevation is soft notes only (no navmesh).
 - Peak emphasis / heat knobs are **display-only**.
 

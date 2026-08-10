@@ -30,10 +30,11 @@
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
 | `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables (UI clocks; WASM scorer has its own rates) |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
-| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (defaults + `recipeOverrides` + `externalItems` prune; cycle break) |
+| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (defaults + `recipeOverrides` + `externalItems` prune; cycle break; byproducts) |
 | `lib/production/badges.ts` | Deterministic alt badges (Removes, Skips, Pure, Alloy, machine via `producedIn`, …) |
-| `lib/production/quickSelects.ts` | Named alt packs (Pure, No Screws, Polymer, Recycled, Minimize Input Types, …) |
-| `lib/production/minimizeInputTypes.ts` | Greedy unique-raw recipe search for quick-select |
+| `lib/production/quickSelects.ts` | Named alt packs (Pure, No Screws, Polymer, Recycled loop, Removes Types, Caterium, …) |
+| `lib/production/minimizeInputTypes.ts` | Greedy unique-raw search for **Removes Types** (water ignored) |
+| `lib/production/expansionLinks.ts` | Intermediates hover: predicate/consumer classification + rate attribution |
 | `lib/heatmap/rasterize.ts` | Grid → PNG data URL for `ImageOverlay` (display only) |
 | `lib/engine.ts` | WASM façade (`createEngine` → `score_grid`) |
 | `lib/wasm/loadEngine.ts` | Load `sf_engine` (score + seed) |
@@ -51,7 +52,7 @@
 ## Data flow
 
 1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks), optional **off-site** intermediates, and optional **alternate recipe** picks (`recipeOverrides`).
-2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems` + `recipeOverrides`) and **`expansionRows`** for **Intermediates & Alternates**.
+2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems` + `recipeOverrides`), **`expansionRows`** for **Intermediates & Alternates**, and **`byproductRows`** (net excess secondary outputs under Raw demand).
 3. **`useAutoHeatmap`** (debounced) posts `ScoreGridInput` to the worker whenever demand, miner, scoring mode, or knobs change.
 4. Worker runs `createEngine().scoreGrid(input)` → `HeatmapResult` (grid + topSites with capacity tags).
 5. Map paints heat via `ImageOverlay` from the coarse grid; pins/lines from `topSites` / selection.

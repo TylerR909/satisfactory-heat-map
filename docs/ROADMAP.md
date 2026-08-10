@@ -40,13 +40,14 @@
 
 - [x] Mode B **Resource Toggle** — mark intermediates off-site / imported (stop expand); Empty Canister + Empty Fluid Tank default off-site; **Water** also off-site-able; share-hash + Intermediates UI
 - [x] Mode B **alternate recipes** (**Intermediates & Alternates**) — done as a shippable slice:
-  - [x] Squarish picker + popover (default + alts; Residual / non-HD paths selectable)
+  - [x] Squarish picker + popover (default + alts; Residual / non-HD / byproduct paths selectable)
   - [x] Live re-expand + share-hash / persist `recipeOverrides`
   - [x] Deterministic badges (Removes / Skips / Pure / Alloy / Screw-Free / RE / High Throughput / machine via Docs `producedIn` / unavoidable Adds / …)
-  - [x] Quick selects (Defaults, All Pure, No Screws, RE, Polymer, Recycled loop, Al packs, …)
-  - [x] **Minimize Input Types** (greedy unique-raw expand; not blind Removes badges)
+  - [x] Quick selects (Defaults, All Pure, No Screws, RE, Polymer, Recycled loop, Caterium computers, Al packs, …)
+  - [x] **Removes Types** (greedy unique-raw expand; water ignored; type-colored cut list; not tonnage RE)
   - [x] List sort (ingredients-first ↔ products-first; display-only local pref)
-  - [x] Recipe-control hover: violet predicates + emerald consumers
+  - [x] Recipe-control hover: violet predicates + emerald consumers; rate slices; off-site consumers still highlight; ghost links vs **default** recipe
+  - [x] Raw demand **byproducts** (net excess secondary outputs)
 - [ ] **Blueprint paste** — paste a Satisfactory blueprint string; derive raw demand (and/or product targets) for the heatmap without becoming a full planner
 - [ ] “These alts unlock hotter regions” comparison (nice-to-have — not required for alt MVP)
 - [ ] Cave node flags / better elevation heuristics
