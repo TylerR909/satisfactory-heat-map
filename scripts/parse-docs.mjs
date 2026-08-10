@@ -10,6 +10,10 @@
  *   public/data/recipes/items.json
  *   public/data/recipes/recipes.json
  *   public/data/recipes/docs-meta.json  — source stamp only
+ *   public/data/recipes/itemIds.json     — append-only share-hash item index
+ *   public/data/recipes/recipeIds.json   — append-only share-hash recipe index
+ *   public/data/recipes/recipePrimaries.json — recipe → primary product
+ *   src/data/itemIds.json, recipeIds.json, recipePrimaries.json  — same tables for the codec
  *
  * Does NOT ship the 10MB Docs file. Runtime loads only the compact JSON.
  *
@@ -309,9 +313,49 @@ function main() {
   const itemsPath = path.join(OUT_DIR, "items.json");
   const recipesPath = path.join(OUT_DIR, "recipes.json");
   const metaPath = path.join(OUT_DIR, "docs-meta.json");
+  const itemIdsPath = path.join(OUT_DIR, "itemIds.json");
+  const recipeIdsPath = path.join(OUT_DIR, "recipeIds.json");
+  const primariesPath = path.join(OUT_DIR, "recipePrimaries.json");
+  const srcDataDir = path.join(root, "src/data");
 
   fs.writeFileSync(itemsPath, `${JSON.stringify(items, null, 2)}\n`);
   fs.writeFileSync(recipesPath, `${JSON.stringify(recipes, null, 2)}\n`);
+
+  // ── Append-only share-hash catalogs (never renumber existing entries) ─────
+  const itemIds = mergeAppendOnlyIds(
+    itemIdsPath,
+    Object.keys(items).sort((a, b) => a.localeCompare(b)),
+  );
+  if (itemIds.length > 256) {
+    console.error(`itemIds has ${itemIds.length} entries — share hash uses u8 indices (max 256).`);
+    process.exit(1);
+  }
+  const recipeIds = mergeAppendOnlyIds(
+    recipeIdsPath,
+    recipes.map((r) => r.id).sort((a, b) => a.localeCompare(b)),
+  );
+  /** @type {Record<string, string>} */
+  const primaries = {};
+  for (const r of recipes) {
+    const p = r.products[0]?.item;
+    if (p) primaries[r.id] = p;
+  }
+
+  fs.writeFileSync(itemIdsPath, `${JSON.stringify(itemIds, null, 2)}\n`);
+  fs.writeFileSync(recipeIdsPath, `${JSON.stringify(recipeIds, null, 2)}\n`);
+  fs.writeFileSync(primariesPath, `${JSON.stringify(primaries, null, 2)}\n`);
+
+  fs.mkdirSync(srcDataDir, { recursive: true });
+  fs.writeFileSync(path.join(srcDataDir, "itemIds.json"), `${JSON.stringify(itemIds, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(srcDataDir, "recipeIds.json"),
+    `${JSON.stringify(recipeIds, null, 2)}\n`,
+  );
+  fs.writeFileSync(
+    path.join(srcDataDir, "recipePrimaries.json"),
+    `${JSON.stringify(primaries, null, 2)}\n`,
+  );
+
   fs.writeFileSync(
     metaPath,
     `${JSON.stringify(
@@ -326,6 +370,8 @@ function main() {
         recipeCount: recipes.length,
         defaultRecipes: defaults,
         alternateRecipes: alts,
+        shareHashItemIds: itemIds.length,
+        shareHashRecipeIds: recipeIds.length,
       },
       null,
       2,
@@ -340,7 +386,37 @@ function main() {
   console.log(
     `Wrote ${recipesPath} (${recipesKb} KB, ${recipes.length} recipes: ${defaults} default + ${alts} alt)`,
   );
+  console.log(
+    `Wrote share-hash catalogs: ${itemIds.length} itemIds, ${recipeIds.length} recipeIds (append-only)`,
+  );
   console.log(`Wrote ${metaPath}`);
+}
+
+/**
+ * Keep prior id order; append any new ids (sorted). Never renumber — share hashes depend on it.
+ * @param {string} filePath
+ * @param {string[]} nextSorted
+ * @returns {string[]}
+ */
+function mergeAppendOnlyIds(filePath, nextSorted) {
+  /** @type {string[]} */
+  let prev = [];
+  if (fs.existsSync(filePath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      if (Array.isArray(raw)) prev = raw.filter((x) => typeof x === "string");
+    } catch {
+      prev = [];
+    }
+  }
+  const seen = new Set(prev);
+  const out = [...prev];
+  for (const id of nextSorted) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
 }
 
 main();

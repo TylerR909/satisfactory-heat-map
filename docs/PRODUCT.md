@@ -16,7 +16,7 @@
 2. **Capacity matters as much as distance.** 600 copper/min next to one impure node is a bad site.
 3. **Honest data.** Bootstrap labeled; regenerate path in `docs/DATA.md`. Never treat satisfactory-calculator.com assets as ours.
 4. **Static-first + Docker.** Same `vite build` → Cloudflare Workers static assets *and* home-lab Compose (nginx).
-5. **Offline-capable PWA.** No accounts; localStorage / export plan JSON / **shareable URL hash** (full plan + knobs).
+5. **Offline-capable PWA.** No accounts; localStorage / export plan JSON / **shareable URL hash** (`#v1.…` indexed binary — see [SHARE_HASH.md](./SHARE_HASH.md); open for external “Open in Heatmap” via [SHARE_HASH_VENDORING.md](./SHARE_HASH_VENDORING.md)).
 6. **Host tools = Node/npm only.** Rust/WASM toolchain only in Dev Container, Docker builds, or CI/CF VMs — never install rustc on the laptop.
 7. **React Compiler by default.** Minimal hand `useMemo` / `useCallback`.
 8. **Live recompute.** Changing demand, extractors, or knobs updates the heat without a separate “Compute” click.

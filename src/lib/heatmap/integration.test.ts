@@ -95,7 +95,7 @@ describe("integration with shipped data", () => {
   });
 
   /**
-   * Regression: plan hash v1.CPr0BAMDLAEGyAAFZAA (coal 300 + sulfur 200 + quartz 100,
+   * Regression: coal 300 + sulfur 200 + quartz 100 (formerly stringy plan hash v1),
    * centered power 2, topN 10, sep 12%). Lower ranks used to sit ~1.3 km off the coast
    * while hauling from the same northern pocket as a better pin — site generation now
    * relocates onto the assignment midpoint before diversity.

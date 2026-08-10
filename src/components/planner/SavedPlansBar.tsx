@@ -86,8 +86,8 @@ function snapFromPlan(plan: SavedPlan) {
 const TIP_W = 224;
 const TIP_PAD = 8;
 
-/** Showcase HMF plan (Default world) under current string-product hash encoding. */
-const HASH_PLACEHOLDER = "v1.CfpHAxARTW9kdWxhckZyYW1lSGVhdnkKAA";
+/** Showcase HMF plan (Default world) under v1 indexed hash encoding. */
+const HASH_PLACEHOLDER = "v1.CfpHAxBKCgA";
 
 type TipPos = { left: number; top: number };
 

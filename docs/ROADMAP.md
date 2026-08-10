@@ -20,7 +20,7 @@
 - [x] Web Worker engine façade
 - [x] Planner knobs: Clustering (above Map settings), Map settings, Extractors; resets
 - [x] Map: community-calibrated CRS, self-hosted basemap tiles, heat overlay, nodes, pins, assignment lines, correct panes
-- [x] **Hash settings into the URL** (compact `#v1.<binary>` — mode, active demand, extractors, scoring, knobs)
+- [x] **Hash settings into the URL** (compact `#v1.<binary>` — indexed catalogs; [SHARE_HASH.md](./SHARE_HASH.md), [SHARE_HASH_VENDORING.md](./SHARE_HASH_VENDORING.md))
 - [x] **Save & swap heatmaps** (abbrev chips; localStorage + plan hash; import paste hash; copy hash)
 - [x] Open-water capacity (basemap blue → bodies) + wells toggle (N₂ forces wells on) + blue water haul lines
 - [x] Mode B: **Water** listed under Intermediates for off-site import (other ores stay via intermediates)
