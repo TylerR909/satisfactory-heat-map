@@ -110,6 +110,7 @@ describe("quickSelects", () => {
     if (r.kind !== "merge") return;
     expect(r.overrides.Desc_Plastic_C).toBe("Recipe_ResidualPlastic_C");
     expect(r.overrides.Desc_Rubber_C).toBe("Recipe_ResidualRubber_C");
+    expect(r.overrides.Desc_PolymerResin_C).toBe("Recipe_Alternate_PolymerResin_C");
     // Residual must not be the catalog default — otherwise the diamond never lights
     expect(listProductionRecipes(recipes, "Desc_Plastic_C")[0]?.id).toBe("Recipe_Plastic_C");
     expect(listProductionRecipes(recipes, "Desc_Rubber_C")[0]?.id).toBe("Recipe_Rubber_C");

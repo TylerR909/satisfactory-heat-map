@@ -7,7 +7,11 @@ import {
 } from "@/lib/heatmap/heatRender";
 import type { PlanSnapshot } from "@/lib/planHash";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
-import { DEFAULT_EXTERNAL_ITEM_IDS, solveProductsToRaw } from "@/lib/production/solve";
+import {
+  DEFAULT_EXTERNAL_ITEM_IDS,
+  recipeProducesItem,
+  solveProductsToRaw,
+} from "@/lib/production/solve";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
 import { clearNodeSeedCache, getNodesForSeed, type MapSeed } from "@/lib/seed";
 import type {
@@ -49,6 +53,12 @@ export type ExpansionRow = {
   itemsPerMinute: number;
   /** True when this item is treated as imported / not expanded into map raws. */
   external: boolean;
+};
+
+/** Excess secondary outputs from Mode B expand (display under Raw demand). */
+export type ByproductRow = {
+  itemId: string;
+  itemsPerMinute: number;
 };
 
 /**
@@ -94,6 +104,11 @@ export type AppState = {
    * Resource Toggle UI. Empty in raw mode.
    */
   expansionRows: ExpansionRow[];
+  /**
+   * Mode B: net excess byproducts from expand (HOR, Polymer Resin, Silica, …).
+   * Display under Raw demand. Ephemeral — not persisted.
+   */
+  byproductRows: ByproductRow[];
   heatmap: HeatmapResult | null;
   /**
    * Last main-thread canvas PNG bake for the heat overlay (not part of badge ms).
@@ -190,30 +205,40 @@ function recompute(
     | "items"
     | "recipes"
   >,
-): { demand: RawDemand[]; expansionRows: ExpansionRow[] } {
+): { demand: RawDemand[]; expansionRows: ExpansionRow[]; byproductRows: ByproductRow[] } {
   if (state.mode === "raw") {
     return {
       demand: state.rawDemand
         .filter((d) => d.itemsPerMinute > 0 && d.resource)
         .map(({ resource, itemsPerMinute }) => ({ resource, itemsPerMinute })),
       expansionRows: [],
+      byproductRows: [],
     };
   }
   const targets = state.productTargets
     .filter((t) => t.productId && t.itemsPerMinute > 0)
     .map((t) => ({ productId: t.productId, itemsPerMinute: t.itemsPerMinute }));
-  if (targets.length === 0) return { demand: [], expansionRows: [] };
-  const { demand, expansion } = solveProductsToRaw(targets, state.recipes, state.items, {
-    externalItems: state.externalItems,
-    recipeOverrides: state.recipeOverrides,
-  });
+  if (targets.length === 0) return { demand: [], expansionRows: [], byproductRows: [] };
+  const { demand, expansion, byproducts } = solveProductsToRaw(
+    targets,
+    state.recipes,
+    state.items,
+    {
+      externalItems: state.externalItems,
+      recipeOverrides: state.recipeOverrides,
+    },
+  );
   // Solver already orders deep → … → direct inputs → targets (min-depth merge)
   const expansionRows: ExpansionRow[] = expansion.map((e) => ({
     itemId: e.itemId,
     itemsPerMinute: e.itemsPerMinute,
     external: e.external,
   }));
-  return { demand, expansionRows };
+  const byproductRows: ByproductRow[] = byproducts.map((b) => ({
+    itemId: b.itemId,
+    itemsPerMinute: b.itemsPerMinute,
+  }));
+  return { demand, expansionRows, byproductRows };
 }
 
 export const useAppStore = create<AppState>()(
@@ -250,6 +275,7 @@ export const useAppStore = create<AppState>()(
       selectedSiteIndex: null,
       activeDemand: [],
       expansionRows: [],
+      byproductRows: [],
       heatmap: null,
       lastRasterizeMs: null,
       computing: false,
@@ -363,7 +389,8 @@ export const useAppStore = create<AppState>()(
         const recipes = get().recipes;
         if (recipes.length > 0) {
           const r = recipes.find((x) => x.id === rid);
-          if (!r || r.products[0]?.item !== id) return;
+          // Allow byproduct producers (Fuel/HOR → Polymer Resin, Quartz Purification → Dissolved Silica)
+          if (!r || !recipeProducesItem(r, id)) return;
         }
         set({ recipeOverrides: { ...prev, [id]: rid } });
         get().recomputeActiveDemand();
@@ -378,7 +405,7 @@ export const useAppStore = create<AppState>()(
           if (!productId || !recipeId) continue;
           if (recipes.length > 0) {
             const r = recipes.find((x) => x.id === recipeId);
-            if (!r || r.products[0]?.item !== productId) continue;
+            if (!r || !recipeProducesItem(r, productId)) continue;
           }
           next[productId] = recipeId;
         }
@@ -498,6 +525,7 @@ export const useAppStore = create<AppState>()(
           rawDemand,
           activeDemand: demand,
           expansionRows: [],
+          byproductRows: [],
           error: null,
         });
       },
@@ -584,8 +612,8 @@ export const useAppStore = create<AppState>()(
       },
       selectSite: (_site, index) => set({ selectedSiteIndex: index }),
       recomputeActiveDemand: () => {
-        const { demand, expansionRows } = recompute(get());
-        set({ activeDemand: demand, expansionRows });
+        const { demand, expansionRows, byproductRows } = recompute(get());
+        set({ activeDemand: demand, expansionRows, byproductRows });
       },
       loadGameData: async () => {
         try {

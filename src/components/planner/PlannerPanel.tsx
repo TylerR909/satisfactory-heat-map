@@ -653,6 +653,7 @@ export function PlannerPanel() {
     expansionSortOrder,
     setExpansionSortOrder,
     activeDemand,
+    byproductRows,
     items,
     recipes,
     computing,
@@ -961,19 +962,44 @@ export function PlannerPanel() {
               </button>
             )}
           </div>
-          {activeDemand.length === 0 ? (
+          {activeDemand.length === 0 && byproductRows.length === 0 ? (
             <p className="text-xs text-slate-500">No demand yet — set a product rate above.</p>
           ) : (
-            <ul className="space-y-1 text-sm">
-              {activeDemand.map((d) => (
-                <li key={d.resource} className="flex justify-between gap-2">
-                  <span>{resourceLabel(d.resource, items)}</span>
-                  <span className="font-mono text-slate-300">
-                    {formatRate(d.itemsPerMinute)}/min
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              {activeDemand.length > 0 && (
+                <ul className="space-y-1 text-sm">
+                  {activeDemand.map((d) => (
+                    <li key={d.resource} className="flex justify-between gap-2">
+                      <span>{resourceLabel(d.resource, items)}</span>
+                      <span className="font-mono text-slate-300">
+                        {formatRate(d.itemsPerMinute)}/min
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {byproductRows.length > 0 && (
+                <div className="space-y-1.5 border-t border-slate-800/80 pt-2">
+                  <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">
+                    Byproducts
+                  </p>
+                  <ul className="space-y-1 text-sm">
+                    {byproductRows.map((b) => (
+                      <li
+                        key={b.itemId}
+                        className="flex justify-between gap-2 text-red-300/90"
+                        title="Net excess from recipe secondary outputs — not heatmap demand"
+                      >
+                        <span>{resourceLabel(b.itemId, items)}</span>
+                        <span className="font-mono tabular-nums">
+                          {formatRate(b.itemsPerMinute)}/min
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}

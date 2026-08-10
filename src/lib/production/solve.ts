@@ -51,11 +51,20 @@ export type SolveResult = {
    */
   expansion: ExpansionEntry[];
   /**
+   * Net excess secondary outputs from expanded recipes (HOR, Polymer Resin, Silica, …)
+   * after subtracting amounts consumed back into the chain. Display-only — not heatmap demand.
+   */
+  byproducts: Array<{ itemId: string; itemsPerMinute: number }>;
+  /**
    * Crafted items we could not expand to map raws (missing recipe / alt not chosen).
    * Not placed on the heatmap as node demand.
    */
   unresolved: Array<{ itemId: string; itemsPerMinute: number; reason: string }>;
 };
+
+/** Dedicated Polymer Resin recipe (~130/min at 100%) + oil-chain byproduct paths. */
+export const POLYMER_RESIN_ID = "Desc_PolymerResin_C";
+export const POLYMER_RESIN_DEFAULT_RECIPE_ID = "Recipe_Alternate_PolymerResin_C";
 
 /** Packaging vessels usually produced/recycled off the factory site. */
 export const DEFAULT_EXTERNAL_ITEM_IDS = ["Desc_FluidCanister_C", "Desc_GasTank_C"] as const;
@@ -174,6 +183,8 @@ export function recipeProducesItem(r: Recipe, itemId: string): boolean {
  * - Prefer recipes where it is the **primary** product (Docs first product line)
  * - If none exist (byproduct-only items, e.g. Dissolved Silica), fall back to any
  *   recipe that outputs it in a secondary product slot
+ * - **Polymer Resin** special case: primary dedicated recipe plus Fuel / HOR
+ *   byproduct paths (selectable alts) — without promoting Fuel to default
  *
  * This keeps Silica from using Alumina Solution (byproduct) when a primary Silica
  * recipe exists, while still expanding Distilled Silica → Dissolved Silica via
@@ -181,14 +192,26 @@ export function recipeProducesItem(r: Recipe, itemId: string): boolean {
  */
 export function recipesForProduction(recipes: Recipe[], itemId: string): Recipe[] {
   const asPrimary = recipesForPrimaryProduct(recipes, itemId);
-  if (asPrimary.length > 0) return asPrimary;
-  return recipes.filter((r) => recipeProducesItem(r, itemId));
+  if (asPrimary.length === 0) {
+    return recipes.filter((r) => recipeProducesItem(r, itemId) && !isUnpackageRecipe(r));
+  }
+  if (itemId === POLYMER_RESIN_ID) {
+    const asByproduct = recipes.filter(
+      (r) =>
+        recipeProducesItem(r, itemId) && primaryProductId(r) !== itemId && !isUnpackageRecipe(r),
+    );
+    const seen = new Set(asPrimary.map((r) => r.id));
+    return [...asPrimary, ...asByproduct.filter((r) => !seen.has(r.id))];
+  }
+  return asPrimary;
 }
 
 /**
  * Production recipes a user may pick for an intermediate/product:
  * default (preference-scored) first, then alternates. Unpackage paths are
  * omitted unless they are the only way to make the item.
+ * Default is always chosen among **primary** producers when any exist (so
+ * Polymer Resin defaults to the dedicated 130/min recipe, not Fuel-as-byproduct).
  */
 export function listProductionRecipes(recipes: Recipe[], itemId: string): Recipe[] {
   const list = recipesForProduction(recipes, itemId);
@@ -196,7 +219,8 @@ export function listProductionRecipes(recipes: Recipe[], itemId: string): Recipe
 
   const nonUnpkg = list.filter((r) => !isUnpackageRecipe(r));
   const pool = nonUnpkg.length > 0 ? nonUnpkg : list;
-  const defaultRecipe = pickDefaultRecipe(pool);
+  const primaryOnly = pool.filter((r) => primaryProductId(r) === itemId);
+  const defaultRecipe = pickDefaultRecipe(primaryOnly.length > 0 ? primaryOnly : pool);
   if (!defaultRecipe) return [];
 
   const alts = pool
@@ -425,6 +449,10 @@ export function solveProductsToRaw(
   /** On-site map raws that also appear under Intermediates (currently Water only). */
   const expansionRaws = new Map<string, number>();
   const externalNeed = new Map<string, number>();
+  /** Secondary outputs emitted while expanding (before netting consumption). */
+  const byproductOut = new Map<string, number>();
+  /** Total non-raw need() rates (for netting excess byproducts). */
+  const totalNeed = new Map<string, number>();
   const unresolvedMap = new Map<string, { rate: number; reason: string }>();
   const visiting = new Set<string>();
   /**
@@ -469,6 +497,7 @@ export function solveProductsToRaw(
     // Map raws stop expansion (heatmap node demand). Water is special: listed in
     // Intermediates so the user can mark it off-site without inventing a fake intermediate.
     if (isMapRawResource(itemId, items)) {
+      totalNeed.set(itemId, (totalNeed.get(itemId) ?? 0) + rate);
       if (itemId === WATER_RESOURCE_ID) {
         if (!asTarget && externalSet.has(itemId)) {
           addExternal(itemId, rate, depth);
@@ -482,6 +511,8 @@ export function solveProductsToRaw(
       addRaw(itemId, rate);
       return;
     }
+
+    totalNeed.set(itemId, (totalNeed.get(itemId) ?? 0) + rate);
 
     // Off-site / imported crafted input — do not pull ingredient raws into the site
     if (!asTarget && externalSet.has(itemId)) {
@@ -532,6 +563,11 @@ export function solveProductsToRaw(
     }
 
     const craftsPerMin = rate / productLine.amount;
+    // Secondary product slots = byproducts relative to the item we're expanding for
+    for (const p of recipe.products) {
+      if (p.item === itemId || p.amount <= 0) continue;
+      byproductOut.set(p.item, (byproductOut.get(p.item) ?? 0) + craftsPerMin * p.amount);
+    }
     for (const ing of recipe.ingredients) {
       need(ing.item, craftsPerMin * ing.amount, false, depth + 1);
     }
@@ -580,7 +616,18 @@ export function solveProductsToRaw(
     }))
     .sort((a, b) => b.itemsPerMinute - a.itemsPerMinute);
 
-  return { demand, intermediates, external, expansion, unresolved };
+  // Net excess byproducts: emitted as secondary outputs minus chain consumption
+  const byproducts: Array<{ itemId: string; itemsPerMinute: number }> = [];
+  for (const [itemId, produced] of byproductOut) {
+    const consumed = totalNeed.get(itemId) ?? 0;
+    const excess = produced - consumed;
+    if (excess > 1e-6) byproducts.push({ itemId, itemsPerMinute: excess });
+  }
+  byproducts.sort(
+    (a, b) => b.itemsPerMinute - a.itemsPerMinute || a.itemId.localeCompare(b.itemId),
+  );
+
+  return { demand, intermediates, external, expansion, byproducts, unresolved };
 }
 
 /** @deprecated Prefer {@link solveProductsToRaw} for multi-target plans. */

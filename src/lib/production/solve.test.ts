@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { solveProductsToRaw, solveProductToRaw } from "@/lib/production/solve";
+import {
+  listProductionRecipes,
+  solveProductsToRaw,
+  solveProductToRaw,
+} from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
 
 const items: Record<string, ItemDef> = {
@@ -1011,5 +1015,37 @@ describe("expansion order (live Docs — plutonium fuel rod)", () => {
     // Iron plate is a Nitric Acid ingredient (rocket fuel chain), not a tank precursor
     expect(intermediates.Desc_IronPlate_C).toBeGreaterThan(0);
     expect(expansion.find((e) => e.itemId === "Desc_GasTank_C")?.external).toBe(true);
+  });
+});
+
+describe("polymer resin byproduct alts + excess byproducts", () => {
+  it("lists dedicated Polymer Resin as default and Fuel/HOR as alts", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const list = listProductionRecipes(recipes, "Desc_PolymerResin_C");
+    expect(list[0]?.id).toBe("Recipe_Alternate_PolymerResin_C");
+    const ids = list.map((r) => r.id);
+    expect(ids).toContain("Recipe_LiquidFuel_C");
+    expect(ids).toContain("Recipe_Alternate_HeavyOilResidue_C");
+  });
+
+  it("reports HOR byproduct from default Rubber expand", async () => {
+    const { readFileSync } = await import("node:fs");
+    const recipes = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/recipes.json", import.meta.url), "utf8"),
+    ) as Recipe[];
+    const items = JSON.parse(
+      readFileSync(new URL("../../../public/data/recipes/items.json", import.meta.url), "utf8"),
+    ) as Record<string, ItemDef>;
+    const { byproducts } = solveProductsToRaw(
+      [{ productId: "Desc_Rubber_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+    );
+    const hor = byproducts.find((b) => b.itemId === "Desc_HeavyOilResidue_C");
+    expect(hor).toBeDefined();
+    expect(hor?.itemsPerMinute ?? 0).toBeGreaterThan(0);
   });
 });

@@ -7,7 +7,13 @@ import {
   canMinimizeInputTypes,
   minimizeInputTypeOverrides,
 } from "@/lib/production/minimizeInputTypes";
-import { listProductionRecipes, primaryProductId, recipeShortName } from "@/lib/production/solve";
+import {
+  listProductionRecipes,
+  POLYMER_RESIN_DEFAULT_RECIPE_ID,
+  POLYMER_RESIN_ID,
+  primaryProductId,
+  recipeShortName,
+} from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
 
 const SCREW_ID = "Desc_IronScrew_C";
@@ -290,13 +296,17 @@ export const QUICK_SELECTS: QuickSelect[] = [
     id: "polymer-plastics",
     label: "Polymer plastics",
     description:
-      "Residual Plastic + Residual Rubber — polymer resin path (usual early swap off crude→plastic).",
-    applicable: (ctx) => inPlay(ctx, "Desc_Plastic_C") || inPlay(ctx, "Desc_Rubber_C"),
+      "Residual Plastic + Residual Rubber + dedicated Polymer Resin (130/min) — polymer path off crude→plastic.",
+    applicable: (ctx) =>
+      inPlay(ctx, "Desc_Plastic_C") ||
+      inPlay(ctx, "Desc_Rubber_C") ||
+      inPlay(ctx, POLYMER_RESIN_ID),
     resolve: (ctx) => ({
       kind: "merge",
       overrides: fixedOverrides(ctx, [
         { productId: "Desc_Plastic_C", recipeId: "Recipe_ResidualPlastic_C" },
         { productId: "Desc_Rubber_C", recipeId: "Recipe_ResidualRubber_C" },
+        { productId: POLYMER_RESIN_ID, recipeId: POLYMER_RESIN_DEFAULT_RECIPE_ID },
       ]),
     }),
   },
