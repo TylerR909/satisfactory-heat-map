@@ -150,18 +150,15 @@ export function RecipeAltPicker({
     setHighlight(false);
   }, [itemId]);
 
-  // Off-site: force-close menu and clear hover state
+  // Off-site: close menu (no alt picking) but keep highlight affordance on the slot
   useEffect(() => {
     if (!dimmed) return;
     setOpen(false);
     setRecipeTipOpen(false);
-    setHighlightSticky(false);
     if (recipeTipTimer.current) {
       clearTimeout(recipeTipTimer.current);
       recipeTipTimer.current = null;
     }
-    hoveringRef.current = false;
-    onHighlightChangeRef.current?.(false);
   }, [dimmed]);
 
   useEffect(() => {
@@ -262,9 +259,19 @@ export function RecipeAltPicker({
     };
   }, [open, highlightSticky]);
 
-  // Off-site: inert glyph only (no menu / hover / tips)
+  // Off-site: no menu / alt pick, but hover still lights consumers + rate slices
   if (dimmed) {
-    return <OffsiteRecipeSlot />;
+    const summary = defaultRecipe
+      ? formatRecipeSummary(defaultRecipe, items)
+      : "Off-site import — not expanded here";
+    return (
+      <OffsiteHighlightSlot
+        summary={
+          defaultRecipe ? `Off-site: ${recipeShortName(defaultRecipe)}. ${summary}` : summary
+        }
+        onHighlightChange={onHighlightChange}
+      />
+    );
   }
 
   // No alts (or no production recipe): still show a fixed slot — hover for recipe summary
@@ -472,16 +479,98 @@ function RecipeHoverTip({
   );
 }
 
-/** Off-site row: inert “×” — no menu, tips, highlight, or hover affordance. */
-function OffsiteRecipeSlot() {
+/**
+ * Off-site row control: no alt menu, but hover/tap still drives row link highlights
+ * so consumers of an imported step stay scannable.
+ */
+function OffsiteHighlightSlot({
+  summary,
+  onHighlightChange,
+}: {
+  summary: string;
+  onHighlightChange?: (active: boolean) => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [tipOpen, setTipOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHighlightChangeRef = useRef(onHighlightChange);
+  onHighlightChangeRef.current = onHighlightChange;
+
+  function clearTimer() {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  function clearAll() {
+    setPinned(false);
+    clearTimer();
+    setTipOpen(false);
+    onHighlightChangeRef.current?.(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pin session only
+  useEffect(() => {
+    if (!pinned) return;
+    const onPointer = (e: MouseEvent) => {
+      if (ref.current?.contains(e.target as Node)) return;
+      clearAll();
+    };
+    window.addEventListener("mousedown", onPointer);
+    return () => window.removeEventListener("mousedown", onPointer);
+  }, [pinned]);
+
   return (
-    <span
-      aria-hidden
-      className="pointer-events-none inline-flex h-7 w-7 shrink-0 select-none items-center justify-center rounded border border-dashed border-slate-800/70 bg-transparent text-[11px] font-medium leading-none text-slate-700"
-      style={{ cursor: "default" }}
-    >
-      ×
-    </span>
+    <>
+      <button
+        ref={ref}
+        type="button"
+        aria-label={summary}
+        aria-pressed={pinned}
+        style={{ cursor: "default" }}
+        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-dashed border-slate-700/80 bg-transparent text-[11px] font-medium leading-none text-slate-600 ${
+          pinned
+            ? "border-red-500/40 text-red-400/80"
+            : "hover:border-slate-600 hover:text-slate-500"
+        }`}
+        onMouseEnter={() => {
+          if (!pinned) {
+            onHighlightChangeRef.current?.(true);
+            clearTimer();
+            timer.current = setTimeout(() => setTipOpen(true), RECIPE_BUTTON_TIP_MS);
+          }
+        }}
+        onMouseLeave={() => {
+          if (!pinned) {
+            onHighlightChangeRef.current?.(false);
+            clearTimer();
+            setTipOpen(false);
+          }
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          if (pinned) {
+            clearAll();
+          } else {
+            setPinned(true);
+            onHighlightChangeRef.current?.(true);
+            clearTimer();
+            setTipOpen(true);
+          }
+        }}
+      >
+        <span aria-hidden>×</span>
+      </button>
+      {tipOpen && createPortal(<RecipeHoverTip anchorRef={ref} text={summary} />, document.body)}
+    </>
   );
 }
 

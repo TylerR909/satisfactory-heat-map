@@ -24,7 +24,8 @@ import {
   wellClockRateLabel,
 } from "@/lib/mining";
 import { encodePlanHash } from "@/lib/planHash";
-import { resolveProductionRecipe } from "@/lib/production/solve";
+import { classifyExpansionLink, type ExpansionLinkKind } from "@/lib/production/expansionLinks";
+import { listProductionRecipes, resolveProductionRecipe } from "@/lib/production/solve";
 import {
   RAW_RESOURCE_OPTIONS,
   resourceLabel,
@@ -448,49 +449,103 @@ function rowProductionRecipe(
   );
 }
 
-/** Recipe-link hover styles: violet upstream, emerald downstream. */
+/** Recipe-link hover styles: violet upstream, emerald downstream, red for dead import links. */
 function linkHighlightClasses(
-  kind: "none" | "predicate" | "consumer",
+  kind: ExpansionLinkKind,
   onSite: boolean,
-): { row: string; rate: string; strike: string } {
-  if (kind === "predicate") {
+): { row: string; rate: string; strike: string; slice: string; muted: string } {
+  if (kind === "predicate" || kind === "self") {
     return onSite
       ? {
           row: "bg-violet-500/12 text-slate-100",
           rate: "text-violet-200/90",
           strike: "line-through decoration-red-500/45",
+          slice: "text-violet-100",
+          muted: "text-violet-300/50",
         }
       : {
+          // Self/import row while off-site (hovering a disabled item)
           row: "bg-red-500/10 text-slate-500",
           rate: "text-red-400/80",
           strike: "line-through decoration-red-500/45",
+          slice: "text-red-300",
+          muted: "text-red-400/45",
         };
   }
   if (kind === "consumer") {
-    // Off-site consumers: light green only (no special disabled blend)
-    return onSite
-      ? {
-          row: "bg-emerald-500/12 text-slate-100",
-          rate: "text-emerald-200/90",
-          strike: "line-through decoration-slate-600",
-        }
-      : {
-          row: "bg-emerald-500/10 text-slate-500",
-          rate: "text-emerald-500/70",
-          strike: "line-through decoration-slate-600",
-        };
+    return {
+      row: "bg-emerald-500/12 text-slate-100",
+      rate: "text-emerald-200/90",
+      strike: "line-through decoration-slate-600",
+      slice: "text-emerald-100",
+      muted: "text-emerald-300/45",
+    };
+  }
+  if (kind === "ghost-consumer") {
+    // Off-site row that would use hover if produced here — site does not feed it
+    return {
+      row: "bg-red-500/10 text-slate-500",
+      rate: "text-red-400/80",
+      strike: "line-through decoration-red-500/45",
+      slice: "text-red-300",
+      muted: "text-red-400/45",
+    };
   }
   return onSite
     ? {
         row: "text-slate-200 hover:bg-slate-800/80",
         rate: "text-slate-300",
         strike: "line-through decoration-slate-600",
+        slice: "text-slate-200",
+        muted: "text-slate-500",
       }
     : {
         row: "text-slate-500 hover:bg-slate-800/50",
         rate: "text-slate-500",
         strike: "line-through decoration-slate-600",
+        slice: "text-slate-400",
+        muted: "text-slate-600",
       };
+}
+
+/** Rate cell: plain total, or hover slice (portion/total or ↑inflow + total). */
+function ExpansionRateCell({
+  kind,
+  total,
+  attributed,
+  sliceClass,
+  mutedClass,
+  rateClass,
+}: {
+  kind: ExpansionLinkKind;
+  total: number;
+  attributed: number | null;
+  sliceClass: string;
+  mutedClass: string;
+  rateClass: string;
+}) {
+  const totalLabel = `${formatRate(total)}/min`;
+
+  if (kind === "predicate" && attributed != null) {
+    return (
+      <span className={`font-mono text-xs tabular-nums ${rateClass}`}>
+        <span className={`font-semibold ${sliceClass}`}>{formatRate(attributed)}</span>
+        <span className={mutedClass}>/{totalLabel}</span>
+      </span>
+    );
+  }
+
+  // Consumer (on-site) and ghost-consumer (off-site): hover flows *into* this row
+  if ((kind === "consumer" || kind === "ghost-consumer") && attributed != null) {
+    return (
+      <span className={`font-mono text-xs tabular-nums ${rateClass}`}>
+        <span className={`font-semibold ${sliceClass}`}>(↑{formatRate(attributed)}/min)</span>
+        <span className={`ml-1 ${mutedClass}`}>{totalLabel}</span>
+      </span>
+    );
+  }
+
+  return <span className={`font-mono text-xs tabular-nums ${rateClass}`}>{totalLabel}</span>;
 }
 
 function ExpansionRowList({
@@ -515,15 +570,15 @@ function ExpansionRowList({
   setRecipeOverride: (itemId: string, recipeId: string | null) => void;
 }) {
   /**
-   * Only the hovered item id — each row derives predicate/consumer from its
-   * (and the hovered item's) active recipe while re-rendering. Same O(n) work
-   * as prebuilding Sets, less state, and stays correct if overrides change mid-hover.
+   * Only the hovered item id — each row derives predicate/consumer + rate slice
+   * from expand-aware link classification while re-rendering.
    */
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const targetIds = useMemo(
     () => new Set(productTargets.map((t) => t.productId)),
     [productTargets],
   );
+  // Prefer solver `row.external` (expand truth); fall back to toggle set
   const externalSet = useMemo(() => new Set(externalItems), [externalItems]);
   // Solver emits deep-first; reverse for targets-first (shallow-first)
   const orderedRows = useMemo(
@@ -539,6 +594,20 @@ function ExpansionRowList({
     return m;
   }, [expansionRows, recipes, recipeOverrides]);
 
+  // Catalog defaults — off-site ghost links ignore hidden alts (e.g. Caterium Computer)
+  const defaultRecipeByItem = useMemo(() => {
+    const m = new Map<string, Recipe | undefined>();
+    for (const row of expansionRows) {
+      m.set(row.itemId, listProductionRecipes(recipes, row.itemId)[0]);
+    }
+    return m;
+  }, [expansionRows, recipes]);
+
+  const hoveredRow = hoveredItemId
+    ? expansionRows.find((r) => r.itemId === hoveredItemId)
+    : undefined;
+  const hoveredOnSite = hoveredRow ? !hoveredRow.external : false;
+  const hoveredRate = hoveredRow?.itemsPerMinute ?? 0;
   const hoveredRecipe = hoveredItemId
     ? (activeRecipeByItem.get(hoveredItemId) ??
       rowProductionRecipe(hoveredItemId, recipes, recipeOverrides))
@@ -548,25 +617,28 @@ function ExpansionRowList({
     <ul className="space-y-0.5 text-sm">
       {orderedRows.map((row) => {
         const isTarget = targetIds.has(row.itemId);
-        const onSite = !externalSet.has(row.itemId);
+        // Expand truth (row.external); toggle set covers any transient mismatch
+        const onSite = !(row.external || externalSet.has(row.itemId));
         const label = resourceLabel(row.itemId, items);
 
-        let linkKind: "none" | "predicate" | "consumer" = "none";
-        if (hoveredItemId) {
-          if (
-            row.itemId === hoveredItemId ||
-            hoveredRecipe?.ingredients.some((ing) => ing.item === row.itemId)
-          ) {
-            linkKind = "predicate";
-          } else if (
-            activeRecipeByItem
-              .get(row.itemId)
-              ?.ingredients.some((ing) => ing.item === hoveredItemId)
-          ) {
-            linkKind = "consumer";
-          }
-        }
-        const hl = linkHighlightClasses(linkKind, onSite);
+        const link =
+          hoveredItemId != null
+            ? classifyExpansionLink({
+                row: {
+                  itemId: row.itemId,
+                  itemsPerMinute: row.itemsPerMinute,
+                  external: !onSite,
+                },
+                hoveredItemId,
+                hoveredRate,
+                hoveredOnSite,
+                hoveredRecipe,
+                rowRecipe: activeRecipeByItem.get(row.itemId),
+                rowDefaultRecipe: defaultRecipeByItem.get(row.itemId),
+              })
+            : { kind: "none" as const, attributed: null };
+
+        const hl = linkHighlightClasses(link.kind, onSite);
 
         return (
           <li
@@ -575,9 +647,14 @@ function ExpansionRowList({
           >
             <span className={`min-w-0 truncate ${onSite ? "" : hl.strike}`}>{label}</span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className={`font-mono text-xs ${hl.rate}`}>
-                {formatRate(row.itemsPerMinute)}/min
-              </span>
+              <ExpansionRateCell
+                kind={link.kind}
+                total={row.itemsPerMinute}
+                attributed={link.attributed}
+                sliceClass={hl.slice}
+                mutedClass={hl.muted}
+                rateClass={hl.rate}
+              />
               {isTarget ? (
                 <span className="inline-flex w-9 justify-end text-[10px] text-slate-600">
                   target
