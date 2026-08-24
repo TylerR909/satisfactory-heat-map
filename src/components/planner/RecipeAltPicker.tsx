@@ -385,11 +385,9 @@ export function RecipeAltPicker({
                   {items[itemId]?.name ?? itemId}
                 </strong>
               </h3>
-              <SloopHeaderToggle
-                on={sloopOn}
-                disabled={!canSloop}
-                onChange={(next) => onSloopChange?.(next)}
-              />
+              {canSloop && (
+                <SloopHeaderToggle on={sloopOn} onChange={(next) => onSloopChange?.(next)} />
+              )}
             </div>
             {/* min-h-0 + flex-1: scroll inside the height budget even when only ~100px free */}
             <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
@@ -454,20 +452,10 @@ function CoolSIcon({ className }: { className?: string }) {
   );
 }
 
-function SloopHeaderToggle({
-  on,
-  disabled,
-  onChange,
-}: {
-  on: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  const label = disabled
-    ? "This machine cannot use Somersloops"
-    : on
-      ? "Sloop on — this step's inputs are halved on the heatmap. Click to turn off."
-      : "Sloop off — click to mark this step as slooped (halves its inputs on the heatmap).";
+function SloopHeaderToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  const label = on
+    ? "Sloop on — this step's inputs are halved on the heatmap. Click to turn off."
+    : "Sloop off — click to mark this step as slooped (halves its inputs on the heatmap).";
   return (
     <button
       type="button"
@@ -475,19 +463,15 @@ function SloopHeaderToggle({
       aria-checked={on}
       aria-label={label}
       title={label}
-      disabled={disabled}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (disabled) return;
         onChange(!on);
       }}
       className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none transition-colors ${
-        disabled
-          ? "cursor-not-allowed border-slate-800 text-slate-600"
-          : on
-            ? "border-rose-400/70 bg-rose-500/20 text-rose-100 hover:border-rose-300 hover:bg-rose-500/35"
-            : "border-slate-700 bg-slate-950/40 text-slate-400 hover:border-rose-400/40 hover:text-rose-200"
+        on
+          ? "border-rose-400/70 bg-rose-500/20 text-rose-100 hover:border-rose-300 hover:bg-rose-500/35"
+          : "border-slate-700 bg-slate-950/40 text-slate-400 hover:border-rose-400/40 hover:text-rose-200"
       }`}
     >
       <CoolSIcon className="h-3.5 w-3.5" />
