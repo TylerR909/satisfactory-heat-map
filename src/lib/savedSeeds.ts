@@ -211,6 +211,34 @@ export function upsertSavedSeed(lib: SeedLibrary, entry: SavedSeed): SeedLibrary
   return { seeds, activeId: entry.id };
 }
 
+/** True when this seed already has a chip for the given plan hash. */
+export function seedHasPlanHash(seed: Pick<SavedSeed, "plans">, hash: string): boolean {
+  return seed.plans.some((p) => p.hash === hash);
+}
+
+/**
+ * Copy a plan chip onto another saved seed and make that seed (and chip) active.
+ * Same hash on dest is reused — no duplicate chips. Source shelf is unchanged.
+ */
+export function copyPlanToSavedSeed(
+  lib: SeedLibrary,
+  destId: string,
+  plan: SavedPlan,
+): { library: SeedLibrary; plan: SavedPlan } | null {
+  const dest = lib.seeds.find((p) => p.id === destId);
+  if (!dest) return null;
+  const existing = dest.plans.find((p) => p.hash === plan.hash);
+  const chip = existing ?? plan;
+  const plans = existing ? dest.plans : [...dest.plans, plan];
+  const updated: SavedSeed = {
+    ...dest,
+    plans,
+    activePlanId: chip.id,
+    updatedAt: Date.now(),
+  };
+  return { library: upsertSavedSeed({ ...lib, activeId: destId }, updated), plan: chip };
+}
+
 /**
  * Remove a saved seed; activate next remaining (or null).
  * Returns { library, next } where next is the entry to load after delete.

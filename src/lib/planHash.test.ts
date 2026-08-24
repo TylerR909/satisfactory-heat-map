@@ -147,6 +147,23 @@ describe("planHash v1 (indexed catalogs)", () => {
     expect(decoded?.seed).toBe(-12345);
   });
 
+  it("retargets the same plan selections onto another world seed", () => {
+    const src = sample({ seed: null, seedMode: "none", seedPurity: "no_change" });
+    const hash = encodePlanHash({
+      ...src,
+      seed: 99,
+      seedMode: "strict",
+      seedPurity: "no_change",
+    });
+    const decoded = decodePlanHash(hash);
+    expect(decoded?.seed).toBe(99);
+    expect(decoded?.seedMode).toBe("strict");
+    expect(decoded?.productTargets).toEqual([
+      { productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 },
+    ]);
+    expect(hash).not.toBe(encodePlanHash(src));
+  });
+
   it("round-trips catalog products (e.g. Biochemical Sculptor)", () => {
     const src = sample({
       mode: "product",

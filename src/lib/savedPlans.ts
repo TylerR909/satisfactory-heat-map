@@ -74,6 +74,16 @@ export function planAbbrev(name: string): string {
     .toUpperCase();
 }
 
+/** True when the live planner has a positive-rate product or raw line. */
+export function planHasContent(
+  src: Pick<PlanLabelSource, "mode" | "rawDemand" | "productTargets">,
+): boolean {
+  if (src.mode === "product") {
+    return src.productTargets.some((t) => t.productId && t.itemsPerMinute > 0);
+  }
+  return src.rawDemand.some((t) => t.resource && t.itemsPerMinute > 0);
+}
+
 export function primaryPlanLabel(src: PlanLabelSource): { abbrev: string; title: string } {
   if (src.mode === "product") {
     // Prefer a positive-rate product; otherwise still label from the first product

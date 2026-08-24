@@ -3,6 +3,7 @@ import { decodePlanHash } from "@/lib/planHash";
 import {
   buildSavedPlan,
   planAbbrev,
+  planHasContent,
   planSnapshotFromSaved,
   primaryPlanLabel,
 } from "@/lib/savedPlans";
@@ -69,6 +70,48 @@ describe("primaryPlanLabel", () => {
     });
     expect(title).toBe("Iron Plate");
     expect(abbrev).toBe("IP");
+  });
+});
+
+describe("planHasContent", () => {
+  it("is false for a blank 0/min product build", () => {
+    expect(
+      planHasContent({
+        mode: "product",
+        rawDemand: [{ id: "1", resource: "Desc_OreIron_C", itemsPerMinute: 120 }],
+        productTargets: [{ id: "1", productId: "Desc_IronPlate_C", itemsPerMinute: 0 }],
+      }),
+    ).toBe(false);
+  });
+
+  it("is true for a positive-rate product", () => {
+    expect(
+      planHasContent({
+        mode: "product",
+        rawDemand: [],
+        productTargets: [{ id: "1", productId: "Desc_Motor_C", itemsPerMinute: 10 }],
+      }),
+    ).toBe(true);
+  });
+
+  it("is true for a positive-rate raw line", () => {
+    expect(
+      planHasContent({
+        mode: "raw",
+        rawDemand: [{ id: "1", resource: "Desc_OreIron_C", itemsPerMinute: 120 }],
+        productTargets: [{ id: "1", productId: "Desc_IronPlate_C", itemsPerMinute: 10 }],
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for raw mode with only zero-rate lines", () => {
+    expect(
+      planHasContent({
+        mode: "raw",
+        rawDemand: [{ id: "1", resource: "Desc_OreIron_C", itemsPerMinute: 0 }],
+        productTargets: [],
+      }),
+    ).toBe(false);
   });
 });
 

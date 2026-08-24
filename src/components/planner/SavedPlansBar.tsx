@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -18,12 +19,14 @@ import {
 } from "@/lib/planHash";
 import {
   buildSavedPlan,
+  planHasContent,
   planSnapshotFromSaved,
   removePlan,
   type SavedPlan,
   upsertPlan,
 } from "@/lib/savedPlans";
 import {
+  copyPlanToSavedSeed,
   defaultNameForWorld,
   ensureDefaultSavedSeed,
   findSavedSeedByWorld,
@@ -34,6 +37,7 @@ import {
   persistSeedLibrary,
   type SavedSeed,
   type SeedLibrary,
+  seedHasPlanHash,
   subscribeSeedLibrary,
   upsertSavedSeed,
   worldFromSavedSeed,
@@ -100,6 +104,7 @@ function snapFromPlan(plan: SavedPlan) {
 
 const TIP_W = 224;
 const TIP_PAD = 8;
+const COPY_PANEL_W = 260;
 
 /** Showcase HMF plan (Default world) under v1 indexed hash encoding. */
 const HASH_PLACEHOLDER = "v1.CfpHAxBKCgA";
@@ -213,6 +218,173 @@ function startBlankBuild() {
   useAppStore.getState().recomputeActiveDemand();
 }
 
+function CopyToPopover({
+  open,
+  onClose,
+  anchorRef,
+  destinations,
+  onCopyTo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  destinations: SavedSeed[];
+  onCopyTo: (pt: SavedSeed) => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<TipPos | null>(null);
+  const titleId = useId();
+  const mode = useAppStore((s) => s.mode);
+  const rawDemand = useAppStore((s) => s.rawDemand);
+  const productTargets = useAppStore((s) => s.productTargets);
+  const miner = useAppStore((s) => s.miner);
+  const scoringMode = useAppStore((s) => s.scoringMode);
+  const scoringOptions = useAppStore((s) => s.scoringOptions);
+  const externalItems = useAppStore((s) => s.externalItems);
+  const recipeOverrides = useAppStore((s) => s.recipeOverrides);
+  const sloopedItems = useAppStore((s) => s.sloopedItems);
+
+  const destRows = destinations.map((pt) => {
+    const world = worldFromSavedSeed(pt);
+    const hash = encodePlanHash({
+      mode,
+      rawDemand,
+      productTargets,
+      miner,
+      scoringMode,
+      scoringOptions,
+      seed: world.seed,
+      seedMode: world.mode,
+      seedPurity: world.purity,
+      externalItems,
+      recipeOverrides,
+      sloopedItems,
+    });
+    return { pt, alreadyThere: seedHasPlanHash(pt, hash) };
+  });
+  const layoutKey = `${destRows.length}:${destRows.map((r) => `${r.pt.id}:${r.alreadyThere ? 1 : 0}`).join(",")}`;
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    void layoutKey;
+    const place = () => {
+      const anchor = anchorRef.current;
+      const panel = panelRef.current;
+      if (!anchor) return;
+      const r = anchor.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const h = panel?.offsetHeight ?? 160;
+      const w = panel?.offsetWidth ?? COPY_PANEL_W;
+      setPos(clampTipBox(r, w, h, vw, vh));
+    };
+    place();
+    requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, anchorRef, layoutKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      onClose();
+    };
+    const onPointer = (e: globalThis.MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t)) return;
+      if (anchorRef.current?.contains(t)) return;
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [open, onClose, anchorRef]);
+
+  if (!open || !pos) return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-labelledby={titleId}
+      className="fixed z-[10000] rounded-lg border border-slate-600 bg-slate-900 p-3 text-left shadow-2xl"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        width: COPY_PANEL_W,
+        maxWidth: `calc(100vw - ${TIP_PAD * 2}px)`,
+        maxHeight: `calc(100vh - ${TIP_PAD * 2}px)`,
+        overflowY: "auto",
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h2 id={titleId} className="text-xs font-semibold tracking-wide text-slate-200 uppercase">
+          Copy to seed
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-slate-500 hover:text-slate-300 text-sm leading-none"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+      {destinations.length === 0 ? (
+        <p className="mt-2 text-[11px] text-slate-400">
+          Save another seed to copy this plan there.
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-1">
+          {destRows.map(({ pt, alreadyThere }) => (
+            <li key={pt.id}>
+              <button
+                type="button"
+                onClick={() => onCopyTo(pt)}
+                title={alreadyThere ? `Already on ${pt.name} — open it` : `Copy plan to ${pt.name}`}
+                aria-label={
+                  alreadyThere
+                    ? `Already on ${pt.name}, open existing copy`
+                    : `Copy plan to ${pt.name}`
+                }
+                className={`w-full rounded-md border px-2 py-1.5 text-left transition ${
+                  alreadyThere
+                    ? "border-emerald-500/35 bg-emerald-500/10 hover:border-emerald-400/55 hover:bg-emerald-500/15"
+                    : "border-slate-800 bg-slate-950/60 hover:border-slate-500 hover:bg-slate-900"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-[12px] font-medium text-slate-200">{pt.name}</div>
+                  {alreadyThere && (
+                    <span className="shrink-0 text-[10px] font-medium tracking-wide text-emerald-300/90 uppercase">
+                      Already there
+                    </span>
+                  )}
+                </div>
+                <div className="font-mono text-[10px] text-slate-500">
+                  {formatWorldLabel(worldFromSavedSeed(pt))} · {pt.plans.length} heatmap
+                  {pt.plans.length === 1 ? "" : "s"}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
 /**
  * Compact multi-plan switcher scoped to the active saved seed + Seed control.
  */
@@ -226,6 +398,8 @@ export function SavedPlansBar() {
   const [importValue, setImportValue] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const copyBtnRef = useRef<HTMLButtonElement>(null);
   const seedBtnRef = useRef<HTMLButtonElement>(null);
   const [seedOpen, setSeedOpen] = useState(false);
   const applyPlanSnapshot = useAppStore((s) => s.applyPlanSnapshot);
@@ -233,7 +407,11 @@ export function SavedPlansBar() {
   const mapSeed = useAppStore((s) => s.seed);
   const seedMode = useAppStore((s) => s.seedMode);
   const seedPurity = useAppStore((s) => s.seedPurity);
+  const mode = useAppStore((s) => s.mode);
+  const rawDemand = useAppStore((s) => s.rawDemand);
+  const productTargets = useAppStore((s) => s.productTargets);
   const currentWorld: WorldGenSettings = { seed: mapSeed, mode: seedMode, purity: seedPurity };
+  const hasPlan = planHasContent({ mode, rawDemand, productTargets });
 
   const activePt = getActiveSavedSeed(library);
   /** Detached from any named shelf (unsaved seed, or Random before Save). */
@@ -244,6 +422,7 @@ export function SavedPlansBar() {
   const nonDefaultMap = !isDefaultWorld(currentWorld);
   const plans = detached ? ephemeralPlans : (activePt?.plans ?? []);
   const activePlanId = detached ? ephemeralActiveId : (activePt?.activePlanId ?? null);
+  const copyDestinations = library.seeds.filter((pt) => pt.id !== library.activeId);
 
   const persistLib = useCallback((next: SeedLibrary) => {
     setLibrary(next);
@@ -478,7 +657,61 @@ export function SavedPlansBar() {
   const openImport = () => {
     setImportValue("");
     setImportError(null);
+    setCopyOpen(false);
     setImportOpen((v) => !v);
+  };
+
+  const openCopyTo = () => {
+    if (!hasPlan) return;
+    setImportOpen(false);
+    setSeedOpen(false);
+    setCopyOpen((v) => !v);
+  };
+
+  /**
+   * Duplicate the live planner onto another saved seed, then switch to that
+   * seed and load the copy. Same hash on dest is reused (no duplicate chips).
+   * Source chips stay put.
+   */
+  const onCopyTo = (dest: SavedSeed) => {
+    if (!hasPlan || dest.id === library.activeId) return;
+
+    skipPersistActive.current = true;
+    let lib = loadSeedLibrary();
+    if (lib.activeId) {
+      lib = snapshotActiveIntoLibrary(lib);
+    }
+
+    const destNow = lib.seeds.find((p) => p.id === dest.id);
+    if (!destNow) {
+      skipPersistActive.current = false;
+      return;
+    }
+
+    const destWorld = worldFromSavedSeed(destNow);
+    const retargeted: PlanHashSource = {
+      ...planSourceFromStore(),
+      seed: destWorld.seed,
+      seedMode: destWorld.mode,
+      seedPurity: destWorld.purity,
+    };
+    const copied = buildSavedPlan(null, retargeted, labelSourceFromStore());
+    const result = copyPlanToSavedSeed(lib, destNow.id, copied);
+    if (!result) {
+      skipPersistActive.current = false;
+      return;
+    }
+
+    persistLib(result.library);
+    const snap = snapFromPlan(result.plan);
+    if (snap) applyPlanSnapshot(snap, { applySeed: true });
+    writeUrlHash(result.plan.hash);
+    setCopyOpen(false);
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
   };
 
   const onImportHash = (e: FormEvent) => {
@@ -752,8 +985,12 @@ export function SavedPlansBar() {
     });
   };
 
+  useEffect(() => {
+    if (!hasPlan && copyOpen) setCopyOpen(false);
+  }, [hasPlan, copyOpen]);
+
   const iconBtn =
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-400 transition hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200";
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-400 transition hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-700 disabled:hover:bg-slate-900 disabled:hover:text-slate-400";
 
   return (
     <section className="space-y-1.5">
@@ -768,7 +1005,10 @@ export function SavedPlansBar() {
         <button
           ref={seedBtnRef}
           type="button"
-          onClick={() => setSeedOpen((v) => !v)}
+          onClick={() => {
+            setCopyOpen(false);
+            setSeedOpen((v) => !v);
+          }}
           title={
             nonDefaultMap
               ? `${formatWorldLabel(currentWorld)} — click to change`
@@ -823,6 +1063,18 @@ export function SavedPlansBar() {
         >
           <ImportIcon />
         </button>
+        <button
+          ref={copyBtnRef}
+          type="button"
+          onClick={openCopyTo}
+          disabled={!hasPlan}
+          title={hasPlan ? "Copy plan to another seed" : "Add a product or rate first"}
+          aria-label="Copy plan to another seed"
+          aria-expanded={copyOpen}
+          className={`${iconBtn} ${copyOpen ? "border-slate-500 bg-slate-800 text-slate-200" : ""}`}
+        >
+          <CopyToIcon />
+        </button>
       </div>
 
       <SeedPopover
@@ -839,6 +1091,14 @@ export function SavedPlansBar() {
         onRandomSeed={onRandomSeed}
         onDefaultMap={onDefaultMap}
         onSelectSavedSeed={onSelectSavedSeed}
+      />
+
+      <CopyToPopover
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        anchorRef={copyBtnRef}
+        destinations={copyDestinations}
+        onCopyTo={onCopyTo}
       />
 
       {importOpen && (
@@ -915,6 +1175,27 @@ function ImportIcon() {
       />
       <path
         d="M3 10.5V12a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 12v-1.5"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CopyToIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+      className="stroke-current"
+    >
+      <path
+        d="M2.5 8h9M8 4.5 12.5 8 8 11.5"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
