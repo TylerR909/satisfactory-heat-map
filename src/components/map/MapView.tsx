@@ -23,9 +23,10 @@ import "leaflet/dist/leaflet.css";
 type MapViewProps = {
   /** Bumps when app chrome resizes the map (mobile panel collapse, etc.). */
   layoutKey?: string | number | boolean;
+  dragging?: boolean;
 };
 
-export function MapView({ layoutKey = 0 }: MapViewProps) {
+export function MapView({ layoutKey = 0, dragging = false }: MapViewProps) {
   const meta = useAppStore((s) => s.meta);
   const nodes = useAppStore((s) => s.nodes);
   const heatmap = useAppStore((s) => s.heatmap);
@@ -85,7 +86,7 @@ export function MapView({ layoutKey = 0 }: MapViewProps) {
       >
         <MapPanes />
         <ResponsiveZoomControl />
-        <FitWorld layoutKey={layoutKey} />
+        <FitWorld layoutKey={layoutKey} dragging={dragging} />
         {/*
           Standard XYZ TileLayer — do not invert tile Y.
           Flipping Y in getTileUrl causes horizontal strip misalignment.

@@ -56,6 +56,8 @@ type Props = {
    * collapse). Re-fits zoom into the new viewport without a size-jump.
    */
   layoutKey?: string | number | boolean;
+  /** While the mobile sheet is dragged, only adopt the new size — don't re-fit. */
+  dragging?: boolean;
 };
 
 /**
@@ -66,13 +68,15 @@ type Props = {
  * to "drag down", then the animated setView snapped it back. We pin the world
  * to the screen with pan:true, then only animate zoom.
  */
-export function FitWorld({ layoutKey = 0 }: Props) {
+export function FitWorld({ layoutKey = 0, dragging = false }: Props) {
   const map = useMap();
   const userMoved = useRef(false);
   const layoutAnimating = useRef(false);
   const quietUntil = useRef(0);
   const prevLayoutKey = useRef(layoutKey);
   const layoutReady = useRef(false);
+  const draggingRef = useRef(dragging);
+  draggingRef.current = dragging;
 
   useEffect(() => {
     const markUser = () => {
@@ -93,6 +97,10 @@ export function FitWorld({ layoutKey = 0 }: Props) {
     );
 
     const fitWorldToContainer = () => {
+      if (draggingRef.current) {
+        map.invalidateSize({ animate: false, pan: true });
+        return false;
+      }
       if (layoutAnimating.current) return false;
       if (performance.now() < quietUntil.current) {
         // Size may still be settling; keep world glued to the screen only.
