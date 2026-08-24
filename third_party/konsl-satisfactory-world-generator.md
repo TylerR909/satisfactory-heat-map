@@ -24,4 +24,4 @@ TypeScript `src/lib/seed/` is a **thin wrapper** (cache, types, `configForSeed`)
 
 - Node **slot positions** and the vanilla type/purity template come from our FModel extract (`public/data/nodes/default-nodes.json` via `npm run extract-world-nodes`), not from Konsl’s encrypted resources zip.
 - Konsl’s extractor only includes `BP_ResourceNode_C` (not `BP_ResourceDeposit_C`). Our port **excludes** deposits from the shuffle pool to match that membership.
-- Fixed product policy for non-default seeds: randomization mode **strict** (in-game “Random”) + purity **no_change**.
+- The UI and share hash pass the full triple: randomization mode + purity + seed. A seed-only (legacy) hash still means **strict** + **no_change**.

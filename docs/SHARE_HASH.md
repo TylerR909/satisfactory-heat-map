@@ -69,7 +69,7 @@ All multi-byte integers are **little-endian**. Rates are `u16` items/min (0…65
 | 2 | `1` = flat haul (`includeElevation = false`) |
 | 3–4 | Miner Mk: `0`→Mk1, `1`→Mk2, `2`→Mk3 |
 | 5 | `FLAG_HAS_SEED` — i32 seed follows demand |
-| 6 | `FLAG_HAS_EXTERNAL` — external item list follows |
+| 6 | `FLAG_HAS_EXTERNAL` — external item list follows seed / world config |
 | 7 | `FLAG_HAS_EXTRACTOR_EXT` — water/well/oil clocks follow (only if non-default) |
 
 ### Packed knobs (bytes 2–3)
@@ -78,7 +78,8 @@ All multi-byte integers are **little-endian**. Rates are `u16` items/min (0…65
 bits 0–4:   centerPower  quantized 1.00 + q×0.05, q=0…30
 bits 5–7:   topN         3 + n, n=0…7  → topN 3…10
 bits 8–12:  siteSep      0.04 + q×0.02, q=0…18
-bits 13–15: reserved (0)
+bit 13:     FLAG_HAS_WORLD_CONFIG — mode u8 + purity u8 follow the seed tail
+bits 14–15: reserved (0)
 ```
 
 ### Demand
@@ -101,14 +102,39 @@ Only the **active** mode’s lines are present (`nRaw` or `nProd` is zero).
 
 ### Optional tails (in order)
 
-1. **Seed** (if `FLAG_HAS_SEED`): `i32` map seed. Omitted when Default/vanilla (`null`). Seed `0` is a valid randomized world and **is** encoded.
-2. **Externals** (if `FLAG_HAS_EXTERNAL`): `n u8`, then `n` × `itemIndex u8`. Mode B off-site intermediates (and Water). Sorted by ClassName at encode time.
-3. **Extractors** (if `FLAG_HAS_EXTRACTOR_EXT`):  
+1. **Seed** (if `FLAG_HAS_SEED`): `i32` map seed. Omitted when no seed was entered (`null`). Seed `0` is a valid randomized world and **is** encoded.
+2. **World config** (if packed knobs `FLAG_HAS_WORLD_CONFIG`): `mode u8`, `purity u8`. Omitted when mode+purity match the v1 seed-only implication (null seed → Default randomization + Default purity; numeric seed → Random + unchanged purity). See tables below.
+3. **Externals** (if `FLAG_HAS_EXTERNAL`): `n u8`, then `n` × `itemIndex u8`. Mode B off-site intermediates (and Water). Sorted by ClassName at encode time.
+4. **Extractors** (if `FLAG_HAS_EXTRACTOR_EXT`):  
    `waterClock u8`, `wellClock u8`, `wellsEnabled u8` (bit0), `oilClock u8`.  
    Omitted when all match app defaults (Mk clocks 250%, wells on).
-4. **Recipe overrides** (if any bytes remain):  
+5. **Recipe overrides** (if any bytes remain):  
    `n u8`, then `n` × (`itemIndex u8`, `recipeIndex u16`).  
    Only **non-default** Mode B picks. Product → recipe ClassName after catalog lookup.
+
+World-config `mode` (Konsl snake_case / in-game name):
+
+| u8 | Wire | In-game |
+|---:|------|---------|
+| 0 | `none` | Default |
+| 1 | `strict` | Random |
+| 2 | `basic_rich` | Basic Resource Rich |
+| 3 | `advanced_rich` | Advanced Resource Rich |
+| 4 | `fossil_fuel_rich` | Fossil Fuel Rich |
+
+World-config `purity`:
+
+| u8 | Wire | In-game |
+|---:|------|---------|
+| 0 | `no_change` | Default |
+| 1 | `all_impure` | All Impure |
+| 2 | `decrease` | Mostly Impure |
+| 3 | `all_normal` | Average |
+| 4 | `increase` | Mostly Pure |
+| 5 | `all_pure` | All Pure |
+| 6 | `all_random` | Random |
+
+A seed-only v1 hash (no world-config flag) still decodes: `null` seed → Default+Default; numeric seed → Random+unchanged. That is the old product policy and the common “Open in Heatmap” case.
 
 Display-only fields (heat opacity, paint, node visibility, expansion sort order, …) are **never** encoded.
 
@@ -130,7 +156,7 @@ import {
 } from "@/lib/planHash";
 
 // Full snapshot (app path)
-encodePlanHash({ mode, rawDemand, productTargets, miner, scoringMode, scoringOptions, seed, externalItems, recipeOverrides });
+encodePlanHash({ mode, rawDemand, productTargets, miner, scoringMode, scoringOptions, seed, seedMode, seedPurity, externalItems, recipeOverrides });
 
 // Mode A — preferred external interop
 encodeRawPlanHash([

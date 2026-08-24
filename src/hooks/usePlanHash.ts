@@ -1,12 +1,19 @@
 import { useEffect, useRef } from "react";
-import { decodePlanHash, encodePlanHash, mapSeedsEqual, type PlanHashSource } from "@/lib/planHash";
+import {
+  decodePlanHash,
+  encodePlanHash,
+  type PlanHashSource,
+  worldFromSnapshot,
+} from "@/lib/planHash";
 import {
   ensureDefaultSavedSeed,
-  findSavedSeedByMapSeed,
+  findSavedSeedByWorld,
   getActiveSavedSeed,
   loadSeedLibrary,
   persistSeedLibrary,
+  worldFromSavedSeed,
 } from "@/lib/savedSeeds";
+import { isDefaultWorld, worldGensEqual } from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
 
 function pickPlanSource(): PlanHashSource {
@@ -19,6 +26,8 @@ function pickPlanSource(): PlanHashSource {
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
     seed: s.seed,
+    seedMode: s.seedMode,
+    seedPurity: s.seedPurity,
     externalItems: s.externalItems,
     recipeOverrides: s.recipeOverrides,
   };
@@ -59,17 +68,17 @@ export function usePlanHash(writeDebounceMs = 200) {
       // - seed not in library → detach so we don't rewrite shelves
       const lib = loadSeedLibrary();
       const active = getActiveSavedSeed(lib);
-      const hashSeed = snap.seed ?? null;
-      if (active && mapSeedsEqual(active.seed, hashSeed)) {
+      const hashWorld = worldFromSnapshot(snap);
+      if (active && worldGensEqual(worldFromSavedSeed(active), hashWorld)) {
         useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
       } else {
-        const owned = findSavedSeedByMapSeed(lib, hashSeed);
+        const owned = findSavedSeedByWorld(lib, hashWorld);
         if (owned) {
           if (lib.activeId !== owned.id) {
             persistSeedLibrary({ ...lib, activeId: owned.id });
           }
           useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
-        } else if (hashSeed === null) {
+        } else if (isDefaultWorld(hashWorld)) {
           persistSeedLibrary(ensureDefaultSavedSeed(lib));
           useAppStore.getState().applyPlanSnapshot(snap, { applySeed: true });
         } else {

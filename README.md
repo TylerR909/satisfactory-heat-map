@@ -37,7 +37,7 @@ Image: [`ghcr.io/tylerr909/satisfactory-heat-map`](https://github.com/TylerR909/
 
 ## Map seeds (1.2+)
 
-Paste your world **Map Seed** via the **Seed** control (chips row). Node types/purities use [Konsl’s MIT randomization](https://github.com/Konsl/satisfactory-world-generator) compiled to **WASM** (`crates/vendored/konsl_randomization` — see `third_party/konsl-satisfactory-world-generator.md`). Default world = vanilla slot layout; numeric seeds assume in-game **Random** + **unchanged** purity. Saved plans are scoped per named saved seed.
+Paste your world **Map Seed** plus **Resource Node Randomization** and **Resource Node Purity** via the **Seed** control (chips row). Node types/purities use [Konsl’s MIT randomization](https://github.com/Konsl/satisfactory-world-generator) compiled to **WASM** (`crates/vendored/konsl_randomization` — see `third_party/konsl-satisfactory-world-generator.md`). The seed is only the PRNG key; Default randomization + a fixed purity ignores it. Saved plans are scoped per named saved world (the full triple).
 
 ## Credits / third-party
 

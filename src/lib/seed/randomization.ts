@@ -1,9 +1,9 @@
 /**
- * World seed apply — thin wrapper over WASM `apply_map_seed`.
+ * World seed apply — thin wrapper over WASM `apply_map_seed_config`.
  * Algorithm lives in crates/vendored/konsl_randomization (Konsl MIT).
  */
 
-import { configForSeed, type WorldSeedConfig } from "@/lib/seed/types";
+import { configForSeed, configForWorld, type WorldSeedConfig } from "@/lib/seed/types";
 import { requireWasmEngine } from "@/lib/wasm/loadEngine";
 import type { ResourceNode } from "@/types";
 
@@ -14,12 +14,18 @@ import type { ResourceNode } from "@/types";
  */
 export function applyWorldSeed(baseSlots: ResourceNode[], config: WorldSeedConfig): ResourceNode[] {
   const wasm = requireWasmEngine();
-  // Product policy: none+no_change is default identity; strict+no_change for numeric seeds.
-  const isDefault = config.mode === "none" && config.purity === "no_change";
-  return wasm.apply_map_seed(baseSlots, config.seed | 0, isDefault);
+  return wasm.apply_map_seed_config(baseSlots, config.seed | 0, config.mode, config.purity);
 }
 
-/** Convenience: MapSeed → nodes. */
+/** Convenience: MapSeed → nodes under the legacy seed-only policy. */
 export function applyMapSeed(baseSlots: ResourceNode[], seed: number | null): ResourceNode[] {
   return applyWorldSeed(baseSlots, configForSeed(seed));
+}
+
+/** Convenience: full 1.2 triple → nodes. */
+export function applyWorldGen(
+  baseSlots: ResourceNode[],
+  world: { seed: number | null; mode: WorldSeedConfig["mode"]; purity: WorldSeedConfig["purity"] },
+): ResourceNode[] {
+  return applyWorldSeed(baseSlots, configForWorld(world));
 }

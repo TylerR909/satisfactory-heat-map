@@ -45,7 +45,7 @@
 | `crates/engine` | Hierarchical scorer + WASM exports |
 | `crates/vendored/konsl_randomization` | Konsl MIT seed algorithm |
 | `lib/savedSeeds.ts` | Named saved-seed library (map seed + plan shelf) |
-| `store/useAppStore.ts` | Mode, demand, products, knobs, `seed` / `baseSlots` / `nodes`, heatmap, persist |
+| `store/useAppStore.ts` | Mode, demand, products, knobs, world gen (`seed` / `seedMode` / `seedPurity`) / `baseSlots` / `nodes`, heatmap, persist |
 | `components/map/*` | Leaflet layers, panes, fit-world |
 | `components/planner/*` | Side panel, Intermediates/alts (`RecipeAltPicker`, `AltQuickSelects`), Seed popover, saved plans |
 

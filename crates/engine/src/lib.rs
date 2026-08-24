@@ -9,7 +9,10 @@ pub mod heatmap;
 
 use heatmap::compute_hierarchical_heatmap;
 use heatmap::types::{HeatmapResult, ScoreGridInput};
-use konsl_randomization::{apply_world_seed, ResourceNodeDto};
+use konsl_randomization::{
+    apply_world_seed, apply_world_seed_config, NodePuritySettings, NodeRandomizationMode,
+    ResourceNodeDto,
+};
 
 /// Crate / glue version for diagnostics.
 #[wasm_bindgen]
@@ -29,11 +32,32 @@ pub fn score_grid(input: ScoreGridInput) -> HeatmapResult {
     compute_hierarchical_heatmap(&input)
 }
 
-/// Apply map seed to fixed base slots.
+/// Apply map seed to fixed base slots (legacy product policy).
 ///
 /// - `is_default` true → identity clone (vanilla layout)
 /// - else → strict shuffle + purity no_change at `seed` (i32)
+///
+/// Prefer [`apply_map_seed_config`] when mode + purity are known.
 #[wasm_bindgen]
 pub fn apply_map_seed(nodes: Vec<ResourceNodeDto>, seed: i32, is_default: bool) -> Vec<ResourceNodeDto> {
     apply_world_seed(&nodes, seed, is_default)
+}
+
+/// Apply the full 1.2 world-gen triple: seed + randomization mode + purity.
+///
+/// `mode` / `purity` are Konsl snake_case wire names (`none`, `strict`,
+/// `basic_rich`, `no_change`, `all_pure`, `all_random`, …).
+#[wasm_bindgen]
+pub fn apply_map_seed_config(
+    nodes: Vec<ResourceNodeDto>,
+    seed: i32,
+    mode: &str,
+    purity: &str,
+) -> Vec<ResourceNodeDto> {
+    apply_world_seed_config(
+        &nodes,
+        seed,
+        NodeRandomizationMode::from_wire(mode),
+        NodePuritySettings::from_wire(purity),
+    )
 }

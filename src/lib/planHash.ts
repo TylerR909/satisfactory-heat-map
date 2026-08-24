@@ -24,7 +24,17 @@ import recipePrimariesJson from "@/data/recipePrimaries.json";
 import { clampClockPercent } from "@/lib/mining";
 import { canonicalizeProductId } from "@/lib/productIdAliases";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
-import type { MapSeed } from "@/lib/seed";
+import {
+  type MapSeed,
+  mapSeedsEqual,
+  NODE_PURITY_SETTINGS,
+  NODE_RANDOMIZATION_MODES,
+  type NodePuritySettings,
+  type NodeRandomizationMode,
+  normalizeWorldGen,
+  type WorldGenSettings,
+  worldIsLegacyImplied,
+} from "@/lib/seed/types";
 import type {
   InputMode,
   MinerMk,
@@ -45,6 +55,12 @@ const FLAG_FLAT_HAUL = 1 << 2;
 const FLAG_HAS_SEED = 1 << 5;
 /** flags bit 6: external item list after optional seed */
 const FLAG_HAS_EXTERNAL = 1 << 6;
+/**
+ * packed knobs bit 13: randomization mode + purity follow the seed tail.
+ * Omitted when mode+purity match the v1 seed-only implication
+ * (null → Default+Default; numeric → Random+unchanged).
+ */
+const FLAG_HAS_WORLD_CONFIG = 1 << 13;
 /**
  * flags bit 7: trailing extractor extension present
  * Layout: waterClock u8, wellClock u8, wellFlags u8 (bit0 = wells enabled), oilClock u8.
@@ -89,8 +105,12 @@ export type PlanSnapshot = {
     ScoringOptions,
     "centerPower" | "topN" | "siteSepFraction" | "includeElevation"
   >;
-  /** null = Default / vanilla layout; number (incl. 0) = randomized map seed. */
+  /** null = no seed entered; number (incl. 0) = signed i32 world seed. */
   seed: MapSeed;
+  /** In-game Resource Node Randomization. */
+  seedMode: NodeRandomizationMode;
+  /** In-game Resource Node Purity. */
+  seedPurity: NodePuritySettings;
   /**
    * Mode B: crafted item ids treated as off-site (not expanded into map raws).
    * Empty when absent.
@@ -111,6 +131,10 @@ export type PlanHashSource = {
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
   seed: MapSeed;
+  /** In-game Resource Node Randomization. Omitted → implied from seed (v1 policy). */
+  seedMode?: NodeRandomizationMode;
+  /** In-game Resource Node Purity. Omitted → implied from seed (v1 policy). */
+  seedPurity?: NodePuritySettings;
   /** Mode B off-site intermediates (optional; omitted from hash when empty). */
   externalItems?: string[];
   /** Mode B alternate recipe picks (optional; omitted when empty). */
@@ -203,9 +227,22 @@ export function normalizeRecipeOverrides(
   return out;
 }
 
+export function worldFromSnapshot(
+  snap: Pick<PlanSnapshot, "seed" | "seedMode" | "seedPurity">,
+): WorldGenSettings {
+  return normalizeWorldGen({
+    seed: snap.seed,
+    mode: snap.seedMode,
+    purity: snap.seedPurity,
+  });
+}
+
 export function toSnapshot(source: PlanHashSource): PlanSnapshot {
-  const seed: MapSeed =
-    source.seed === null || source.seed === undefined ? null : Number(source.seed) | 0;
+  const world = normalizeWorldGen({
+    seed: source.seed === null || source.seed === undefined ? null : Number(source.seed) | 0,
+    mode: source.seedMode,
+    purity: source.seedPurity,
+  });
   return {
     mode: source.mode === "product" ? "product" : "raw",
     rawDemand: source.rawDemand
@@ -240,7 +277,9 @@ export function toSnapshot(source: PlanHashSource): PlanSnapshot {
       ),
       includeElevation: source.scoringOptions.includeElevation !== false,
     },
-    seed,
+    seed: world.seed,
+    seedMode: world.mode,
+    seedPurity: world.purity,
     externalItems: normalizeExternalItems(source.externalItems),
     recipeOverrides: normalizeRecipeOverrides(source.recipeOverrides),
   };
@@ -339,15 +378,22 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
   if (hasExternal) flags |= FLAG_HAS_EXTERNAL;
   const hasExtractorExt = !extractorIsDefault(snap.miner);
   if (hasExtractorExt) flags |= FLAG_HAS_EXTRACTOR_EXT;
+  const world: WorldGenSettings = {
+    seed: snap.seed ?? null,
+    mode: snap.seedMode,
+    purity: snap.seedPurity,
+  };
+  const hasWorldConfig = !worldIsLegacyImplied(world);
   out.push(flags);
 
   out.push(clampClockPercent(snap.miner.clockPercent, DEFAULT_MINER_SETTINGS.clockPercent));
 
-  // Computation knobs (2 bytes): centerPower 5 | topN 3 | siteSep 5
+  // Computation knobs (2 bytes): centerPower 5 | topN 3 | siteSep 5 | worldConfig 1
   const cp = quantize(snap.scoringOptions.centerPower, 1, 0.05, 30);
   const tn = Math.min(7, Math.max(0, snap.scoringOptions.topN - 3));
   const ss = quantize(snap.scoringOptions.siteSepFraction, 0.04, 0.02, 18);
-  const packed = (cp & 31) | ((tn & 7) << 5) | ((ss & 31) << 8);
+  let packed = (cp & 31) | ((tn & 7) << 5) | ((ss & 31) << 8);
+  if (hasWorldConfig) packed |= FLAG_HAS_WORLD_CONFIG;
   out.push(packed & 0xff);
   out.push((packed >>> 8) & 0xff);
 
@@ -371,6 +417,11 @@ export function encodePlanBytes(snap: PlanSnapshot): Uint8Array {
     out.push((s >>> 8) & 0xff);
     out.push((s >>> 16) & 0xff);
     out.push((s >>> 24) & 0xff);
+  }
+
+  if (hasWorldConfig) {
+    out.push(NODE_RANDOMIZATION_MODES.indexOf(snap.seedMode) & 0xff);
+    out.push(NODE_PURITY_SETTINGS.indexOf(snap.seedPurity) & 0xff);
   }
 
   if (hasExternal) {
@@ -418,6 +469,7 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
   const centerPower = dequantize(packed & 31, 1, 0.05);
   const topN = 3 + ((packed >>> 5) & 7);
   const siteSepFraction = dequantize((packed >>> 8) & 31, 0.04, 0.02);
+  const hasWorldConfig = (packed & FLAG_HAS_WORLD_CONFIG) !== 0;
 
   const counts = bytes[i++] ?? 0;
   const nRaw = counts & 15;
@@ -456,6 +508,19 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
     const b2s = bytes[i++] ?? 0;
     const b3s = bytes[i++] ?? 0;
     seed = b0s | (b1s << 8) | (b2s << 16) | (b3s << 24) | 0;
+  }
+
+  let seedMode: NodeRandomizationMode | undefined;
+  let seedPurity: NodePuritySettings | undefined;
+  if (hasWorldConfig) {
+    if (i + 2 > bytes.length) return null;
+    const modeIdx = bytes[i++] ?? 0;
+    const purityIdx = bytes[i++] ?? 0;
+    const mode = NODE_RANDOMIZATION_MODES[modeIdx];
+    const purity = NODE_PURITY_SETTINGS[purityIdx];
+    if (!mode || !purity) return null;
+    seedMode = mode;
+    seedPurity = purity;
   }
 
   const hasExternal = (flags & FLAG_HAS_EXTERNAL) !== 0;
@@ -527,17 +592,14 @@ export function decodePlanBytes(bytes: Uint8Array): PlanSnapshot | null {
       includeElevation,
     },
     seed,
+    seedMode,
+    seedPurity,
     externalItems,
     recipeOverrides,
   });
 }
 
-/** True when two map seeds refer to the same world (both Default or same number). */
-export function mapSeedsEqual(a: MapSeed, b: MapSeed): boolean {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  return (a | 0) === (b | 0);
-}
+export { mapSeedsEqual };
 
 export function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -596,6 +658,8 @@ export function encodeRawPlanHash(
   demand: RawLinkLine[],
   opts?: {
     seed?: MapSeed;
+    seedMode?: NodeRandomizationMode;
+    seedPurity?: NodePuritySettings;
     miner?: Partial<MinerSettings>;
     scoringMode?: ScoringMode;
     scoringOptions?: Partial<ScoringOptions>;
@@ -613,6 +677,8 @@ export function encodeRawPlanHash(
     scoringMode: opts?.scoringMode === "weighted" ? "weighted" : "centered",
     scoringOptions: { ...DEFAULT_SCORING_OPTIONS, ...opts?.scoringOptions },
     seed: opts?.seed ?? null,
+    seedMode: opts?.seedMode,
+    seedPurity: opts?.seedPurity,
   });
 }
 
@@ -646,6 +712,8 @@ export function encodeProductPlanHash(
     alternateRecipes?: string[];
     externalItems?: string[];
     seed?: MapSeed;
+    seedMode?: NodeRandomizationMode;
+    seedPurity?: NodePuritySettings;
     miner?: Partial<MinerSettings>;
     scoringMode?: ScoringMode;
     scoringOptions?: Partial<ScoringOptions>;
@@ -667,6 +735,8 @@ export function encodeProductPlanHash(
     scoringMode: opts?.scoringMode === "weighted" ? "weighted" : "centered",
     scoringOptions: { ...DEFAULT_SCORING_OPTIONS, ...opts?.scoringOptions },
     seed: opts?.seed ?? null,
+    seedMode: opts?.seedMode,
+    seedPurity: opts?.seedPurity,
     externalItems: opts?.externalItems,
     recipeOverrides,
   });

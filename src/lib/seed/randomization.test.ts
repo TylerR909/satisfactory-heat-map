@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { clearNodeSeedCache, getNodesForSeed } from "@/lib/seed/nodeCache";
+import { clearNodeSeedCache, getNodesForSeed, getNodesForWorld } from "@/lib/seed/nodeCache";
 import { applyWorldSeed } from "@/lib/seed/randomization";
-import { configForSeed } from "@/lib/seed/types";
+import { configForSeed, configForWorld } from "@/lib/seed/types";
 import type { ResourceNode } from "@/types";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -122,5 +122,68 @@ describe("applyWorldSeed (WASM / Konsl)", () => {
     const a = getNodesForSeed(base, 42);
     const b = getNodesForSeed(base, 42);
     expect(a).toBe(b);
+  });
+
+  it("none + all_pure keeps types, forces pure, ignores seed", () => {
+    const base = loadBaseNodes();
+    const a = applyWorldSeed(base, configForWorld({ seed: 1, mode: "none", purity: "all_pure" }));
+    const b = applyWorldSeed(base, configForWorld({ seed: 99, mode: "none", purity: "all_pure" }));
+    const nodes = base.filter((n) => n.nodeType === "node");
+    expect(nodes.length).toBeGreaterThan(100);
+    for (const n of nodes) {
+      const ao = a.find((x) => x.id === n.id);
+      const bo = b.find((x) => x.id === n.id);
+      expect(ao?.resource).toBe(n.resource);
+      expect(ao?.purity).toBe("pure");
+      expect(bo?.resource).toBe(n.resource);
+      expect(bo?.purity).toBe("pure");
+    }
+  });
+
+  it("none + all_random keeps types and is seed-dependent", () => {
+    const base = loadBaseNodes();
+    const a = applyWorldSeed(base, configForWorld({ seed: 1, mode: "none", purity: "all_random" }));
+    const b = applyWorldSeed(base, configForWorld({ seed: 2, mode: "none", purity: "all_random" }));
+    let typeSame = 0;
+    let purityDiff = 0;
+    for (const n of base.filter((x) => x.nodeType === "node")) {
+      const ao = a.find((x) => x.id === n.id);
+      const bo = b.find((x) => x.id === n.id);
+      if (!ao || !bo) continue;
+      if (ao.resource === n.resource) typeSame += 1;
+      if (ao.purity !== bo.purity) purityDiff += 1;
+    }
+    expect(typeSame).toBeGreaterThan(400);
+    expect(purityDiff).toBeGreaterThan(10);
+  });
+
+  it("strict + all_pure shuffles types and forces pure", () => {
+    const base = loadBaseNodes();
+    const out = applyWorldSeed(
+      base,
+      configForWorld({ seed: 42, mode: "strict", purity: "all_pure" }),
+    );
+    let typeDiff = 0;
+    let allPure = 0;
+    const nodes = base.filter((n) => n.nodeType === "node");
+    for (const n of nodes) {
+      const o = out.find((x) => x.id === n.id);
+      if (!o) continue;
+      if (o.resource !== n.resource) typeDiff += 1;
+      if (o.purity === "pure") allPure += 1;
+    }
+    expect(typeDiff).toBeGreaterThan(0);
+    expect(allPure).toBe(nodes.length);
+  });
+
+  it("getNodesForWorld does not share cache across purity", () => {
+    clearNodeSeedCache();
+    const base = loadBaseNodes();
+    const a = getNodesForWorld(base, { seed: 42, mode: "strict", purity: "no_change" });
+    const b = getNodesForWorld(base, { seed: 42, mode: "strict", purity: "all_pure" });
+    expect(a).not.toBe(b);
+    const aPure = a.filter((n) => n.nodeType === "node" && n.purity === "pure").length;
+    const bPure = b.filter((n) => n.nodeType === "node" && n.purity === "pure").length;
+    expect(bPure).toBeGreaterThan(aPure);
   });
 });

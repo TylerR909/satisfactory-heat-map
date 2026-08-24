@@ -770,6 +770,8 @@ export function PlannerPanel() {
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const seed = useAppStore((s) => s.seed);
+  const seedMode = useAppStore((s) => s.seedMode);
+  const seedPurity = useAppStore((s) => s.seedPurity);
 
   async function copyPlanHash() {
     const hash = encodePlanHash({
@@ -780,6 +782,8 @@ export function PlannerPanel() {
       scoringMode,
       scoringOptions,
       seed,
+      seedMode,
+      seedPurity,
       externalItems,
       recipeOverrides,
     });
