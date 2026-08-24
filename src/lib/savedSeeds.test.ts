@@ -3,10 +3,13 @@ import {
   emptySeedLibrary,
   ensureDefaultSavedSeed,
   findSavedSeedByMapSeed,
+  findSavedSeedByWorld,
   isMapSeedSaved,
+  isWorldSaved,
   persistSeedLibrary,
   subscribeSeedLibrary,
 } from "@/lib/savedSeeds";
+import { VANILLA_WORLD } from "@/lib/seed/types";
 
 describe("ensureDefaultSavedSeed", () => {
   it("creates a Default shelf when the library is empty", () => {
@@ -39,6 +42,8 @@ describe("findSavedSeedByMapSeed / isMapSeedSaved", () => {
       id: "seed-x",
       name: "Seed 42",
       seed: 42,
+      seedMode: "strict" as const,
+      seedPurity: "no_change" as const,
       plans: [],
       activePlanId: null,
       autoNamed: true,
@@ -47,6 +52,12 @@ describe("findSavedSeedByMapSeed / isMapSeedSaved", () => {
     lib = { seeds: [...lib.seeds, numeric], activeId: numeric.id };
     expect(findSavedSeedByMapSeed(lib, 42)?.id).toBe("seed-x");
     expect(isMapSeedSaved(lib, 42)).toBe(true);
+  });
+
+  it("does not treat Default + All Pure as the vanilla Default shelf", () => {
+    const lib = ensureDefaultSavedSeed(emptySeedLibrary());
+    expect(isWorldSaved(lib, VANILLA_WORLD)).toBe(true);
+    expect(findSavedSeedByWorld(lib, { seed: null, mode: "none", purity: "all_pure" })).toBeNull();
   });
 });
 

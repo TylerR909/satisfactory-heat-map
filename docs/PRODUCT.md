@@ -100,7 +100,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 - Capacity tags: Limited / Abundant inferred; huge plans are not all Abundant.
 - Changing miner Mk / clock visibly changes which regions work.
 - Map: pan, zoom, basemap tiles, heat overlay, demand-filtered nodes, top pins + assignment lines.
-- Map seed paste / random / saved seeds → reassigned nodes → heat.
+- Map seed + randomization mode + purity (the 1.2 world-gen triple) → reassigned nodes → heat.
 - `npm start`, `lint`, `test`, `build`, `clean`; Docker → nginx static; PWA-ready.
 - Docs explain data provenance and regeneration.
 

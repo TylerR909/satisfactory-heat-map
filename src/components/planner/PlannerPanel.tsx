@@ -770,6 +770,8 @@ export function PlannerPanel() {
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const seed = useAppStore((s) => s.seed);
+  const seedMode = useAppStore((s) => s.seedMode);
+  const seedPurity = useAppStore((s) => s.seedPurity);
 
   async function copyPlanHash() {
     const hash = encodePlanHash({
@@ -780,6 +782,8 @@ export function PlannerPanel() {
       scoringMode,
       scoringOptions,
       seed,
+      seedMode,
+      seedPurity,
       externalItems,
       recipeOverrides,
     });
@@ -871,6 +875,7 @@ export function PlannerPanel() {
               <div key={line.id} className="flex gap-2">
                 <select
                   className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                  size={1}
                   value={line.resource}
                   onChange={(e) => updateRawLine(line.id, { resource: e.target.value })}
                 >

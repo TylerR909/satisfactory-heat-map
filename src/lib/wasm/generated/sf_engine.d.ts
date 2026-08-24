@@ -163,12 +163,22 @@ export interface WorldBounds {
 
 
 /**
- * Apply map seed to fixed base slots.
+ * Apply map seed to fixed base slots (legacy product policy).
  *
  * - `is_default` true → identity clone (vanilla layout)
  * - else → strict shuffle + purity no_change at `seed` (i32)
+ *
+ * Prefer [`apply_map_seed_config`] when mode + purity are known.
  */
 export function apply_map_seed(nodes: ResourceNodeDto[], seed: number, is_default: boolean): ResourceNodeDto[];
+
+/**
+ * Apply the full 1.2 world-gen triple: seed + randomization mode + purity.
+ *
+ * `mode` / `purity` are Konsl snake_case wire names (`none`, `strict`,
+ * `basic_rich`, `no_change`, `all_pure`, `all_random`, …).
+ */
+export function apply_map_seed_config(nodes: ResourceNodeDto[], seed: number, mode: string, purity: string): ResourceNodeDto[];
 
 /**
  * Crate / glue version for diagnostics.

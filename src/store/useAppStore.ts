@@ -13,7 +13,17 @@ import {
   solveProductsToRaw,
 } from "@/lib/production/solve";
 import { RAW_RESOURCE_OPTIONS } from "@/lib/resources";
-import { clearNodeSeedCache, getNodesForSeed, type MapSeed } from "@/lib/seed";
+import {
+  clearNodeSeedCache,
+  getNodesForWorld,
+  impliedWorldFromSeed,
+  type MapSeed,
+  type NodePuritySettings,
+  type NodeRandomizationMode,
+  normalizeWorldGen,
+  type WorldGenSettings,
+  worldGensEqual,
+} from "@/lib/seed";
 import type {
   HeatmapResult,
   InputMode,
@@ -119,9 +129,13 @@ export type AppState = {
   error: string | null;
   /** Vanilla slot template (positions + default types/purities). */
   baseSlots: ResourceNode[];
-  /** null = Default/vanilla; number (incl. 0) = randomized map seed. */
+  /** null = no seed entered; number (incl. 0) = signed i32 world seed. */
   seed: MapSeed;
-  /** Effective nodes for map + heatmap (cached from baseSlots + seed). */
+  /** In-game Resource Node Randomization. */
+  seedMode: NodeRandomizationMode;
+  /** In-game Resource Node Purity. */
+  seedPurity: NodePuritySettings;
+  /** Effective nodes for map + heatmap (cached from baseSlots + world gen). */
   nodes: ResourceNode[];
   /** Basemap open-water bodies (map:generate); null until load. */
   openWater: OpenWaterData | null;
@@ -184,11 +198,13 @@ export type AppState = {
   /**
    * Replace shareable plan fields from a decoded URL hash / saved plan.
    * Does not touch baseSlots / recipes / meta.
-   * @param options.applySeed when false, keep current seed (chip select within a saved seed).
+   * @param options.applySeed when false, keep current world gen (chip select within a saved seed).
    */
   applyPlanSnapshot: (snap: PlanSnapshot, options?: { applySeed?: boolean }) => void;
-  /** Set map seed and recompute effective nodes from cache. */
+  /** Set map seed (keeps randomization / purity) and recompute effective nodes. */
   setSeed: (seed: MapSeed) => void;
+  /** Patch the 1.2 world-gen triple and recompute effective nodes. */
+  setWorldGen: (patch: Partial<WorldGenSettings>) => void;
   loadGameData: () => Promise<void>;
   recomputeActiveDemand: () => void;
   selectSite: (site: SiteScore | null, index: number | null) => void;
@@ -282,6 +298,8 @@ export const useAppStore = create<AppState>()(
       error: null,
       baseSlots: [],
       seed: null,
+      seedMode: "none",
+      seedPurity: "no_change",
       nodes: [],
       openWater: null,
       items: {},
@@ -557,10 +575,20 @@ export const useAppStore = create<AppState>()(
               : [{ id: newLineId(), productId: "Desc_IronPlate_C", itemsPerMinute: 0 }]
             : prev.productTargets;
 
-        const nextSeed = applySeed ? (snap.seed ?? null) : prev.seed;
+        const nextWorld = applySeed
+          ? normalizeWorldGen({
+              seed: snap.seed ?? null,
+              mode: snap.seedMode,
+              purity: snap.seedPurity,
+            })
+          : {
+              seed: prev.seed,
+              mode: prev.seedMode,
+              purity: prev.seedPurity,
+            };
         const nodes =
           applySeed && prev.baseSlots.length > 0
-            ? getNodesForSeed(prev.baseSlots, nextSeed)
+            ? getNodesForWorld(prev.baseSlots, nextWorld)
             : prev.nodes;
 
         const externalItems = (snap.externalItems ?? []).map((id) => canonicalizeProductId(id));
@@ -589,7 +617,9 @@ export const useAppStore = create<AppState>()(
             siteSepFraction: snap.scoringOptions.siteSepFraction,
             includeElevation: snap.scoringOptions.includeElevation,
           },
-          seed: nextSeed,
+          seed: nextWorld.seed,
+          seedMode: nextWorld.mode,
+          seedPurity: nextWorld.purity,
           nodes,
           selectedSiteIndex: null,
           heatmap: null,
@@ -598,13 +628,23 @@ export const useAppStore = create<AppState>()(
         get().recomputeActiveDemand();
       },
       setSeed: (seed) => {
+        get().setWorldGen({ seed });
+      },
+      setWorldGen: (patch) => {
         const prev = get();
-        const next = seed === null ? null : seed | 0;
-        if (prev.seed === next && prev.nodes.length > 0) return;
+        const next = normalizeWorldGen({
+          seed: patch.seed !== undefined ? patch.seed : prev.seed,
+          mode: patch.mode ?? prev.seedMode,
+          purity: patch.purity ?? prev.seedPurity,
+        });
+        const prevWorld = { seed: prev.seed, mode: prev.seedMode, purity: prev.seedPurity };
+        if (worldGensEqual(prevWorld, next) && prev.nodes.length > 0) return;
         const nodes =
-          prev.baseSlots.length > 0 ? getNodesForSeed(prev.baseSlots, next) : prev.nodes;
+          prev.baseSlots.length > 0 ? getNodesForWorld(prev.baseSlots, next) : prev.nodes;
         set({
-          seed: next,
+          seed: next.seed,
+          seedMode: next.mode,
+          seedPurity: next.purity,
           nodes,
           selectedSiteIndex: null,
           heatmap: null,
@@ -637,8 +677,12 @@ export const useAppStore = create<AppState>()(
             openWater = (await waterRes.json()) as OpenWaterData;
           }
           clearNodeSeedCache();
-          const seed = get().seed;
-          const nodes = getNodesForSeed(baseSlots, seed);
+          const cur = get();
+          const nodes = getNodesForWorld(baseSlots, {
+            seed: cur.seed,
+            mode: cur.seedMode,
+            purity: cur.seedPurity,
+          });
           set({
             baseSlots,
             nodes,
@@ -678,6 +722,8 @@ export const useAppStore = create<AppState>()(
         heatOpacity: s.heatOpacity,
         showNodes: s.showNodes,
         seed: s.seed,
+        seedMode: s.seedMode,
+        seedPurity: s.seedPurity,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppState> & {
@@ -765,13 +811,17 @@ export const useAppStore = create<AppState>()(
               ? minerIn.resourceWellsEnabled
               : DEFAULT_MINER_SETTINGS.resourceWellsEnabled,
         };
-        const rawSeed = (p as { seed?: MapSeed }).seed;
-        const seed: MapSeed =
-          rawSeed === null || rawSeed === undefined
-            ? null
-            : typeof rawSeed === "number" && Number.isFinite(rawSeed)
-              ? rawSeed | 0
-              : null;
+        const persistedWorld = normalizeWorldGen({
+          seed: (p as { seed?: MapSeed }).seed,
+          mode: (p as { seedMode?: unknown }).seedMode,
+          purity: (p as { seedPurity?: unknown }).seedPurity,
+        });
+        // Pre-mode persist: numeric seed implied Random + unchanged.
+        const world =
+          (p as { seedMode?: unknown }).seedMode === undefined &&
+          (p as { seedPurity?: unknown }).seedPurity === undefined
+            ? impliedWorldFromSeed(persistedWorld.seed)
+            : persistedWorld;
         const expansionSortOrder: ExpansionSortOrder =
           p.expansionSortOrder === "shallow-first" ? "shallow-first" : "deep-first";
         return {
@@ -785,7 +835,9 @@ export const useAppStore = create<AppState>()(
           scoringMode,
           scoringOptions,
           heatRender,
-          seed,
+          seed: world.seed,
+          seedMode: world.mode,
+          seedPurity: world.purity,
           expansionSortOrder,
         };
       },

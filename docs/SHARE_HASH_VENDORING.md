@@ -46,7 +46,7 @@ const hash = encodeRawPlanHash([
 const url = `https://satisfactory-heatmap.com/#${hash}`;
 ```
 
-Optional: `seed`, miner clocks, scoring knobs (see builder opts on `encodeRawPlanHash`). **Defaults are fine** for most “open heatmap” buttons.
+Optional: `seed`, `seedMode`, `seedPurity`, miner clocks, scoring knobs (see builder opts on `encodeRawPlanHash`). A numeric `seed` with no mode/purity still means in-game **Random** + **unchanged** purity (v1). Pass `seedMode` / `seedPurity` for Default+All Pure, Rich modes, etc. **Defaults are fine** for most “open heatmap” buttons.
 
 ### Hand-rolled (any language)
 

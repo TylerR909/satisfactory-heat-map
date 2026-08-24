@@ -53,6 +53,28 @@ pub enum NodeRandomizationMode {
     FossilFuelRich,
 }
 
+impl NodeRandomizationMode {
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            "strict" => Self::Strict,
+            "basic_rich" => Self::BasicRich,
+            "advanced_rich" => Self::AdvancedRich,
+            "fossil_fuel_rich" => Self::FossilFuelRich,
+            _ => Self::None,
+        }
+    }
+
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Strict => "strict",
+            Self::BasicRich => "basic_rich",
+            Self::AdvancedRich => "advanced_rich",
+            Self::FossilFuelRich => "fossil_fuel_rich",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodePuritySettings {
     NoChange,
@@ -62,6 +84,32 @@ pub enum NodePuritySettings {
     Increase,
     AllPure,
     AllRandom,
+}
+
+impl NodePuritySettings {
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            "all_impure" => Self::AllImpure,
+            "decrease" => Self::Decrease,
+            "all_normal" => Self::AllNormal,
+            "increase" => Self::Increase,
+            "all_pure" => Self::AllPure,
+            "all_random" => Self::AllRandom,
+            _ => Self::NoChange,
+        }
+    }
+
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::NoChange => "no_change",
+            Self::AllImpure => "all_impure",
+            Self::Decrease => "decrease",
+            Self::AllNormal => "all_normal",
+            Self::Increase => "increase",
+            Self::AllPure => "all_pure",
+            Self::AllRandom => "all_random",
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -415,7 +463,8 @@ fn algo_world_to_nodes(base: &[ResourceNodeDto], world: &AlgoWorld) -> Vec<Resou
     out
 }
 
-/// Product policy: default layout, or strict + no_change for any numeric seed.
+/// Legacy helper: identity clone, or strict + no_change at `seed`.
+/// Prefer [`apply_world_seed_config`] when the caller has mode + purity.
 pub fn apply_world_seed(
     base_slots: &[ResourceNodeDto],
     seed: i32,
@@ -468,5 +517,91 @@ mod tests {
         let out = apply_world_seed(&nodes, 0, true);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].resource, "Desc_OreIron_C");
+    }
+
+    fn node(id: &str, resource: &str, purity: &str) -> ResourceNodeDto {
+        ResourceNodeDto {
+            id: id.into(),
+            resource: resource.into(),
+            purity: purity.into(),
+            node_type: "node".into(),
+            display_name: None,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            class_path: None,
+            rotation: None,
+            flags: None,
+        }
+    }
+
+    #[test]
+    fn none_all_pure_keeps_types_forces_purity() {
+        let nodes = vec![
+            node("a", "Desc_OreIron_C", "impure"),
+            node("b", "Desc_OreCopper_C", "normal"),
+        ];
+        let a = apply_world_seed_config(
+            &nodes,
+            1,
+            NodeRandomizationMode::None,
+            NodePuritySettings::AllPure,
+        );
+        let b = apply_world_seed_config(
+            &nodes,
+            999,
+            NodeRandomizationMode::None,
+            NodePuritySettings::AllPure,
+        );
+        assert_eq!(a[0].resource, "Desc_OreIron_C");
+        assert_eq!(a[1].resource, "Desc_OreCopper_C");
+        assert_eq!(a[0].purity, "pure");
+        assert_eq!(a[1].purity, "pure");
+        assert_eq!(a[0].purity, b[0].purity);
+        assert_eq!(a[1].resource, b[1].resource);
+    }
+
+    #[test]
+    fn none_all_random_is_seed_dependent() {
+        let nodes = vec![
+            node("n0", "Desc_OreIron_C", "normal"),
+            node("n1", "Desc_OreCopper_C", "normal"),
+            node("n2", "Desc_Stone_C", "normal"),
+            node("n3", "Desc_Coal_C", "normal"),
+            node("n4", "Desc_Sulfur_C", "normal"),
+            node("n5", "Desc_OreGold_C", "normal"),
+        ];
+        let a = apply_world_seed_config(
+            &nodes,
+            1,
+            NodeRandomizationMode::None,
+            NodePuritySettings::AllRandom,
+        );
+        let b = apply_world_seed_config(
+            &nodes,
+            2,
+            NodeRandomizationMode::None,
+            NodePuritySettings::AllRandom,
+        );
+        for n in &a {
+            assert_eq!(
+                n.resource,
+                nodes.iter().find(|b| b.id == n.id).unwrap().resource
+            );
+        }
+        let ap: Vec<_> = a.iter().map(|n| n.purity.as_str()).collect();
+        let bp: Vec<_> = b.iter().map(|n| n.purity.as_str()).collect();
+        assert_ne!(ap, bp);
+    }
+
+    #[test]
+    fn wire_round_trip_enums() {
+        assert_eq!(
+            NodeRandomizationMode::from_wire("basic_rich").as_wire(),
+            "basic_rich"
+        );
+        assert_eq!(NodePuritySettings::from_wire("all_pure").as_wire(), "all_pure");
+        assert_eq!(NodeRandomizationMode::from_wire("nope"), NodeRandomizationMode::None);
+        assert_eq!(NodePuritySettings::from_wire(""), NodePuritySettings::NoChange);
     }
 }

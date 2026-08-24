@@ -428,6 +428,43 @@ describe("catalogs + stability", () => {
     expect(h.length).toBe(14);
   });
 
+  it("omits world-config bytes for the v1 seed-only implication", () => {
+    const implied = encodePlanHash(sample({ seed: 42 }));
+    const explicit = encodePlanHash(
+      sample({ seed: 42, seedMode: "strict", seedPurity: "no_change" }),
+    );
+    expect(implied).toBe(explicit);
+    const decoded = decodePlanHash(implied);
+    expect(decoded?.seed).toBe(42);
+    expect(decoded?.seedMode).toBe("strict");
+    expect(decoded?.seedPurity).toBe("no_change");
+  });
+
+  it("round-trips non-implied mode + purity (Default + All Pure)", () => {
+    const src = sample({ seed: null, seedMode: "none", seedPurity: "all_pure" });
+    const h = encodePlanHash(src);
+    expect(h).not.toBe(encodePlanHash(sample({ seed: null })));
+    const decoded = decodePlanHash(h);
+    expect(decoded?.seed).toBeNull();
+    expect(decoded?.seedMode).toBe("none");
+    expect(decoded?.seedPurity).toBe("all_pure");
+  });
+
+  it("round-trips Random + All Pure + seed", () => {
+    const src = sample({ seed: 7, seedMode: "strict", seedPurity: "all_pure" });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.seed).toBe(7);
+    expect(decoded?.seedMode).toBe("strict");
+    expect(decoded?.seedPurity).toBe("all_pure");
+  });
+
+  it("legacy v1 hashes without world-config imply Random + unchanged for numeric seeds", () => {
+    const h = encodePlanHash(sample({ seed: 42 }));
+    const decoded = decodePlanHash(h);
+    expect(decoded?.seedMode).toBe("strict");
+    expect(decoded?.seedPurity).toBe("no_change");
+  });
+
   it("planHashEquals compares by encoded form", () => {
     const a = sample({ seed: null });
     const b = sample({

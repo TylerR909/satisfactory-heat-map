@@ -26,6 +26,12 @@ export type WasmEngineApi = {
   engine_version: () => string;
   score_grid: (input: ScoreGridInput) => HeatmapResult;
   apply_map_seed: (nodes: ResourceNode[], seed: number, isDefault: boolean) => ResourceNode[];
+  apply_map_seed_config: (
+    nodes: ResourceNode[],
+    seed: number,
+    mode: string,
+    purity: string,
+  ) => ResourceNode[];
 };
 
 let cached: WasmEngineApi | null | undefined;
@@ -154,6 +160,9 @@ export async function loadWasmEngine(): Promise<WasmEngineApi> {
     if (typeof mod.apply_map_seed !== "function") {
       throw new Error("[wasm] sf_engine.apply_map_seed missing — run npm run wasm:build");
     }
+    if (typeof mod.apply_map_seed_config !== "function") {
+      throw new Error("[wasm] sf_engine.apply_map_seed_config missing — run npm run wasm:build");
+    }
 
     const api: WasmEngineApi = {
       ping: () => mod.ping(),
@@ -161,6 +170,8 @@ export async function loadWasmEngine(): Promise<WasmEngineApi> {
       score_grid: (input) => fromWireHeatmap(mod.score_grid(toWireScoreInput(input))),
       apply_map_seed: (nodes, seed, isDefault) =>
         fromWireNodes(mod.apply_map_seed(toWireNodes(nodes), seed, isDefault)),
+      apply_map_seed_config: (nodes, seed, mode, purity) =>
+        fromWireNodes(mod.apply_map_seed_config(toWireNodes(nodes), seed, mode, purity)),
     };
     cached = api;
     return api;

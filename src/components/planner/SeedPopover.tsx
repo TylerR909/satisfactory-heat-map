@@ -2,9 +2,8 @@ import { type FormEvent, useEffect, useId, useLayoutEffect, useRef, useState } f
 import { createPortal } from "react-dom";
 import {
   createSavedSeed,
-  defaultNameForSeed,
-  ensureDefaultSavedSeed,
-  formatSeedLabel,
+  defaultNameForWorld,
+  formatWorldLabel,
   gcEmptyAutoNamed,
   getActiveSavedSeed,
   persistSeedLibrary,
@@ -13,12 +12,23 @@ import {
   type SeedLibrary,
   uniqueSeedName,
   upsertSavedSeed,
+  worldFromSavedSeed,
 } from "@/lib/savedSeeds";
-import { isDefaultSeed, type MapSeed, parseSeedInput } from "@/lib/seed";
+import {
+  NODE_PURITY_SETTINGS_UI,
+  NODE_RANDOMIZATION_MODES,
+  type NodePuritySettings,
+  type NodeRandomizationMode,
+  PURITY_SETTING_LABELS,
+  parseSeedInput,
+  RANDOMIZATION_MODE_LABELS,
+  seedAffectsGeneration,
+  type WorldGenSettings,
+} from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
 
 const PAD = 8;
-const PANEL_W = 300;
+const PANEL_W = 340;
 
 type Pos = { left: number; top: number };
 
@@ -48,8 +58,13 @@ type Props = {
   onSaveSeed: (name: string) => void;
   /** Apply seed + optional auto-save; parent handles plan shelf. */
   onPasteSeed: (seed: number) => void;
+  /** Apply randomization / purity immediately (parent detaches if needed). */
+  onWorldSettingsChange: (patch: {
+    mode?: NodeRandomizationMode;
+    purity?: NodePuritySettings;
+  }) => void;
   onRandomSeed: () => void;
-  /** Switch to vanilla Default map (seed null) and re-attach the Default shelf. */
+  /** Switch to vanilla Default map and re-attach the Default shelf. */
   onDefaultMap: () => void;
   onSelectSavedSeed: (pt: SavedSeed, opts?: { keepOpen?: boolean }) => void;
 };
@@ -64,11 +79,15 @@ export function SeedPopover({
   ephemeral,
   onSaveSeed,
   onPasteSeed,
+  onWorldSettingsChange,
   onRandomSeed,
   onDefaultMap,
   onSelectSavedSeed,
 }: Props) {
   const seed = useAppStore((s) => s.seed);
+  const seedMode = useAppStore((s) => s.seedMode);
+  const seedPurity = useAppStore((s) => s.seedPurity);
+  const world: WorldGenSettings = { seed, mode: seedMode, purity: seedPurity };
   const panelRef = useRef<HTMLDivElement>(null);
   const seedInputRef = useRef<HTMLInputElement>(null);
   const saveNameRef = useRef<HTMLInputElement>(null);
@@ -84,7 +103,8 @@ export function SeedPopover({
   const titleId = useId();
 
   // Always Seed {n} / Default — never the existing shelf name (so Save always works as a default).
-  const suggestedSaveName = defaultNameForSeed(seed);
+  const suggestedSaveName = defaultNameForWorld(world);
+  const seedUsed = seedAffectsGeneration(world);
 
   useEffect(() => {
     if (!open) {
@@ -106,7 +126,7 @@ export function SeedPopover({
   }, [renameId]);
 
   // Reposition when open or list size / ephemeral banner changes (panel height).
-  const panelLayoutKey = `${library.seeds.length}:${ephemeral ? 1 : 0}:${renameId ?? ""}:${deleteConfirmId ?? ""}`;
+  const panelLayoutKey = `${library.seeds.length}:${ephemeral ? 1 : 0}:${renameId ?? ""}:${deleteConfirmId ?? ""}:${seedUsed ? 1 : 0}:${seedMode}:${seedPurity}`;
   useLayoutEffect(() => {
     if (!open) {
       setPos(null);
@@ -228,9 +248,8 @@ export function SeedPopover({
       onSelectSavedSeed(activate, { keepOpen: true });
     } else {
       // No shelves left → re-home on Default
-      lib = ensureDefaultSavedSeed(lib);
       onLibraryChange(lib);
-      useAppStore.getState().setSeed(null);
+      onDefaultMap();
     }
   };
 
@@ -285,10 +304,7 @@ export function SeedPopover({
       </div>
 
       <p className="mt-1 text-[11px] text-slate-400">
-        Current:{" "}
-        <span className="font-mono text-slate-200">
-          {isDefaultSeed(seed) ? "Default" : formatSeedLabel(seed)}
-        </span>
+        Current: <span className="font-mono text-slate-200">{formatWorldLabel(world)}</span>
         {active ? (
           <span className="text-slate-500"> · {active.name}</span>
         ) : ephemeral ? (
@@ -296,10 +312,52 @@ export function SeedPopover({
         ) : null}
       </p>
 
+      <label className="mt-2.5 block space-y-1">
+        <span className="text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+          Resource Node Randomization
+        </span>
+        <select
+          value={seedMode}
+          onChange={(ev) =>
+            onWorldSettingsChange({ mode: ev.target.value as NodeRandomizationMode })
+          }
+          className="min-w-0 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          size={1}
+          aria-label="Resource Node Randomization"
+        >
+          {NODE_RANDOMIZATION_MODES.map((m) => (
+            <option key={m} value={m}>
+              {RANDOMIZATION_MODE_LABELS[m]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="mt-2 block space-y-1">
+        <span className="text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+          Resource Node Purity
+        </span>
+        <select
+          value={seedPurity}
+          onChange={(ev) =>
+            onWorldSettingsChange({ purity: ev.target.value as NodePuritySettings })
+          }
+          className="min-w-0 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          size={1}
+          aria-label="Resource Node Purity"
+        >
+          {NODE_PURITY_SETTINGS_UI.map((p) => (
+            <option key={p} value={p}>
+              {PURITY_SETTING_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <form onSubmit={onSubmitSeed} className="mt-2.5 space-y-1.5">
         <label className="block space-y-1">
           <span className="text-[10px] font-medium tracking-wide text-slate-500 uppercase">
-            Paste seed
+            World seed
           </span>
           <div className="flex gap-1.5">
             <input
@@ -314,7 +372,9 @@ export function SeedPopover({
               placeholder="e.g. 12345"
               spellCheck={false}
               autoComplete="off"
-              className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-[12px] text-slate-200 placeholder:text-slate-600 focus:border-slate-500 focus:outline-none"
+              className={`min-w-0 flex-1 rounded border bg-slate-950 px-2 py-1.5 font-mono text-[12px] text-slate-200 placeholder:text-slate-600 focus:border-slate-500 focus:outline-none ${
+                seedUsed ? "border-slate-700" : "border-slate-800 text-slate-400"
+              }`}
             />
             <button
               type="submit"
@@ -325,6 +385,11 @@ export function SeedPopover({
           </div>
         </label>
         {seedError && <p className="text-[11px] text-red-400">{seedError}</p>}
+        {!seedUsed && (
+          <p className="text-[10px] leading-snug text-slate-600">
+            Seed does not affect Default randomization unless purity is Random.
+          </p>
+        )}
       </form>
 
       <form onSubmit={onSubmitSave} className="mt-2 space-y-1">
@@ -367,8 +432,8 @@ export function SeedPopover({
       </div>
 
       <p className="mt-2 text-[10px] leading-snug text-slate-600">
-        Assumes in-game <span className="text-slate-500">Random</span> node randomization with{" "}
-        <span className="text-slate-500">unchanged</span> purity.
+        Match in-game <span className="text-slate-500">World Randomization</span> — mode, purity,
+        and seed together define the map.
       </p>
 
       {library.seeds.length > 0 && (
@@ -468,7 +533,7 @@ export function SeedPopover({
                           {pt.name}
                         </div>
                         <div className="font-mono text-[10px] text-slate-500">
-                          {formatSeedLabel(pt.seed)} · {pt.plans.length} heatmap
+                          {formatWorldLabel(worldFromSavedSeed(pt))} · {pt.plans.length} heatmap
                           {pt.plans.length === 1 ? "" : "s"}
                         </div>
                       </button>
@@ -579,21 +644,23 @@ function CheckIcon() {
 /** Persist a named seed entry (no browser prompt). */
 export function commitSaveSeed(
   library: SeedLibrary,
-  seed: MapSeed,
+  world: WorldGenSettings,
   nameInput: string,
   existing?: SavedSeed | null,
 ): { library: SeedLibrary; saved: SavedSeed } {
-  const suggested = existing?.name ?? defaultNameForSeed(seed);
+  const suggested = existing?.name ?? defaultNameForWorld(world);
   const name = uniqueSeedName(library, nameInput.trim() || suggested, existing?.id);
   const pt: SavedSeed = existing
     ? {
         ...existing,
         name,
-        seed,
+        seed: world.seed,
+        seedMode: world.mode,
+        seedPurity: world.purity,
         autoNamed: false,
         updatedAt: Date.now(),
       }
-    : createSavedSeed({ name, seed, autoNamed: false });
+    : createSavedSeed({ name, world, autoNamed: false });
   let lib = gcEmptyAutoNamed(library, existing?.id);
   lib = upsertSavedSeed(lib, pt);
   persistSeedLibrary(lib);
@@ -602,10 +669,10 @@ export function commitSaveSeed(
 
 export function autoSaveSeed(
   library: SeedLibrary,
-  seed: number,
+  world: WorldGenSettings,
 ): { library: SeedLibrary; saved: SavedSeed } {
-  const name = uniqueSeedName(library, defaultNameForSeed(seed));
-  const pt = createSavedSeed({ name, seed, autoNamed: true });
+  const name = uniqueSeedName(library, defaultNameForWorld(world));
+  const pt = createSavedSeed({ name, world, autoNamed: true });
   let lib = gcEmptyAutoNamed(library);
   lib = upsertSavedSeed(lib, pt);
   persistSeedLibrary(lib);

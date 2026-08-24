@@ -1,21 +1,34 @@
 /**
- * Named saved-seed library — each shelf has its own map seed + heatmap chips.
- * Primary key for the user is `name` (unique); the numeric map seed may repeat.
+ * Named saved-seed library — each shelf has its own world-gen triple + heatmap chips.
+ * Primary key for the user is `name` (unique); the same numeric seed may repeat
+ * under different randomization / purity modes.
  */
 
 import type { SavedPlan } from "@/lib/savedPlans";
-import type { MapSeed } from "@/lib/seed";
+import {
+  formatWorldLabel,
+  impliedWorldFromSeed,
+  isDefaultWorld,
+  type MapSeed,
+  type NodePuritySettings,
+  type NodeRandomizationMode,
+  normalizeWorldGen,
+  type WorldGenSettings,
+  worldGensEqual,
+} from "@/lib/seed/types";
 
 const STORAGE_KEY = "sf-heatmap-saved-seeds-v1";
 const LEGACY_PLAYTHROUGHS_KEY = "sf-heatmap-playthroughs-v1";
 const LEGACY_PLANS_KEY = "sf-heatmap-saved-plans-v1";
 
-/** A named library entry: one map seed + its heatmap plan shelf. */
+/** A named library entry: one 1.2 world-gen triple + its heatmap plan shelf. */
 export type SavedSeed = {
   id: string;
   name: string;
-  /** null = Default / vanilla layout; number (incl. 0) = randomized world seed. */
+  /** null = no seed entered; number (incl. 0) = signed i32 world seed. */
   seed: MapSeed;
+  seedMode: NodeRandomizationMode;
+  seedPurity: NodePuritySettings;
   plans: SavedPlan[];
   activePlanId: string | null;
   /** True when auto-created from paste (eligible for GC when empty). */
@@ -27,7 +40,7 @@ export type SeedLibrary = {
   seeds: SavedSeed[];
   /**
    * Active named shelf. `null` = detached from the library (shared-link plan
-   * for a seed you don't have saved, or a temporary Random world before Save).
+   * for a world you don't have saved, or a temporary Random world before Save).
    * Normal Default usage should always have an active shelf — see
    * {@link ensureDefaultSavedSeed}.
    */
@@ -81,18 +94,19 @@ export function loadSeedLibrary(): SeedLibrary {
   }
 }
 
-function normalizeSavedSeed(p: Partial<SavedSeed>): SavedSeed | null {
+function normalizeSavedSeed(p: Partial<SavedSeed> & { seed?: MapSeed }): SavedSeed | null {
   if (!p || typeof p.id !== "string" || typeof p.name !== "string") return null;
-  const seed: MapSeed =
-    p.seed === null || p.seed === undefined
-      ? null
-      : typeof p.seed === "number" && Number.isFinite(p.seed)
-        ? p.seed | 0
-        : null;
+  const world = normalizeWorldGen({
+    seed: p.seed,
+    mode: p.seedMode,
+    purity: p.seedPurity,
+  });
   return {
     id: p.id,
     name: p.name,
-    seed,
+    seed: world.seed,
+    seedMode: world.mode,
+    seedPurity: world.purity,
     plans: Array.isArray(p.plans) ? p.plans : [],
     activePlanId: typeof p.activePlanId === "string" ? p.activePlanId : null,
     autoNamed: Boolean(p.autoNamed),
@@ -115,40 +129,61 @@ export function persistSeedLibrary(lib: SeedLibrary): void {
   }
 }
 
+export function worldFromSavedSeed(
+  pt: Pick<SavedSeed, "seed" | "seedMode" | "seedPurity">,
+): WorldGenSettings {
+  return { seed: pt.seed, mode: pt.seedMode, purity: pt.seedPurity };
+}
+
 /**
- * Find or create the vanilla Default shelf (`seed: null`) and make it active.
+ * Find or create the vanilla Default shelf and make it active.
  * Used so everyday Default-map work is never "ephemeral".
  */
 export function ensureDefaultSavedSeed(lib: SeedLibrary): SeedLibrary {
-  const existing = lib.seeds.find((p) => p.seed === null);
+  const existing = lib.seeds.find((p) => isDefaultWorld(worldFromSavedSeed(p)));
   if (existing) {
     return { ...lib, activeId: existing.id };
   }
   const pt = createSavedSeed({
     name: uniqueSeedName(lib, "Default"),
-    seed: null,
+    world: impliedWorldFromSeed(null),
     autoNamed: false,
   });
   return upsertSavedSeed(lib, pt);
 }
 
-/** First library entry whose map seed matches (null = Default). */
-export function findSavedSeedByMapSeed(lib: SeedLibrary, seed: MapSeed): SavedSeed | null {
-  return lib.seeds.find((p) => p.seed === seed) ?? null;
+/** First library entry whose world-gen triple matches. */
+export function findSavedSeedByWorld(lib: SeedLibrary, world: WorldGenSettings): SavedSeed | null {
+  return lib.seeds.find((p) => worldGensEqual(worldFromSavedSeed(p), world)) ?? null;
 }
 
-/** True when some named shelf already owns this map seed (incl. Default / null). */
+/** @deprecated Use {@link findSavedSeedByWorld}. Seed-only match (legacy implied triple). */
+export function findSavedSeedByMapSeed(lib: SeedLibrary, seed: MapSeed): SavedSeed | null {
+  return findSavedSeedByWorld(lib, impliedWorldFromSeed(seed));
+}
+
+/** True when some named shelf already owns this world-gen triple. */
+export function isWorldSaved(lib: SeedLibrary, world: WorldGenSettings): boolean {
+  return findSavedSeedByWorld(lib, world) !== null;
+}
+
+/** @deprecated Use {@link isWorldSaved}. */
 export function isMapSeedSaved(lib: SeedLibrary, seed: MapSeed): boolean {
-  return findSavedSeedByMapSeed(lib, seed) !== null;
+  return isWorldSaved(lib, impliedWorldFromSeed(seed));
+}
+
+export function defaultNameForWorld(world: WorldGenSettings): string {
+  if (isDefaultWorld(world)) return "Default";
+  if (world.seed === null) return formatWorldLabel(world);
+  return `Seed ${world.seed}`;
 }
 
 export function defaultNameForSeed(seed: MapSeed): string {
-  if (seed === null) return "Default";
-  return `Seed ${seed}`;
+  return defaultNameForWorld(impliedWorldFromSeed(seed));
 }
 
 export function isAutoSeedName(name: string): boolean {
-  return /^Seed -?\d+$/.test(name) || name === "Default";
+  return /^Seed -?\d+$/.test(name) || name === "Default" || /^Default · /.test(name);
 }
 
 /** Ensure unique name; append " (2)", " (3)", … if needed. */
@@ -213,15 +248,18 @@ export function gcEmptyAutoNamed(lib: SeedLibrary, keepId?: string | null): Seed
 
 export function createSavedSeed(opts: {
   name: string;
-  seed: MapSeed;
+  world: WorldGenSettings;
   autoNamed?: boolean;
   plans?: SavedPlan[];
   activePlanId?: string | null;
 }): SavedSeed {
+  const world = normalizeWorldGen(opts.world);
   return {
     id: newId(),
     name: opts.name,
-    seed: opts.seed,
+    seed: world.seed,
+    seedMode: world.mode,
+    seedPurity: world.purity,
     plans: opts.plans ?? [],
     activePlanId: opts.activePlanId ?? null,
     autoNamed: opts.autoNamed ?? false,
@@ -233,3 +271,5 @@ export function formatSeedLabel(seed: MapSeed): string {
   if (seed === null) return "Default";
   return String(seed);
 }
+
+export { formatWorldLabel };

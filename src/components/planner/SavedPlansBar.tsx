@@ -10,7 +10,12 @@ import {
 import { createPortal } from "react-dom";
 import { autoSaveSeed, commitSaveSeed, SeedPopover } from "@/components/planner/SeedPopover";
 import { formatRate } from "@/lib/mining";
-import { decodePlanHash, encodePlanHash, mapSeedsEqual, type PlanHashSource } from "@/lib/planHash";
+import {
+  decodePlanHash,
+  encodePlanHash,
+  type PlanHashSource,
+  worldFromSnapshot,
+} from "@/lib/planHash";
 import {
   buildSavedPlan,
   planSnapshotFromSaved,
@@ -19,20 +24,30 @@ import {
   upsertPlan,
 } from "@/lib/savedPlans";
 import {
-  defaultNameForSeed,
+  defaultNameForWorld,
   ensureDefaultSavedSeed,
-  findSavedSeedByMapSeed,
+  findSavedSeedByWorld,
   gcEmptyAutoNamed,
   getActiveSavedSeed,
-  isMapSeedSaved,
+  isWorldSaved,
   loadSeedLibrary,
   persistSeedLibrary,
   type SavedSeed,
   type SeedLibrary,
   subscribeSeedLibrary,
   upsertSavedSeed,
+  worldFromSavedSeed,
 } from "@/lib/savedSeeds";
-import { isDefaultSeed, randomMapSeed } from "@/lib/seed";
+import {
+  formatWorldLabel,
+  isDefaultWorld,
+  type NodePuritySettings,
+  type NodeRandomizationMode,
+  randomMapSeed,
+  VANILLA_WORLD,
+  type WorldGenSettings,
+  worldGensEqual,
+} from "@/lib/seed";
 import { newLineId, useAppStore } from "@/store/useAppStore";
 import { DEFAULT_SCORING_OPTIONS } from "@/types";
 
@@ -45,19 +60,19 @@ function resolveLibraryForSession(): SeedLibrary {
   const hashSnap = typeof window !== "undefined" ? decodePlanHash(window.location.hash) : null;
 
   if (hashSnap) {
-    const hashSeed = hashSnap.seed ?? null;
+    const hashWorld = worldFromSnapshot(hashSnap);
     const active = getActiveSavedSeed(lib);
-    if (active && mapSeedsEqual(active.seed, hashSeed)) {
+    if (active && worldGensEqual(worldFromSavedSeed(active), hashWorld)) {
       return lib;
     }
-    const owned = findSavedSeedByMapSeed(lib, hashSeed);
+    const owned = findSavedSeedByWorld(lib, hashWorld);
     if (owned) {
       lib = { ...lib, activeId: owned.id };
       persistSeedLibrary(lib);
       return lib;
     }
     // Vanilla Default is always attachable
-    if (hashSeed === null) {
+    if (isDefaultWorld(hashWorld)) {
       lib = ensureDefaultSavedSeed(lib);
       persistSeedLibrary(lib);
       return lib;
@@ -115,9 +130,16 @@ function planSourceFromStore(): PlanHashSource {
     scoringMode: s.scoringMode,
     scoringOptions: s.scoringOptions,
     seed: s.seed,
+    seedMode: s.seedMode,
+    seedPurity: s.seedPurity,
     externalItems: s.externalItems,
     recipeOverrides: s.recipeOverrides,
   };
+}
+
+function worldFromStore(): WorldGenSettings {
+  const s = useAppStore.getState();
+  return { seed: s.seed, mode: s.seedMode, purity: s.seedPurity };
 }
 
 function labelSourceFromStore() {
@@ -205,16 +227,19 @@ export function SavedPlansBar() {
   const seedBtnRef = useRef<HTMLButtonElement>(null);
   const [seedOpen, setSeedOpen] = useState(false);
   const applyPlanSnapshot = useAppStore((s) => s.applyPlanSnapshot);
-  const setSeed = useAppStore((s) => s.setSeed);
+  const setWorldGen = useAppStore((s) => s.setWorldGen);
   const mapSeed = useAppStore((s) => s.seed);
+  const seedMode = useAppStore((s) => s.seedMode);
+  const seedPurity = useAppStore((s) => s.seedPurity);
+  const currentWorld: WorldGenSettings = { seed: mapSeed, mode: seedMode, purity: seedPurity };
 
   const activePt = getActiveSavedSeed(library);
   /** Detached from any named shelf (unsaved seed, or Random before Save). */
   const detached = library.activeId === null;
-  /** Popover Save CTA: current map seed is not owned by any library entry. */
-  const ephemeral = !isMapSeedSaved(library, mapSeed);
-  /** Seed button highlight: any randomized world (not vanilla Default). */
-  const nonDefaultMap = !isDefaultSeed(mapSeed);
+  /** Popover Save CTA: current world-gen triple is not owned by any library entry. */
+  const ephemeral = !isWorldSaved(library, currentWorld);
+  /** Seed button highlight: anything other than vanilla Default. */
+  const nonDefaultMap = !isDefaultWorld(currentWorld);
   const plans = detached ? ephemeralPlans : (activePt?.plans ?? []);
   const activePlanId = detached ? ephemeralActiveId : (activePt?.activePlanId ?? null);
 
@@ -267,12 +292,12 @@ export function SavedPlansBar() {
     const lib = loadSeedLibrary();
     const active = getActiveSavedSeed(lib);
     if (!active) return;
-    const cur = useAppStore.getState().seed;
-    if (mapSeedsEqual(cur, active.seed)) return;
-    // Don't clobber an unsaved seed (shared link / Random) while detached
+    const cur = worldFromStore();
+    if (worldGensEqual(cur, worldFromSavedSeed(active))) return;
+    // Don't clobber an unsaved world (shared link / Random) while detached
     if (lib.activeId === null) return;
     skipPersistActive.current = true;
-    setSeed(active.seed);
+    setWorldGen(worldFromSavedSeed(active));
     if (active.activePlanId) {
       const plan = active.plans.find((p) => p.id === active.activePlanId);
       if (plan) {
@@ -283,7 +308,7 @@ export function SavedPlansBar() {
     queueMicrotask(() => {
       skipPersistActive.current = false;
     });
-  }, [applyPlanSnapshot, setSeed]);
+  }, [applyPlanSnapshot, setWorldGen]);
 
   useEffect(() => {
     if (!importOpen) return;
@@ -295,8 +320,8 @@ export function SavedPlansBar() {
     let lib = loadSeedLibrary();
     if (lib.activeId) return snapshotActiveIntoLibrary(lib);
     // Detached (unsaved seed / Random): auto-save so + still works
-    const mapSeed = useAppStore.getState().seed;
-    const result = commitSaveSeed(lib, mapSeed, defaultNameForSeed(mapSeed), null);
+    const world = worldFromStore();
+    const result = commitSaveSeed(lib, world, defaultNameForWorld(world), null);
     const pt = {
       ...result.saved,
       plans: ephemeralPlans,
@@ -473,11 +498,11 @@ export function SavedPlansBar() {
       return;
     }
 
-    const hashSeed = snap.seed ?? null;
-    const curSeed = useAppStore.getState().seed;
+    const hashWorld = worldFromSnapshot(snap);
+    const curWorld = worldFromStore();
 
-    // Matching current map seed + attached shelf → import onto that shelf
-    if (mapSeedsEqual(hashSeed, curSeed) && library.activeId) {
+    // Matching current world + attached shelf → import onto that shelf
+    if (worldGensEqual(hashWorld, curWorld) && library.activeId) {
       const lib = snapshotActiveIntoLibrary(loadSeedLibrary());
       const active = getActiveSavedSeed(lib);
       if (!active) return;
@@ -506,8 +531,8 @@ export function SavedPlansBar() {
 
     // Seed already in library (or Default) → attach + import chip
     let lib = loadSeedLibrary();
-    let owned = findSavedSeedByMapSeed(lib, hashSeed);
-    if (!owned && hashSeed === null) {
+    let owned = findSavedSeedByWorld(lib, hashWorld);
+    if (!owned && isDefaultWorld(hashWorld)) {
       lib = ensureDefaultSavedSeed(lib);
       owned = getActiveSavedSeed(lib);
     }
@@ -570,9 +595,29 @@ export function SavedPlansBar() {
       lib = snapshotActiveIntoLibrary(lib);
       lib = gcEmptyAutoNamed({ ...lib, activeId: null });
     }
-    setSeed(pasted);
-    const { library: next } = autoSaveSeed(lib, pasted);
+    const world: WorldGenSettings = {
+      seed: pasted,
+      mode: useAppStore.getState().seedMode,
+      purity: useAppStore.getState().seedPurity,
+    };
+    setWorldGen(world);
+    const { library: next } = autoSaveSeed(lib, world);
     persistLib(next);
+    setEphemeralPlans([]);
+    setEphemeralActiveId(null);
+    writeUrlHash(encodePlanHash(planSourceFromStore()));
+    queueMicrotask(() => {
+      skipPersistActive.current = false;
+    });
+  };
+
+  const onWorldSettingsChange = (patch: {
+    mode?: NodeRandomizationMode;
+    purity?: NodePuritySettings;
+  }) => {
+    skipPersistActive.current = true;
+    leaveActiveShelfDetached();
+    setWorldGen(patch);
     setEphemeralPlans([]);
     setEphemeralActiveId(null);
     writeUrlHash(encodePlanHash(planSourceFromStore()));
@@ -594,10 +639,14 @@ export function SavedPlansBar() {
   const onRandomSeed = () => {
     skipPersistActive.current = true;
     leaveActiveShelfDetached();
-    setSeed(randomMapSeed());
+    const cur = useAppStore.getState();
+    // Reroll seed; if randomization is Default (and purity isn't Random), switch
+    // to Random so the new seed actually shuffles nodes.
+    const mode =
+      cur.seedMode === "none" && cur.seedPurity !== "all_random" ? "strict" : cur.seedMode;
+    setWorldGen({ seed: randomMapSeed(), mode });
     setEphemeralPlans([]);
     setEphemeralActiveId(null);
-    // Random is temporary until Save — amber until this seed is in the library.
     writeUrlHash(encodePlanHash(planSourceFromStore()));
     queueMicrotask(() => {
       skipPersistActive.current = false;
@@ -615,7 +664,7 @@ export function SavedPlansBar() {
     lib = ensureDefaultSavedSeed(lib);
     const def = getActiveSavedSeed(lib);
     persistLib(lib);
-    setSeed(null);
+    setWorldGen(VANILLA_WORLD);
     setEphemeralPlans([]);
     setEphemeralActiveId(null);
     // Restore Default shelf's active plan when present; otherwise keep live demand.
@@ -637,20 +686,20 @@ export function SavedPlansBar() {
     if (lib.activeId) {
       lib = snapshotActiveIntoLibrary(lib);
     }
-    const mapSeed = useAppStore.getState().seed;
-    const desired = name.trim() || defaultNameForSeed(mapSeed);
+    const world = worldFromStore();
+    const desired = name.trim() || defaultNameForWorld(world);
     const active = getActiveSavedSeed(lib);
     // Update in place only when re-saving the *same named* active shelf.
-    // Same map seed + a different name (e.g. two Defaults: "Test A" then "Test B")
+    // Same world + a different name (e.g. two Defaults: "Test A" then "Test B")
     // must create a new Saved Seed — not rename/overwrite the first.
     const existing =
       active &&
       !detached &&
-      mapSeedsEqual(active.seed, mapSeed) &&
+      worldGensEqual(worldFromSavedSeed(active), world) &&
       active.name.toLowerCase() === desired.toLowerCase()
         ? active
         : null;
-    const result = commitSaveSeed(lib, mapSeed, desired, existing);
+    const result = commitSaveSeed(lib, world, desired, existing);
     let pt = result.saved;
     if (!existing && ephemeralPlans.length > 0) {
       pt = {
@@ -678,8 +727,8 @@ export function SavedPlansBar() {
     // 4: activeId = B
     lib = { ...lib, activeId: pt.id };
     persistLib(lib);
-    // 5: setSeed B
-    setSeed(pt.seed);
+    // 5: apply B's world-gen triple
+    setWorldGen(worldFromSavedSeed(pt));
     // 6: apply B's active plan without re-applying seed from hash
     if (pt.activePlanId) {
       const plan = pt.plans.find((p) => p.id === pt.activePlanId);
@@ -720,11 +769,13 @@ export function SavedPlansBar() {
           onClick={() => setSeedOpen((v) => !v)}
           title={
             nonDefaultMap
-              ? `Map seed ${mapSeed} (not Default) — click to change`
+              ? `${formatWorldLabel(currentWorld)} — click to change`
               : "Map seed (Default world)"
           }
           aria-label={
-            nonDefaultMap ? `Map seed ${mapSeed}, not Default` : "Map seed, Default world"
+            nonDefaultMap
+              ? `World ${formatWorldLabel(currentWorld)}, not Default`
+              : "Map seed, Default world"
           }
           aria-expanded={seedOpen}
           className={`inline-flex h-8 shrink-0 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition ${
@@ -782,6 +833,7 @@ export function SavedPlansBar() {
         ephemeral={ephemeral}
         onSaveSeed={onSaveSeed}
         onPasteSeed={onPasteSeed}
+        onWorldSettingsChange={onWorldSettingsChange}
         onRandomSeed={onRandomSeed}
         onDefaultMap={onDefaultMap}
         onSelectSavedSeed={onSelectSavedSeed}
