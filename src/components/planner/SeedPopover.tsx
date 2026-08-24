@@ -321,7 +321,8 @@ export function SeedPopover({
           onChange={(ev) =>
             onWorldSettingsChange({ mode: ev.target.value as NodeRandomizationMode })
           }
-          className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-200 focus:border-slate-500 focus:outline-none"
+          className="min-w-0 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          size={1}
           aria-label="Resource Node Randomization"
         >
           {NODE_RANDOMIZATION_MODES.map((m) => (
@@ -341,7 +342,8 @@ export function SeedPopover({
           onChange={(ev) =>
             onWorldSettingsChange({ purity: ev.target.value as NodePuritySettings })
           }
-          className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-200 focus:border-slate-500 focus:outline-none"
+          className="min-w-0 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          size={1}
           aria-label="Resource Node Purity"
         >
           {NODE_PURITY_SETTINGS_UI.map((p) => (
