@@ -453,9 +453,7 @@ function CoolSIcon({ className }: { className?: string }) {
 }
 
 function SloopHeaderToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
-  const label = on
-    ? "Sloop on — this step's inputs are halved on the heatmap. Click to turn off."
-    : "Sloop off — click to mark this step as slooped (halves its inputs on the heatmap).";
+  const label = "Somersloop — halves inputs for the same output";
   return (
     <button
       type="button"
