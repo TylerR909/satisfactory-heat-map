@@ -30,7 +30,7 @@
 | `types/` | Domain types (`ResourceNode`, `RawDemand`, `CapacityTag`, `HeatmapResult`, knobs, …) |
 | `lib/mining.ts` | Purity + miner Mk + oil/water/well/deposit rate tables (UI clocks; WASM scorer has its own rates) |
 | `lib/coords.ts` | Game cm ↔ Leaflet CRS.Simple (rockfactory-compatible; no tile Y flip) |
-| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (defaults + `recipeOverrides` + `externalItems` prune; cycle break; byproducts) |
+| `lib/production/solve.ts` | Mode B: multi-product → stacked raw demand (defaults + `recipeOverrides` + `externalItems` prune + `sloopedItems` 2× output; cycle break; byproducts) |
 | `lib/production/badges.ts` | Deterministic alt badges (Removes, Skips, Pure, Alloy, machine via `producedIn`, …) |
 | `lib/production/quickSelects.ts` | Named alt packs (Pure, No Screws, Polymer, Recycled loop, Removes Types, Caterium, …) |
 | `lib/production/minimizeInputTypes.ts` | Greedy unique-raw search for **Removes Types** (water ignored) |
@@ -51,8 +51,8 @@
 
 ## Data flow
 
-1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks), optional **off-site** intermediates, and optional **alternate recipe** picks (`recipeOverrides`).
-2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems` + `recipeOverrides`), **`expansionRows`** for **Intermediates & Alternates**, and **`byproductRows`** (net excess secondary outputs under Raw demand).
+1. User edits **Mode A** lines or **Mode B** product targets (multi-product stacks), optional **off-site** intermediates, optional **alternate recipe** picks (`recipeOverrides`), and optional **Somersloop** steps (`sloopedItems`).
+2. Store derives **`activeDemand: RawDemand[]`** (Mode B via `solveProductsToRaw` + `externalItems` + `recipeOverrides` + `sloopedItems`), **`expansionRows`** for **Intermediates & Alternates**, and **`byproductRows`** (net excess secondary outputs under Raw demand).
 3. **`useAutoHeatmap`** (debounced) posts `ScoreGridInput` to the worker whenever demand, miner, scoring mode, or knobs change.
 4. Worker runs `createEngine().scoreGrid(input)` → `HeatmapResult` (grid + topSites with capacity tags).
 5. Map paints heat via `ImageOverlay` from the coarse grid; pins/lines from `topSites` / selection.
@@ -194,7 +194,7 @@ Rust: `crates/engine` + `crates/vendored/konsl_randomization`. Compile via `npm 
 
 ## Persistence & PWA
 
-- Zustand `persist` → localStorage key **`sf-heatmap-v9`**: mode, raw lines, product targets, `externalItems`, `recipeOverrides`, miner, scoring mode, knobs, UI prefs (incl. expansion sort order).
+- Zustand `persist` → localStorage key **`sf-heatmap-v9`**: mode, raw lines, product targets, `externalItems`, `recipeOverrides`, `sloopedItems`, miner, scoring mode, knobs, UI prefs (incl. expansion sort order).
 - Merge migrates legacy scoring mode names / product ids; ignores removed capacity-mode / scaleHeadroom fields.
 - **URL plan hash** (`src/lib/planHash.ts`, `usePlanHash`): compact `#v1.<base64url(binary)>` — typically **~15–80 chars** (indexed item/recipe catalogs; grows slowly with alts). Spec: [SHARE_HASH.md](./SHARE_HASH.md). Binary packs flags, quantized knobs, catalog-index demand for the **active mode only** (raw *or* products), plus Mode B recipe overrides when present. Catalogs are append-only (`itemIds` / `recipeIds`). On load, hash wins over localStorage after rehydrate. Writes use `history.replaceState` (debounced). Display-only prefs (heat paint, expansion sort) stay out of the hash.
 - **Reset clustering** → scoring options + heat opacity + show nodes.

@@ -71,6 +71,7 @@ const hash = encodeProductPlanHash(
   {
     alternateRecipes: ["Recipe_Alternate_OCSupercomputer_C"],
     // externalItems: ["Desc_Water_C"],
+    // sloopedItems: ["Desc_ComputerSuper_C"],
     // seed: 12345,
   },
 );

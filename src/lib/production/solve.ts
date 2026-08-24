@@ -22,6 +22,13 @@ export type SolveOptions = {
    * preference-scored non-alternate when one exists.
    */
   recipeOverrides?: ReadonlyMap<string, string> | Readonly<Record<string, string>>;
+  /**
+   * Items whose machines are fully Somersloop-amplified (production amplification).
+   * Doubles that step's outputs without extra ingredients — equivalent to
+   * **halving inputs** (and secondary byproducts stay the same vs the target rate).
+   * Ignored for recipes that cannot be amplified (Packager).
+   */
+  sloopedItems?: ReadonlySet<string> | readonly string[];
 };
 
 /** One row in the Mode B Intermediates list (crafted only — map raws stay on Raw demand). */
@@ -96,6 +103,33 @@ export function toExternalItemSet(
   if (!items) return new Set();
   if (items instanceof Set) return items;
   return new Set(items);
+}
+
+export const toSloopedItemSet = toExternalItemSet;
+
+/** Full Somersloop amplification: +100% output, same ingredients. */
+export const SLOOP_OUTPUT_MULTIPLIER = 2;
+
+/**
+ * Production amplification is available on factory crafters, not Packagers
+ * (or extractors — those never appear as Mode B recipes).
+ * Missing `producedIn` (tests / older extracts) is treated as sloopable.
+ */
+export function recipeSupportsSomersloop(recipe: Recipe | undefined | null): boolean {
+  if (!recipe) return false;
+  const raw = recipe.producedIn?.trim();
+  if (!raw) return true;
+  return !/Packager/i.test(raw);
+}
+
+/** Output multiplier for expand / hover math (1 or {@link SLOOP_OUTPUT_MULTIPLIER}). */
+export function sloopOutputMultiplier(
+  itemId: string,
+  recipe: Recipe | undefined,
+  slooped?: ReadonlySet<string> | null,
+): number {
+  if (!slooped?.has(itemId) || !recipeSupportsSomersloop(recipe)) return 1;
+  return SLOOP_OUTPUT_MULTIPLIER;
 }
 
 const MAP_RAW_IDS = new Set<string>(RAW_RESOURCE_OPTIONS);
@@ -470,6 +504,7 @@ export function solveProductsToRaw(
   options?: SolveOptions,
 ): SolveResult {
   const externalSet = toExternalItemSet(options?.externalItems);
+  const sloopedSet = toSloopedItemSet(options?.sloopedItems);
   const overrideMap = toOverrideMap(options?.recipeOverrides);
   const byProduct = indexProductionRecipes(recipes);
   const byId = indexRecipesById(recipes);
@@ -591,11 +626,14 @@ export function solveProductsToRaw(
       return;
     }
 
-    const craftsPerMin = rate / productLine.amount;
+    // Somersloop: same crafts feed 2× all outputs, so crafts (and ingredients)
+    // drop by ½ for a given primary rate; byproducts vs that rate stay the same.
+    const outMult = sloopOutputMultiplier(itemId, recipe, sloopedSet);
+    const craftsPerMin = rate / (productLine.amount * outMult);
     // Secondary product slots = byproducts relative to the item we're expanding for
     for (const p of recipe.products) {
       if (p.item === itemId || p.amount <= 0) continue;
-      byproductOut.set(p.item, (byproductOut.get(p.item) ?? 0) + craftsPerMin * p.amount);
+      byproductOut.set(p.item, (byproductOut.get(p.item) ?? 0) + craftsPerMin * p.amount * outMult);
     }
     for (const ing of recipe.ingredients) {
       need(ing.item, craftsPerMin * ing.amount, false, depth + 1);
