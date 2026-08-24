@@ -40,13 +40,15 @@ export function ingredientInflowPerMin(
   recipe: Recipe | undefined,
   productId: string,
   ingredientId: string,
+  outputMultiplier = 1,
 ): number {
   if (!recipe || productRate <= EPS) return 0;
   const productLine = recipe.products.find((p) => p.item === productId);
   if (!productLine || productLine.amount <= 0) return 0;
   const ing = recipe.ingredients.find((i) => i.item === ingredientId);
   if (!ing || ing.amount <= 0) return 0;
-  return (productRate / productLine.amount) * ing.amount;
+  const mult = outputMultiplier > 0 ? outputMultiplier : 1;
+  return (productRate / (productLine.amount * mult)) * ing.amount;
 }
 
 /**
@@ -64,6 +66,10 @@ export function classifyExpansionLink(opts: {
   rowRecipe: Recipe | undefined;
   /** Default production recipe for the row (required for correct off-site ghosts). */
   rowDefaultRecipe?: Recipe | undefined;
+  /** Somersloop output multiplier on the hovered step (1 or 2). */
+  hoveredOutputMultiplier?: number;
+  /** Somersloop output multiplier on this row (1 or 2). */
+  rowOutputMultiplier?: number;
 }): ExpansionLinkInfo {
   const {
     row,
@@ -73,6 +79,8 @@ export function classifyExpansionLink(opts: {
     hoveredRecipe,
     rowRecipe,
     rowDefaultRecipe,
+    hoveredOutputMultiplier = 1,
+    rowOutputMultiplier = 1,
   } = opts;
 
   if (row.itemId === hoveredItemId) {
@@ -85,11 +93,14 @@ export function classifyExpansionLink(opts: {
 
   if (usesHover) {
     if (!row.external) {
+      // Consumer inflow uses **this row's** sloop (not the hovered item's).
+      // Slooping the producer does not change how much output consumers take.
       const inflow = ingredientInflowPerMin(
         row.itemsPerMinute,
         rowRecipe,
         row.itemId,
         hoveredItemId,
+        rowOutputMultiplier,
       );
       if (inflow > EPS) {
         return { kind: "consumer", attributed: inflow };
@@ -102,8 +113,15 @@ export function classifyExpansionLink(opts: {
 
   // Predicates: direct ingredients of the hovered item — only when hover is on-site
   // (off-site imports do not expand their ingredient tree here).
+  // Hovered-step sloop halves these inflows (same as expand).
   if (hoveredOnSite && hoveredRecipe?.ingredients.some((ing) => ing.item === row.itemId)) {
-    const portion = ingredientInflowPerMin(hoveredRate, hoveredRecipe, hoveredItemId, row.itemId);
+    const portion = ingredientInflowPerMin(
+      hoveredRate,
+      hoveredRecipe,
+      hoveredItemId,
+      row.itemId,
+      hoveredOutputMultiplier,
+    );
     return { kind: "predicate", attributed: portion };
   }
 

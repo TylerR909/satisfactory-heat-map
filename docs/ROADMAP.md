@@ -48,6 +48,7 @@
   - [x] List sort (ingredients-first ↔ products-first; display-only local pref)
   - [x] Recipe-control hover: violet predicates + emerald consumers; rate slices; off-site consumers still highlight; ghost links vs **default** recipe
   - [x] Raw demand **byproducts** (net excess secondary outputs)
+  - [x] **Somersloop** per-step 2× output (picker toggle; share hash + persist; Packager excluded)
 - [ ] **Blueprint paste** — paste a Satisfactory blueprint string; derive raw demand (and/or product targets) for the heatmap without becoming a full planner
 - [ ] “These alts unlock hotter regions” comparison (nice-to-have — not required for alt MVP)
 - [ ] Cave node flags / better elevation heuristics

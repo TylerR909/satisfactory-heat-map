@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   listProductionRecipes,
+  recipeSupportsSomersloop,
   solveProductsToRaw,
   solveProductToRaw,
 } from "@/lib/production/solve";
@@ -704,6 +705,170 @@ describe("recipeOverrides (Mode B alternates)", () => {
       { recipeOverrides: { Desc_IronIngot_C: "Recipe_DoesNotExist_C" } },
     );
     expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(90, 5);
+  });
+});
+
+describe("sloopedItems (Somersloop production amplification)", () => {
+  it("recipeSupportsSomersloop is false for Packager and extractors", () => {
+    const constructorRecipe: Recipe = {
+      id: "Recipe_IronPlate_C",
+      name: "Iron Plate",
+      durationSec: 6,
+      ingredients: [],
+      products: [],
+      alternate: false,
+      producedIn: "Build_ConstructorMk1_C",
+    };
+    const packager: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_PackagedWater_C",
+      producedIn: "Build_Packager_C",
+    };
+    const oilPump: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_FakeOilExtract_C",
+      producedIn: "Build_OilPump_C",
+    };
+    const miner: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_FakeMiner_C",
+      producedIn: "Build_MinerMk3_C",
+    };
+    const refinery: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_Plastic_C",
+      producedIn: "Build_OilRefinery_C",
+    };
+    expect(recipeSupportsSomersloop(constructorRecipe)).toBe(true);
+    expect(recipeSupportsSomersloop(refinery)).toBe(true);
+    expect(recipeSupportsSomersloop(packager)).toBe(false);
+    expect(recipeSupportsSomersloop(oilPump)).toBe(false);
+    expect(recipeSupportsSomersloop(miner)).toBe(false);
+    expect(recipeSupportsSomersloop({ ...constructorRecipe, producedIn: undefined })).toBe(true);
+    expect(recipeSupportsSomersloop(undefined)).toBe(false);
+  });
+
+  it("slooping the product halves raw demand; intermediates stay at the target rate", () => {
+    // 60 plate → 90 ingot → 90 ore; sloop plates → 45 ore
+    const { demand, intermediates } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: ["Desc_IronPlate_C"] },
+    );
+    expect(intermediates.Desc_IronPlate_C).toBeCloseTo(60, 5);
+    expect(intermediates.Desc_IronIngot_C).toBeCloseTo(45, 5);
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(45, 5);
+  });
+
+  it("slooping an intermediate also halves that step's inputs", () => {
+    const { demand, intermediates } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: ["Desc_IronIngot_C"] },
+    );
+    expect(intermediates.Desc_IronPlate_C).toBeCloseTo(60, 5);
+    expect(intermediates.Desc_IronIngot_C).toBeCloseTo(90, 5);
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(45, 5);
+  });
+
+  it("slooping two steps stacks (¼ inputs)", () => {
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: ["Desc_IronPlate_C", "Desc_IronIngot_C"] },
+    );
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(
+      22.5,
+      5,
+    );
+  });
+
+  it("slooping a byproduct recipe keeps byproduct rate vs the target, halves ingredients", () => {
+    const bpItems: Record<string, ItemDef> = {
+      Desc_LiquidOil_C: { id: "Desc_LiquidOil_C", name: "Crude Oil", raw: true },
+      Desc_Plastic_C: { id: "Desc_Plastic_C", name: "Plastic", raw: false },
+      Desc_HeavyOilResidue_C: {
+        id: "Desc_HeavyOilResidue_C",
+        name: "Heavy Oil Residue",
+        raw: false,
+      },
+    };
+    const bpRecipes: Recipe[] = [
+      {
+        id: "Recipe_Plastic_C",
+        name: "Plastic",
+        durationSec: 6,
+        ingredients: [{ item: "Desc_LiquidOil_C", amount: 3 }],
+        products: [
+          { item: "Desc_Plastic_C", amount: 2 },
+          { item: "Desc_HeavyOilResidue_C", amount: 1 },
+        ],
+        alternate: false,
+      },
+    ];
+    const baseline = solveProductsToRaw(
+      [{ productId: "Desc_Plastic_C", itemsPerMinute: 60 }],
+      bpRecipes,
+      bpItems,
+    );
+    const slooped = solveProductsToRaw(
+      [{ productId: "Desc_Plastic_C", itemsPerMinute: 60 }],
+      bpRecipes,
+      bpItems,
+      { sloopedItems: ["Desc_Plastic_C"] },
+    );
+    expect(baseline.demand[0]?.itemsPerMinute).toBeCloseTo(90, 5);
+    expect(slooped.demand[0]?.itemsPerMinute).toBeCloseTo(45, 5);
+    expect(baseline.byproducts[0]?.itemId).toBe("Desc_HeavyOilResidue_C");
+    expect(slooped.byproducts[0]?.itemsPerMinute).toBeCloseTo(
+      baseline.byproducts[0]?.itemsPerMinute ?? 0,
+      5,
+    );
+  });
+
+  it("slooping a map raw (ore / oil) is a no-op — extractors cannot be amplified", () => {
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: ["Desc_OreIron_C"] },
+    );
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(90, 5);
+  });
+
+  it("does not amplify Packager recipes", () => {
+    const pkgItems: Record<string, ItemDef> = {
+      Desc_Water_C: { id: "Desc_Water_C", name: "Water", raw: true },
+      Desc_FluidCanister_C: { id: "Desc_FluidCanister_C", name: "Empty Canister", raw: false },
+      Desc_PackagedWater_C: { id: "Desc_PackagedWater_C", name: "Packaged Water", raw: false },
+    };
+    const pkgRecipes: Recipe[] = [
+      {
+        id: "Recipe_PackagedWater_C",
+        name: "Packaged Water",
+        durationSec: 3,
+        ingredients: [
+          { item: "Desc_Water_C", amount: 2 },
+          { item: "Desc_FluidCanister_C", amount: 2 },
+        ],
+        products: [{ item: "Desc_PackagedWater_C", amount: 2 }],
+        alternate: false,
+        producedIn: "Build_Packager_C",
+      },
+    ];
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_PackagedWater_C", itemsPerMinute: 60 }],
+      pkgRecipes,
+      pkgItems,
+      {
+        sloopedItems: ["Desc_PackagedWater_C"],
+        externalItems: ["Desc_FluidCanister_C"],
+      },
+    );
+    expect(demand.find((d) => d.resource === "Desc_Water_C")?.itemsPerMinute).toBeCloseTo(60, 5);
   });
 });
 

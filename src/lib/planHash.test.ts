@@ -259,6 +259,55 @@ describe("planHash v1 (indexed catalogs)", () => {
     expect(decodePlanHash(bare)?.recipeOverrides).toEqual({});
   });
 
+  it("round-trips sloopedItems (Mode B Somersloop amplification)", () => {
+    const src = sample({
+      mode: "product",
+      productTargets: [{ id: "p", productId: "Desc_ModularFrameHeavy_C", itemsPerMinute: 10 }],
+      sloopedItems: ["Desc_ModularFrameHeavy_C", "Desc_IronIngot_C"],
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.sloopedItems).toEqual(["Desc_IronIngot_C", "Desc_ModularFrameHeavy_C"]);
+  });
+
+  it("omits sloopedItems tail when empty (same hash as a plan with no sloops)", () => {
+    const bare = encodePlanHash(sample({ sloopedItems: [] }));
+    const withSloop = encodePlanHash(
+      sample({
+        sloopedItems: ["Desc_ModularFrameHeavy_C"],
+      }),
+    );
+    expect(bare.length).toBeLessThan(withSloop.length);
+    expect(decodePlanHash(bare)?.sloopedItems).toEqual([]);
+  });
+
+  it("sloop-only payload is n + indices (no dummy recipe-override count)", () => {
+    const bare = encodePlanHash(sample({ sloopedItems: [] }));
+    const one = encodePlanHash(sample({ sloopedItems: ["Desc_IronPlate_C"] }));
+    const two = encodePlanHash(sample({ sloopedItems: ["Desc_IronPlate_C", "Desc_IronIngot_C"] }));
+    // base64url: 2 extra payload bytes (count + 1 index) → +3 chars; +1 index → +2 more chars worst case
+    expect(one.length - bare.length).toBeLessThanOrEqual(4);
+    expect(two.length).toBeGreaterThan(one.length);
+  });
+
+  it("round-trips sloopedItems together with recipeOverrides", () => {
+    const src = sample({
+      recipeOverrides: { Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C" },
+      sloopedItems: ["Desc_ModularFrameHeavy_C"],
+    });
+    const decoded = decodePlanHash(encodePlanHash(src));
+    expect(decoded?.recipeOverrides).toEqual({
+      Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C",
+    });
+    expect(decoded?.sloopedItems).toEqual(["Desc_ModularFrameHeavy_C"]);
+  });
+
+  it("sloop-only hash still decodes empty recipeOverrides", () => {
+    const h = encodePlanHash(sample({ sloopedItems: ["Desc_IronPlate_C"] }));
+    const decoded = decodePlanHash(h);
+    expect(decoded?.recipeOverrides).toEqual({});
+    expect(decoded?.sloopedItems).toEqual(["Desc_IronPlate_C"]);
+  });
+
   it("keeps many overrides compact (indexed, not ClassName tokens)", () => {
     const overrides: Record<string, string> = {
       Desc_IronIngot_C: "Recipe_Alternate_PureIronIngot_C",

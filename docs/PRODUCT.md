@@ -36,6 +36,8 @@ Mode B **off-site inputs** (Resource Toggle): mark a crafted intermediate as imp
 
 Mode B **alternate recipes** (**Intermediates & Alternates**): each row has a squarish control (empty = default recipe). Open it to pick an alternate for that step; the expand re-runs so precursors and Raw demand update. Picks are encoded in the share hash (and local persist). Residual / non-hard-drive / byproduct production paths are selectable where they make sense (Polymer Resin, HOR, Compacted Coal, acid, DMR, …). Alternates are auto-badged by comparing expand-with-alt vs all-defaults (unavoidable **Adds** only; also Removes, Skips, Pure, Alloy, Screw-Free, High Throughput, Resource Efficient, real Docs **`producedIn`** machine swaps — Foundry / Refinery / Assembler / …).
 
+Mode B **Somersloops** (production amplification): each recipe picker has a Sloop On/Off toggle. Full amplification doubles that step’s output without extra ingredients (heatmap: half the inputs for the same product rate). Enabled steps turn the picker rose/pink and swap the default diamond for a Cool S. Packagers cannot be slooped. Encoded in the share hash (and local persist).
+
 **Hover links** on the recipe control (and the off-site × slot): violet **predicates** (self + direct inputs when the hovered step is produced on-site) and emerald **consumers** (on-site steps that pull this item). Rates **slice** on hover — predicates show `portion/total`; consumers show `(↑inflow/min) total`. Off-site imports do not light their ingredient tree; disabled consumers that would use the hovered item under the **default** recipe show red `(↑0/min) total` (hidden alts do not count while disabled). List order can flip ingredients-first ↔ products-first (display-only pref).
 
 **Quick selects** apply known packs to steps in the plan (Defaults, All Pure, No Screws, Resource Efficient, **Removes Types**, Polymer plastics, **Recycled loop**, Sloppy+Pure Al, Caterium computers, Iron+Copper Alloy). Packs stack; Selected stays lit when extras layer on. Fixed harmonies apply in full (one click for Caterium). **Removes Types** greedily re-expands and keeps only picks that **strictly cut distinct map raws** (not tonnage-only); **Water is ignored** for scoring and the type-colored “Cuts …” line. **Recycled loop** is one pack: Heavy Oil Residue + Diluted Fuel + Recycled Plastic/Rubber. Plastic/Rubber default is the game crude-oil recipe; **Polymer plastics** picks Residual Plastic/Rubber (+ Polymer Resin).
@@ -93,7 +95,7 @@ Breakdown shows per resource: assignment + `Local ~X/min · using Y% · spare Z`
 
 - Mode A: multi-resource raw rates + extractors → live heatmap without recipes.
 - Mode B: multi-product rates → stacked derived raw list + same heatmap path; Send to raw.
-- Mode B: off-site intermediates (+ Water); alternate picks with live re-expand, share hash, badges, quick selects (Removes Types, Recycled loop, …); hover rate slices; Raw demand byproducts.
+- Mode B: off-site intermediates (+ Water); alternate picks with live re-expand, share hash, badges, quick selects (Removes Types, Recycled loop, …); per-step Somersloop 2× output; hover rate slices; Raw demand byproducts.
 - Unsatisfiable regions render cold / Shortfall labels.
 - Satisfiable clusters light up; top sites show assigned nodes + rates.
 - Centered vs Weighted change haul ranking meaningfully.

@@ -93,6 +93,12 @@ export type AppState = {
    * Empty = all defaults. Share-hash + plan intent.
    */
   recipeOverrides: Record<string, string>;
+  /**
+   * Mode B: item ids whose machines are Somersloop-amplified (2× output, same
+   * ingredients). Share-hash + plan intent. Cleared with recipeOverrides when
+   * the product set changes.
+   */
+  sloopedItems: string[];
   miner: MinerSettings;
   scoringMode: ScoringMode;
   scoringOptions: ScoringOptions;
@@ -170,6 +176,8 @@ export type AppState = {
     replace?: boolean;
     overrides?: Record<string, string>;
   }) => void;
+  /** Mark / unmark a Mode B step as fully Somersloop-amplified. */
+  setItemSlooped: (itemId: string, slooped: boolean) => void;
   setMiner: (m: Partial<MinerSettings>) => void;
   setScoringMode: (mode: ScoringMode) => void;
   setScoringOptions: (patch: Partial<ScoringOptions>) => void;
@@ -218,6 +226,7 @@ function recompute(
     | "productTargets"
     | "externalItems"
     | "recipeOverrides"
+    | "sloopedItems"
     | "items"
     | "recipes"
   >,
@@ -242,6 +251,7 @@ function recompute(
     {
       externalItems: state.externalItems,
       recipeOverrides: state.recipeOverrides,
+      sloopedItems: state.sloopedItems,
     },
   );
   // Solver already orders deep → … → direct inputs → targets (min-depth merge)
@@ -277,6 +287,7 @@ export const useAppStore = create<AppState>()(
       // Packaging vessels: fair default for packaged recipes (user can re-enable)
       externalItems: [...DEFAULT_EXTERNAL_ITEM_IDS],
       recipeOverrides: {},
+      sloopedItems: [],
       miner: { ...DEFAULT_MINER_SETTINGS },
       scoringMode: "centered",
       scoringOptions: { ...DEFAULT_SCORING_OPTIONS },
@@ -347,7 +358,7 @@ export const useAppStore = create<AppState>()(
           patch.productId != null && productIdSetKey(prev) !== productIdSetKey(productTargets);
         set({
           productTargets,
-          ...(productSetChanged ? { recipeOverrides: {} } : {}),
+          ...(productSetChanged ? { recipeOverrides: {}, sloopedItems: [] } : {}),
         });
         get().recomputeActiveDemand();
       },
@@ -363,8 +374,9 @@ export const useAppStore = create<AppState>()(
             ...get().productTargets,
             { id: newLineId(), productId: next.id, itemsPerMinute: 60 },
           ],
-          // New product line = new plan intent; don't carry intermediate alts forward
+          // New product line = new plan intent; don't carry intermediate alts / sloops forward
           recipeOverrides: {},
+          sloopedItems: [],
         });
         get().recomputeActiveDemand();
       },
@@ -372,6 +384,7 @@ export const useAppStore = create<AppState>()(
         set({
           productTargets: get().productTargets.filter((line) => line.id !== id),
           recipeOverrides: {},
+          sloopedItems: [],
         });
         get().recomputeActiveDemand();
       },
@@ -433,6 +446,19 @@ export const useAppStore = create<AppState>()(
           return;
         }
         set({ recipeOverrides: next });
+        get().recomputeActiveDemand();
+      },
+      setItemSlooped: (itemId, slooped) => {
+        const id = canonicalizeProductId(itemId);
+        if (!id) return;
+        const prev = get().sloopedItems;
+        const has = prev.includes(id);
+        if (slooped && has) return;
+        if (!slooped && !has) return;
+        const sloopedItems = slooped
+          ? [...prev, id].sort((a, b) => a.localeCompare(b))
+          : prev.filter((x) => x !== id);
+        set({ sloopedItems });
         get().recomputeActiveDemand();
       },
       setMiner: (m) => {
@@ -528,6 +554,7 @@ export const useAppStore = create<AppState>()(
         const { demand } = solveProductsToRaw(targets, state.recipes, state.items, {
           externalItems: state.externalItems,
           recipeOverrides: state.recipeOverrides,
+          sloopedItems: state.sloopedItems,
         });
         if (demand.length === 0) {
           set({ error: "Could not expand products to raw demand." });
@@ -597,6 +624,10 @@ export const useAppStore = create<AppState>()(
           const p = canonicalizeProductId(pid);
           if (p && rid) recipeOverrides[p] = rid;
         }
+        const sloopedItems = (snap.sloopedItems ?? [])
+          .map((id) => canonicalizeProductId(id))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
 
         set({
           mode: snap.mode,
@@ -604,6 +635,7 @@ export const useAppStore = create<AppState>()(
           productTargets,
           externalItems,
           recipeOverrides,
+          sloopedItems,
           miner: {
             ...DEFAULT_MINER_SETTINGS,
             ...snap.miner,
@@ -710,6 +742,7 @@ export const useAppStore = create<AppState>()(
         productTargets: s.productTargets,
         externalItems: s.externalItems,
         recipeOverrides: s.recipeOverrides,
+        sloopedItems: s.sloopedItems,
         miner: s.miner,
         scoringMode: s.scoringMode,
         scoringOptions: s.scoringOptions,
@@ -765,6 +798,11 @@ export const useAppStore = create<AppState>()(
             }
           }
         }
+        const sloopedItems = Array.isArray(p.sloopedItems)
+          ? [
+              ...new Set(p.sloopedItems.map((id) => canonicalizeProductId(id)).filter(Boolean)),
+            ].sort((a, b) => a.localeCompare(b))
+          : [];
         const rawMode = String(p.scoringMode ?? current.scoringMode);
         const scoringMode: ScoringMode =
           rawMode === "weighted" || rawMode === "volume" ? "weighted" : "centered";
@@ -831,6 +869,7 @@ export const useAppStore = create<AppState>()(
           productTargets,
           externalItems,
           recipeOverrides,
+          sloopedItems,
           miner,
           scoringMode,
           scoringOptions,

@@ -134,6 +134,7 @@ function planSourceFromStore(): PlanHashSource {
     seedPurity: s.seedPurity,
     externalItems: s.externalItems,
     recipeOverrides: s.recipeOverrides,
+    sloopedItems: s.sloopedItems,
   };
 }
 
@@ -152,6 +153,7 @@ function labelSourceFromStore() {
     recipes: s.recipes,
     externalItems: s.externalItems,
     recipeOverrides: s.recipeOverrides,
+    sloopedItems: s.sloopedItems,
   };
 }
 

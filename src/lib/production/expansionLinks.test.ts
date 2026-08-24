@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyExpansionLink, ingredientInflowPerMin } from "@/lib/production/expansionLinks";
-import type { Recipe } from "@/types";
+import { sloopOutputMultiplier, solveProductsToRaw } from "@/lib/production/solve";
+import type { ItemDef, Recipe } from "@/types";
 
 function recipe(
   id: string,
@@ -24,6 +25,11 @@ describe("ingredientInflowPerMin", () => {
     // 4/min product, 2 product per craft → 2 crafts/min; 3 ingredient each → 6/min
     const r = recipe("R", "P", 2, [{ item: "H", amount: 3 }]);
     expect(ingredientInflowPerMin(4, r, "P", "H")).toBeCloseTo(6);
+  });
+
+  it("halves inflow when Somersloop doubles output", () => {
+    const r = recipe("R", "P", 2, [{ item: "H", amount: 3 }]);
+    expect(ingredientInflowPerMin(4, r, "P", "H", 2)).toBeCloseTo(3);
   });
 });
 
@@ -59,6 +65,32 @@ describe("classifyExpansionLink", () => {
     });
     expect(linkCu.kind).toBe("predicate");
     expect(linkCu.attributed).toBeCloseTo(24); // 24 HS × 1 Cu
+  });
+
+  it("slooped hover halves predicate inflow; slooped consumer halves ↑ inflow", () => {
+    const linkCu = classifyExpansionLink({
+      row: { itemId: "Cu", itemsPerMinute: 30, external: false },
+      hoveredItemId: "HS",
+      hoveredRate: 24,
+      hoveredOnSite: true,
+      hoveredRecipe: hsRecipe,
+      rowRecipe: undefined,
+      hoveredOutputMultiplier: 2,
+    });
+    expect(linkCu.kind).toBe("predicate");
+    expect(linkCu.attributed).toBeCloseTo(12);
+
+    const linkRcu = classifyExpansionLink({
+      row: { itemId: "RCU", itemsPerMinute: 8, external: false },
+      hoveredItemId: "HS",
+      hoveredRate: 24,
+      hoveredOnSite: true,
+      hoveredRecipe: hsRecipe,
+      rowRecipe: rcuRecipe,
+      rowOutputMultiplier: 2,
+    });
+    expect(linkRcu.kind).toBe("consumer");
+    expect(linkRcu.attributed).toBeCloseTo(12);
   });
 
   it("hover off-site HS: consumers still light; no Cu/Al predicates", () => {
@@ -174,5 +206,111 @@ describe("classifyExpansionLink", () => {
       rowDefaultRecipe: defaultUsesRubber,
     });
     expect(ghostIfDefault.kind).toBe("ghost-consumer");
+  });
+});
+
+describe("hover slices vs slooped expand", () => {
+  const items: Record<string, ItemDef> = {
+    Desc_OreIron_C: { id: "Desc_OreIron_C", name: "Iron Ore", raw: true },
+    Desc_IronIngot_C: { id: "Desc_IronIngot_C", name: "Iron Ingot", raw: false },
+    Desc_IronPlate_C: { id: "Desc_IronPlate_C", name: "Iron Plate", raw: false },
+  };
+  const ingotRecipe: Recipe = {
+    id: "Recipe_IronIngot_C",
+    name: "Iron Ingot",
+    durationSec: 2,
+    ingredients: [{ item: "Desc_OreIron_C", amount: 1 }],
+    products: [{ item: "Desc_IronIngot_C", amount: 1 }],
+    alternate: false,
+    producedIn: "Build_SmelterMk1_C",
+  };
+  const plateRecipe: Recipe = {
+    id: "Recipe_IronPlate_C",
+    name: "Iron Plate",
+    durationSec: 6,
+    ingredients: [{ item: "Desc_IronIngot_C", amount: 3 }],
+    products: [{ item: "Desc_IronPlate_C", amount: 2 }],
+    alternate: false,
+    producedIn: "Build_ConstructorMk1_C",
+  };
+  const recipes = [ingotRecipe, plateRecipe];
+
+  function link(opts: { slooped: string[]; hovered: string; row: string }) {
+    const slooped = new Set(opts.slooped);
+    const { expansion } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: slooped },
+    );
+    const hovered = expansion.find((e) => e.itemId === opts.hovered);
+    const row = expansion.find((e) => e.itemId === opts.row);
+    expect(hovered).toBeDefined();
+    expect(row).toBeDefined();
+    const hoveredRecipe =
+      opts.hovered === plateRecipe.products[0]?.item ? plateRecipe : ingotRecipe;
+    const rowRecipe = opts.row === plateRecipe.products[0]?.item ? plateRecipe : ingotRecipe;
+    return {
+      hovered,
+      row,
+      info: classifyExpansionLink({
+        row: {
+          itemId: row?.itemId ?? "",
+          itemsPerMinute: row?.itemsPerMinute ?? 0,
+          external: row?.external ?? false,
+        },
+        hoveredItemId: opts.hovered,
+        hoveredRate: hovered?.itemsPerMinute ?? 0,
+        hoveredOnSite: !(hovered?.external ?? true),
+        hoveredRecipe,
+        rowRecipe,
+        hoveredOutputMultiplier: sloopOutputMultiplier(opts.hovered, hoveredRecipe, slooped),
+        rowOutputMultiplier: sloopOutputMultiplier(opts.row, rowRecipe, slooped),
+      }),
+    };
+  }
+
+  it("slooped plates: hover plates → ingot predicate equals expand ingot rate (45, not 90)", () => {
+    const { row, info } = link({
+      slooped: ["Desc_IronPlate_C"],
+      hovered: "Desc_IronPlate_C",
+      row: "Desc_IronIngot_C",
+    });
+    expect(info.kind).toBe("predicate");
+    expect(row?.itemsPerMinute).toBeCloseTo(45);
+    expect(info.attributed).toBeCloseTo(45);
+  });
+
+  it("slooped plates: hover ingots → plate consumer ↑ equals expand ingot rate", () => {
+    const { row, info } = link({
+      slooped: ["Desc_IronPlate_C"],
+      hovered: "Desc_IronIngot_C",
+      row: "Desc_IronPlate_C",
+    });
+    expect(info.kind).toBe("consumer");
+    expect(row?.itemsPerMinute).toBeCloseTo(60);
+    expect(info.attributed).toBeCloseTo(45);
+  });
+
+  it("slooped ingots only: hover ingots does not half plate consumer inflow", () => {
+    // Plates still need 90 ingot/min; slooping the smelter only halves ore.
+    const { info } = link({
+      slooped: ["Desc_IronIngot_C"],
+      hovered: "Desc_IronIngot_C",
+      row: "Desc_IronPlate_C",
+    });
+    expect(info.kind).toBe("consumer");
+    expect(info.attributed).toBeCloseTo(90);
+  });
+
+  it("slooped ingots only: hover plates → ingot predicate is unslooped 90", () => {
+    const { row, info } = link({
+      slooped: ["Desc_IronIngot_C"],
+      hovered: "Desc_IronPlate_C",
+      row: "Desc_IronIngot_C",
+    });
+    expect(info.kind).toBe("predicate");
+    expect(row?.itemsPerMinute).toBeCloseTo(90);
+    expect(info.attributed).toBeCloseTo(90);
   });
 });

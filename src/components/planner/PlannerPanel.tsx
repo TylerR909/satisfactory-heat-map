@@ -25,7 +25,11 @@ import {
 } from "@/lib/mining";
 import { encodePlanHash } from "@/lib/planHash";
 import { classifyExpansionLink, type ExpansionLinkKind } from "@/lib/production/expansionLinks";
-import { listProductionRecipes, resolveProductionRecipe } from "@/lib/production/solve";
+import {
+  listProductionRecipes,
+  resolveProductionRecipe,
+  sloopOutputMultiplier,
+} from "@/lib/production/solve";
 import {
   RAW_RESOURCE_OPTIONS,
   resourceLabel,
@@ -391,8 +395,8 @@ function ExpansionSortButton({
       }
       aria-label={
         deepFirst
-          ? "Intermediates sorted ingredients first. Click to show finished products first."
-          : "Intermediates sorted finished products first. Click to show ingredients first."
+          ? "Alternates sorted ingredients first. Click to show finished products first."
+          : "Alternates sorted finished products first. Click to show ingredients first."
       }
       aria-pressed={!deepFirst}
     >
@@ -555,9 +559,11 @@ function ExpansionRowList({
   items,
   recipes,
   recipeOverrides,
+  sloopedItems,
   sortOrder,
   setItemExternal,
   setRecipeOverride,
+  setItemSlooped,
 }: {
   expansionRows: ExpansionRow[];
   productTargets: ProductTargetLine[];
@@ -565,9 +571,11 @@ function ExpansionRowList({
   items: Record<string, ItemDef>;
   recipes: Recipe[];
   recipeOverrides: Record<string, string>;
+  sloopedItems: string[];
   sortOrder: ExpansionSortOrder;
   setItemExternal: (itemId: string, external: boolean) => void;
   setRecipeOverride: (itemId: string, recipeId: string | null) => void;
+  setItemSlooped: (itemId: string, slooped: boolean) => void;
 }) {
   /**
    * Only the hovered item id — each row derives predicate/consumer + rate slice
@@ -603,6 +611,7 @@ function ExpansionRowList({
     return m;
   }, [expansionRows, recipes]);
 
+  const sloopedSet = useMemo(() => new Set(sloopedItems), [sloopedItems]);
   const hoveredRow = hoveredItemId
     ? expansionRows.find((r) => r.itemId === hoveredItemId)
     : undefined;
@@ -612,6 +621,9 @@ function ExpansionRowList({
     ? (activeRecipeByItem.get(hoveredItemId) ??
       rowProductionRecipe(hoveredItemId, recipes, recipeOverrides))
     : undefined;
+  const hoveredOutputMultiplier = hoveredItemId
+    ? sloopOutputMultiplier(hoveredItemId, hoveredRecipe, sloopedSet)
+    : 1;
 
   return (
     <ul className="space-y-0.5 text-sm">
@@ -635,6 +647,12 @@ function ExpansionRowList({
                 hoveredRecipe,
                 rowRecipe: activeRecipeByItem.get(row.itemId),
                 rowDefaultRecipe: defaultRecipeByItem.get(row.itemId),
+                hoveredOutputMultiplier,
+                rowOutputMultiplier: sloopOutputMultiplier(
+                  row.itemId,
+                  activeRecipeByItem.get(row.itemId),
+                  sloopedSet,
+                ),
               })
             : { kind: "none" as const, attributed: null };
 
@@ -678,6 +696,8 @@ function ExpansionRowList({
                 selectedRecipeId={recipeOverrides[row.itemId] ?? null}
                 onSelect={(recipeId) => setRecipeOverride(row.itemId, recipeId)}
                 dimmed={!onSite}
+                slooped={sloopedSet.has(row.itemId)}
+                onSloopChange={(next) => setItemSlooped(row.itemId, next)}
                 onHighlightChange={(active) => setHoveredItemId(active ? row.itemId : null)}
               />
             </span>
@@ -704,9 +724,11 @@ export function PlannerPanel() {
     removeProductLine,
     externalItems,
     recipeOverrides,
+    sloopedItems,
     expansionRows,
     setItemExternal,
     setRecipeOverride,
+    setItemSlooped,
     applyRecipeOverrides,
     miner,
     setMiner,
@@ -786,6 +808,7 @@ export function PlannerPanel() {
       seedPurity,
       externalItems,
       recipeOverrides,
+      sloopedItems,
     });
     try {
       await navigator.clipboard.writeText(hash);
@@ -802,6 +825,7 @@ export function PlannerPanel() {
 
   // Stable props for AltQuickSelects (content changes only — not every store re-render)
   const expansionItemIds = useMemo(() => expansionRows.map((r) => r.itemId), [expansionRows]);
+  const sloopedInExpand = expansionRows.filter((r) => sloopedItems.includes(r.itemId)).length;
   const productTargetIds = useMemo(() => productTargets.map((t) => t.productId), [productTargets]);
   const quickSelectProductTargets = useMemo(
     () =>
@@ -969,29 +993,42 @@ export function PlannerPanel() {
       )}
 
       {mode === "product" && expansionRows.length > 0 && (
-        <section className="rounded-lg border border-slate-800">
+        <section
+          className={`rounded-lg border ${expansionOpen ? "border-slate-600" : "border-slate-500"}`}
+        >
           <button
             type="button"
-            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-900/80"
+            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-900/80 ${
+              expansionOpen ? "text-slate-200" : "text-white"
+            }`}
             onClick={() => setExpansionOpen(!expansionOpen)}
             aria-expanded={expansionOpen}
           >
             <span className="font-medium">
-              Intermediates &amp; Alternates
-              <span className="ml-2 font-normal text-slate-500">
+              Alternates
+              <span
+                className={`ml-2 font-normal ${expansionOpen ? "text-slate-500" : "text-slate-400"}`}
+              >
                 {expansionRows.length} item{expansionRows.length === 1 ? "" : "s"}
                 {externalItems.length > 0
                   ? ` · ${expansionRows.filter((r) => externalItems.includes(r.itemId)).length} off`
                   : ""}
+                {sloopedInExpand > 0
+                  ? ` · ${sloopedInExpand} Sloop${sloopedInExpand === 1 ? "" : "s"}`
+                  : ""}
               </span>
             </span>
-            <span className="text-slate-500">{expansionOpen ? "▾" : "▸"}</span>
+            <span className={expansionOpen ? "text-slate-500" : "text-slate-300"}>
+              {expansionOpen ? "▾" : "▸"}
+            </span>
           </button>
           {expansionOpen && (
-            <div className="space-y-2 border-t border-slate-800 px-3 py-3">
+            <div className="space-y-2 border-t border-slate-700/80 px-3 py-3">
               <p className="text-[11px] leading-snug text-slate-500">
                 Disabling a product removes it from the heatmap. Use that when an intermediate is
                 produced off-site (piping in water, trucking in Polymer, recycling canisters, etc.).
+                Open a recipe picker to mark a step as slooped (halves that step's inputs on the
+                heatmap).
               </p>
               <div className="flex items-center justify-end gap-1.5">
                 <ExpansionSortButton
@@ -1020,9 +1057,11 @@ export function PlannerPanel() {
                 items={items}
                 recipes={recipes}
                 recipeOverrides={recipeOverrides}
+                sloopedItems={sloopedItems}
                 sortOrder={expansionSortOrder}
                 setItemExternal={setItemExternal}
                 setRecipeOverride={setRecipeOverride}
+                setItemSlooped={setItemSlooped}
               />
             </div>
           )}

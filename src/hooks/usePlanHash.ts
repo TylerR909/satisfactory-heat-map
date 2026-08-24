@@ -30,6 +30,7 @@ function pickPlanSource(): PlanHashSource {
     seedPurity: s.seedPurity,
     externalItems: s.externalItems,
     recipeOverrides: s.recipeOverrides,
+    sloopedItems: s.sloopedItems,
   };
 }
 

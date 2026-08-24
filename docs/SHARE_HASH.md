@@ -17,7 +17,7 @@ The algorithm is intentional open-source surface area: other Satisfactory tools 
 
 1. **Single binary blob** + base64url — not pipe-delimited sections. Optional fields are **omitted** when default (seed, extractors, empty lists). That is denser than `seed|plan|config` and one decode path for implementers.
 2. **Indices, not names.** Items and recipes are `u8` / `u16` into **append-only** catalogs. ClassName strings never appear on the wire.
-3. **Sparse Mode B.** Only top-level targets, off-site marks, and non-default recipe picks are stored. The intermediate tree is **recomputed** from Docs recipes on load.
+3. **Sparse Mode B.** Only top-level targets, off-site marks, non-default recipe picks, and Somersloop-amplified item ids are stored. The intermediate tree is **recomputed** from Docs recipes on load.
 4. **Mode A first for interop.** Raw demand is fully specified and trivial for calculators to emit. Mode B intent helpers exist; full parity with every planner’s graph is a stretch goal.
 
 ## Alphabet
@@ -79,7 +79,8 @@ bits 0–4:   centerPower  quantized 1.00 + q×0.05, q=0…30
 bits 5–7:   topN         3 + n, n=0…7  → topN 3…10
 bits 8–12:  siteSep      0.04 + q×0.02, q=0…18
 bit 13:     FLAG_HAS_WORLD_CONFIG — mode u8 + purity u8 follow the seed tail
-bits 14–15: reserved (0)
+bit 14:     FLAG_HAS_SLOOPED — Somersloop item list follows extractors
+bit 15:     reserved (0)
 ```
 
 ### Demand
@@ -108,7 +109,10 @@ Only the **active** mode’s lines are present (`nRaw` or `nProd` is zero).
 4. **Extractors** (if `FLAG_HAS_EXTRACTOR_EXT`):  
    `waterClock u8`, `wellClock u8`, `wellsEnabled u8` (bit0), `oilClock u8`.  
    Omitted when all match app defaults (Mk clocks 250%, wells on).
-5. **Recipe overrides** (if any bytes remain):  
+5. **Somersloop items** (if packed knobs `FLAG_HAS_SLOOPED`):  
+   `n u8`, then `n` × `itemIndex u8`.  
+   Mode B steps marked slooped. Sorted by ClassName at encode time. Omitted when empty. Cap 20. Same layout as externals — the flag lives in packed knobs (already always present), so a sloop-only plan does not pay a dummy override-count byte.
+6. **Recipe overrides** (if any bytes remain):  
    `n u8`, then `n` × (`itemIndex u8`, `recipeIndex u16`).  
    Only **non-default** Mode B picks. Product → recipe ClassName after catalog lookup.
 
@@ -156,7 +160,7 @@ import {
 } from "@/lib/planHash";
 
 // Full snapshot (app path)
-encodePlanHash({ mode, rawDemand, productTargets, miner, scoringMode, scoringOptions, seed, seedMode, seedPurity, externalItems, recipeOverrides });
+encodePlanHash({ mode, rawDemand, productTargets, miner, scoringMode, scoringOptions, seed, seedMode, seedPurity, externalItems, recipeOverrides, sloopedItems });
 
 // Mode A — preferred external interop
 encodeRawPlanHash([

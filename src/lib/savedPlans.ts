@@ -48,6 +48,8 @@ export type PlanLabelSource = {
   externalItems?: string[];
   /** Mode B alternate recipe picks (affects expand for chip demand tooltips). */
   recipeOverrides?: Record<string, string>;
+  /** Mode B Somersloop-amplified steps (affects expand for chip demand tooltips). */
+  sloopedItems?: string[];
 };
 
 function newId(): string {
@@ -111,6 +113,7 @@ function expandDemand(src: PlanLabelSource): RawDemand[] {
   return solveProductsToRaw(targets, src.recipes, src.items, {
     externalItems: src.externalItems,
     recipeOverrides: src.recipeOverrides,
+    sloopedItems: src.sloopedItems,
   }).demand;
 }
 

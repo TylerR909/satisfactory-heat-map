@@ -22,6 +22,7 @@ import {
   primaryProductId,
   recipeButtonLabel,
   recipeShortName,
+  recipeSupportsSomersloop,
   resolveProductionRecipe,
 } from "@/lib/production/solve";
 import type { ItemDef, Recipe } from "@/types";
@@ -82,6 +83,9 @@ type Props = {
    * Parent highlights this item + direct inputs (upstream) and consumers (downstream).
    */
   onHighlightChange?: (active: boolean) => void;
+  /** Full Somersloop amplification on this step (2× output, same ingredients). */
+  slooped?: boolean;
+  onSloopChange?: (slooped: boolean) => void;
 };
 
 /**
@@ -97,6 +101,8 @@ export function RecipeAltPicker({
   onSelect,
   dimmed,
   onHighlightChange,
+  slooped = false,
+  onSloopChange,
 }: Props) {
   const alts = useMemo(() => listAlternateRecipes(recipes, itemId), [recipes, itemId]);
   const all = useMemo(() => listProductionRecipes(recipes, itemId), [recipes, itemId]);
@@ -259,7 +265,7 @@ export function RecipeAltPicker({
     };
   }, [open, highlightSticky]);
 
-  // Off-site: no menu / alt pick, but hover still lights consumers + rate slices
+  // Off-site: no menu / alt pick / sloop, but hover still lights consumers + rate slices
   if (dimmed) {
     const summary = defaultRecipe
       ? formatRecipeSummary(defaultRecipe, items)
@@ -274,27 +280,13 @@ export function RecipeAltPicker({
     );
   }
 
-  // No alts (or no production recipe): still show a fixed slot — hover for recipe summary
-  if (!hasAlts) {
-    const summary = defaultRecipe
-      ? formatRecipeSummary(defaultRecipe, items)
-      : "Map resource — no factory recipe";
+  // No production recipe (map raw / unresolved): hover summary only — cannot sloop extractors
+  if (!defaultRecipe) {
+    const summary = "Map resource — no factory recipe";
     return (
       <RecipePreviewButton
         summary={summary}
-        ariaLabel={
-          defaultRecipe ? `Only recipe: ${recipeShortName(defaultRecipe)}. ${summary}` : summary
-        }
-        onHighlightChange={onHighlightChange}
-      />
-    );
-  }
-
-  if (!defaultRecipe) {
-    return (
-      <RecipePreviewButton
-        summary="No production recipe"
-        ariaLabel="No production recipe"
+        ariaLabel={summary}
         onHighlightChange={onHighlightChange}
       />
     );
@@ -302,9 +294,12 @@ export function RecipeAltPicker({
 
   const buttonLabel = isAlt && selected ? recipeButtonLabel(selected, alts) : "";
   const activeRecipe = selected ?? defaultRecipe;
+  const canSloop = recipeSupportsSomersloop(activeRecipe);
+  const sloopOn = slooped && canSloop;
   const recipeSummary = activeRecipe ? formatRecipeSummary(activeRecipe, items) : "";
   const recipeName = activeRecipe ? (isAlt ? recipeShortName(activeRecipe) : "Default") : "Recipe";
   const recipeTip = activeRecipe ? `${recipeName}: ${recipeSummary}` : "";
+  const sloopNote = sloopOn ? " Slooped." : "";
 
   return (
     <>
@@ -315,8 +310,10 @@ export function RecipeAltPicker({
         aria-expanded={open}
         aria-label={
           isAlt && selected
-            ? `Alternate recipe: ${recipeShortName(selected)}. ${recipeSummary}`
-            : `Default recipe. ${recipeSummary}. Click to pick an alternate`
+            ? `Alternate recipe: ${recipeShortName(selected)}. ${recipeSummary}.${sloopNote}`
+            : hasAlts
+              ? `Default recipe. ${recipeSummary}. Click to pick an alternate.${sloopNote}`
+              : `Recipe. ${recipeSummary}.${sloopNote}`
         }
         onClick={() => {
           clearRecipeTipTimer();
@@ -345,12 +342,20 @@ export function RecipeAltPicker({
           setRecipeTipOpen(false);
         }}
         className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border text-[9px] font-semibold leading-none tracking-tight transition-colors ${
-          isAlt
-            ? "border-sky-500/50 bg-sky-500/20 text-sky-200 hover:border-sky-400 hover:bg-sky-500/35 hover:text-sky-100"
-            : "border-dashed border-slate-600 bg-transparent text-slate-500 hover:border-solid hover:border-slate-400 hover:bg-slate-800 hover:text-slate-200"
+          sloopOn
+            ? "border-rose-400/80 bg-rose-500/30 text-rose-100 hover:border-rose-300 hover:bg-rose-500/45 hover:text-white"
+            : isAlt
+              ? "border-sky-500/50 bg-sky-500/20 text-sky-200 hover:border-sky-400 hover:bg-sky-500/35 hover:text-sky-100"
+              : "border-dashed border-slate-600 bg-transparent text-slate-500 hover:border-solid hover:border-slate-400 hover:bg-slate-800 hover:text-slate-200"
         }`}
       >
-        {isAlt ? <span className="px-0.5">{buttonLabel}</span> : <span aria-hidden>◇</span>}
+        {isAlt ? (
+          <span className="px-0.5">{buttonLabel}</span>
+        ) : sloopOn ? (
+          <CoolSIcon className="h-[26px] w-[26px]" />
+        ) : (
+          <span aria-hidden>◇</span>
+        )}
       </button>
 
       {recipeTipOpen &&
@@ -373,13 +378,16 @@ export function RecipeAltPicker({
               ...(pos.bottom != null ? { bottom: pos.bottom } : {}),
             }}
           >
-            <div className="shrink-0 border-b border-slate-800 px-3 py-2">
-              <h3 id={titleId} className="text-xs font-medium text-slate-200">
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-800 px-3 py-2">
+              <h3 id={titleId} className="min-w-0 flex-1 text-xs font-medium text-slate-200">
                 Recipe for{" "}
                 <strong className="font-semibold text-white">
                   {items[itemId]?.name ?? itemId}
                 </strong>
               </h3>
+              {canSloop && (
+                <SloopHeaderToggle on={sloopOn} onChange={(next) => onSloopChange?.(next)} />
+              )}
             </div>
             {/* min-h-0 + flex-1: scroll inside the height budget even when only ~100px free */}
             <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
@@ -420,6 +428,53 @@ export function RecipeAltPicker({
           document.body,
         )}
     </>
+  );
+}
+
+/** Cool S via 2-fold rotational symmetry — 28×28 viewBox matches the picker button. */
+function CoolSIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 28 28"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M14 19.45V15.82L10.36 12.18V8.55L14 4.91L17.64 8.55V12.18L15.82 14" />
+      <path d="M14 8.55V12.18L17.64 15.82V19.45L14 23.09L10.36 19.45V15.82L12.18 14" />
+    </svg>
+  );
+}
+
+function SloopHeaderToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  const label = "Somersloop — halves inputs for the same output";
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(!on);
+      }}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none transition-colors ${
+        on
+          ? "border-rose-400/70 bg-rose-500/20 text-rose-100 hover:border-rose-300 hover:bg-rose-500/35"
+          : "border-slate-700 bg-slate-950/40 text-slate-400 hover:border-rose-400/40 hover:text-rose-200"
+      }`}
+    >
+      <CoolSIcon className="h-3.5 w-3.5" />
+      <span>Sloop</span>
+    </button>
   );
 }
 
