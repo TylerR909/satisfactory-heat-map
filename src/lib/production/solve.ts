@@ -111,15 +111,33 @@ export const toSloopedItemSet = toExternalItemSet;
 export const SLOOP_OUTPUT_MULTIPLIER = 2;
 
 /**
- * Production amplification is available on factory crafters, not Packagers
- * (or extractors — those never appear as Mode B recipes).
+ * Buildings that accept Somersloops (wiki production amplification).
+ * Extractors (miners, oil, water, wells), Packagers, and anything else are out.
  * Missing `producedIn` (tests / older extracts) is treated as sloopable.
  */
+const SLOOPABLE_BUILDING_KEYS = new Set([
+  "Constructor",
+  "Assembler",
+  "Manufacturer",
+  "Smelter",
+  "Foundry",
+  "OilRefinery",
+  "Blender",
+  "Converter",
+  "HadronCollider",
+  "ParticleAccelerator",
+  "QuantumEncoder",
+]);
+
 export function recipeSupportsSomersloop(recipe: Recipe | undefined | null): boolean {
   if (!recipe) return false;
   const raw = recipe.producedIn?.trim();
   if (!raw) return true;
-  return !/Packager/i.test(raw);
+  const key = raw
+    .replace(/^Build_/i, "")
+    .replace(/_C$/i, "")
+    .replace(/Mk\d+$/i, "");
+  return SLOOPABLE_BUILDING_KEYS.has(key);
 }
 
 /** Output multiplier for expand / hover math (1 or {@link SLOOP_OUTPUT_MULTIPLIER}). */

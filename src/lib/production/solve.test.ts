@@ -709,7 +709,7 @@ describe("recipeOverrides (Mode B alternates)", () => {
 });
 
 describe("sloopedItems (Somersloop production amplification)", () => {
-  it("recipeSupportsSomersloop is false only for Packager", () => {
+  it("recipeSupportsSomersloop is false for Packager and extractors", () => {
     const constructorRecipe: Recipe = {
       id: "Recipe_IronPlate_C",
       name: "Iron Plate",
@@ -724,8 +724,26 @@ describe("sloopedItems (Somersloop production amplification)", () => {
       id: "Recipe_PackagedWater_C",
       producedIn: "Build_Packager_C",
     };
+    const oilPump: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_FakeOilExtract_C",
+      producedIn: "Build_OilPump_C",
+    };
+    const miner: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_FakeMiner_C",
+      producedIn: "Build_MinerMk3_C",
+    };
+    const refinery: Recipe = {
+      ...constructorRecipe,
+      id: "Recipe_Plastic_C",
+      producedIn: "Build_OilRefinery_C",
+    };
     expect(recipeSupportsSomersloop(constructorRecipe)).toBe(true);
+    expect(recipeSupportsSomersloop(refinery)).toBe(true);
     expect(recipeSupportsSomersloop(packager)).toBe(false);
+    expect(recipeSupportsSomersloop(oilPump)).toBe(false);
+    expect(recipeSupportsSomersloop(miner)).toBe(false);
     expect(recipeSupportsSomersloop({ ...constructorRecipe, producedIn: undefined })).toBe(true);
     expect(recipeSupportsSomersloop(undefined)).toBe(false);
   });
@@ -809,6 +827,16 @@ describe("sloopedItems (Somersloop production amplification)", () => {
       baseline.byproducts[0]?.itemsPerMinute ?? 0,
       5,
     );
+  });
+
+  it("slooping a map raw (ore / oil) is a no-op — extractors cannot be amplified", () => {
+    const { demand } = solveProductsToRaw(
+      [{ productId: "Desc_IronPlate_C", itemsPerMinute: 60 }],
+      recipes,
+      items,
+      { sloopedItems: ["Desc_OreIron_C"] },
+    );
+    expect(demand.find((d) => d.resource === "Desc_OreIron_C")?.itemsPerMinute).toBeCloseTo(90, 5);
   });
 
   it("does not amplify Packager recipes", () => {

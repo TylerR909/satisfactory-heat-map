@@ -464,7 +464,7 @@ function SloopHeaderToggle({
   onChange: (next: boolean) => void;
 }) {
   const label = disabled
-    ? "Packagers cannot use Somersloops"
+    ? "This machine cannot use Somersloops"
     : on
       ? "Sloop on — this step's inputs are halved on the heatmap. Click to turn off."
       : "Sloop off — click to mark this step as slooped (halves its inputs on the heatmap).";
